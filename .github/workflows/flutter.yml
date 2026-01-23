@@ -45,3 +45,40 @@ jobs:
         cd flutter/example
         flutter build apk --debug
         flutter build ios --debug --no-codesign
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: flutter-build
+        path: flutter/build
+        if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: |
+          cd flutter
+          flutter pub get
+
+      - name: Publish to pub.dev
+        env:
+          PUB_CREDENTIALS: ${{ secrets.PUB_CREDENTIALS }}
+        run: |
+          cd flutter
+          if [ -n "$PUB_CREDENTIALS" ]; then
+            flutter pub publish --dry-run
+            flutter pub publish --force
+          else
+            echo "PUB_CREDENTIALS not set, skipping pub.dev publish"
+          fi

@@ -38,3 +38,33 @@ jobs:
       run: |
         cd android
         ./gradlew test
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: android-build
+        path: android/dito-sdk/build/outputs
+        if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build and publish Android SDK
+        run: |
+          cd android
+          ./gradlew build publishToMavenLocal publish

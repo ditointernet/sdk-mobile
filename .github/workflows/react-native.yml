@@ -45,3 +45,42 @@ jobs:
       run: |
         cd react-native
         npm run type-check || npx tsc --noEmit || echo "TypeScript not configured"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: react-native-build
+        path: react-native/dist
+        if-no-files-found: ignore
+
+  release:
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: react-native/package-lock.json
+
+      - name: Install dependencies
+        run: |
+          cd react-native
+          npm ci
+
+      - name: Publish to npm
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd react-native
+          if [ -n "$NPM_TOKEN" ]; then
+            echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
+            npm publish --access public
+            rm -f .npmrc
+          else
+            echo "NPM_TOKEN not set, skipping npm publish"
+          fi
