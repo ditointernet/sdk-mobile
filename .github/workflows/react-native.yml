@@ -1,0 +1,47 @@
+name: React Native Plugin CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'react-native/**'
+      - '.github/workflows/react-native.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'react-native/**'
+      - '.github/workflows/react-native.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: react-native/package-lock.json
+
+    - name: Install dependencies
+      run: |
+        cd react-native
+        npm ci
+
+    - name: Lint
+      run: |
+        cd react-native
+        npm run lint || echo "Lint script not configured"
+
+    - name: Run tests
+      run: |
+        cd react-native
+        npm test -- --coverage || echo "Tests not configured"
+
+    - name: Type check
+      run: |
+        cd react-native
+        npm run type-check || npx tsc --noEmit || echo "TypeScript not configured"

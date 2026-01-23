@@ -1,0 +1,31 @@
+# dito_sdk_flutter Development Guidelines
+
+Auto-generated from all feature plans. Last updated: 2026-01-22
+
+## Active Technologies
+- N/A (SDKs nativas gerenciam persistência) (001-dito-sdk-plugin)
+
+- Dart 3.0+, Flutter 3.0+, Kotlin (Android), Swift 5.0+ (iOS) (001-dito-sdk-plugin)
+
+## Project Structure
+
+```text
+src/
+tests/
+```
+
+## Commands
+
+# Add commands for Dart 3.0+, Flutter 3.0+, Kotlin (Android), Swift 5.0+ (iOS)
+
+## Code Style
+
+Dart 3.0+, Flutter 3.0+, Kotlin (Android), Swift 5.0+ (iOS): Follow standard conventions
+
+## Recent Changes
+- 001-dito-sdk-plugin: Added N/A (SDKs nativas gerenciam persistência)
+
+- 001-dito-sdk-plugin: Added Dart 3.0+, Flutter 3.0+, Kotlin (Android), Swift 5.0+ (iOS)
+
+<!-- MANUAL ADDITIONS START -->
+<!-- MANUAL ADDITIONS END -->

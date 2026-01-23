@@ -1,0 +1,107 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<document type="com.apple.InterfaceBuilder3.CocoaTouch.Storyboard.XIB" version="3.0" toolsVersion="24128" targetRuntime="iOS.CocoaTouch" propertyAccessControl="none" useAutolayout="YES" useTraitCollections="YES" useSafeAreas="YES" colorMatched="YES" initialViewController="BYZ-38-t0r">
+    <device id="retina6_12" orientation="portrait" appearance="light"/>
+    <dependencies>
+        <deployment identifier="iOS"/>
+        <plugIn identifier="com.apple.InterfaceBuilder.IBCocoaTouchPlugin" version="24063"/>
+        <capability name="Safe area layout guides" minToolsVersion="9.0"/>
+        <capability name="System colors in document resources" minToolsVersion="11.0"/>
+        <capability name="documents saved in the Xcode 8 format" minToolsVersion="8.0"/>
+    </dependencies>
+    <scenes>
+        <!--View Controller-->
+        <scene sceneID="tne-QT-ifu">
+            <objects>
+                <viewController id="BYZ-38-t0r" customClass="ViewController" customModule="Sample" customModuleProvider="target" sceneMemberID="viewController">
+                    <view key="view" contentMode="scaleToFill" id="8bC-Xf-vdC">
+                        <rect key="frame" x="0.0" y="0.0" width="393" height="852"/>
+                        <autoresizingMask key="autoresizingMask" widthSizable="YES" heightSizable="YES"/>
+                        <subviews>
+                            <stackView opaque="NO" contentMode="center" axis="vertical" distribution="fillEqually" alignment="center" spacing="12" translatesAutoresizingMaskIntoConstraints="NO" id="eYc-et-Ghz">
+                                <rect key="frame" x="0.0" y="270" width="393" height="312.33333333333326"/>
+                                <subviews>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="CPF" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="rmM-5R-o7v">
+                                        <rect key="frame" x="180.66666666666666" y="0.0" width="31.666666666666657" height="34.333333333333336"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                        <nil key="textColor"/>
+                                        <nil key="highlightedColor"/>
+                                    </label>
+                                    <textField opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="248" restorationIdentifier="fieldCpf" contentHorizontalAlignment="center" contentVerticalAlignment="center" text="69606629074" borderStyle="roundedRect" placeholder="CPF" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="zgB-Gb-q81">
+                                        <rect key="frame" x="10" y="46.333333333333314" width="373" height="34.333333333333343"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                        <textInputTraits key="textInputTraits" keyboardType="numberPad"/>
+                                    </textField>
+                                    <label opaque="NO" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="E-mail" textAlignment="natural" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" adjustsFontSizeToFit="NO" translatesAutoresizingMaskIntoConstraints="NO" id="ieC-GA-JG2">
+                                        <rect key="frame" x="172.33333333333334" y="92.666666666666686" width="48.333333333333343" height="34.333333333333343"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="17"/>
+                                        <nil key="textColor"/>
+                                        <nil key="highlightedColor"/>
+                                    </label>
+                                    <textField opaque="NO" contentMode="scaleToFill" horizontalHuggingPriority="248" restorationIdentifier="fieldEmail" contentHorizontalAlignment="center" contentVerticalAlignment="center" text="teste-ios@dito.com.br" borderStyle="roundedRect" placeholder="E-mail" textAlignment="natural" minimumFontSize="17" translatesAutoresizingMaskIntoConstraints="NO" id="ESO-ZT-hxV" userLabel="Field e-mail">
+                                        <rect key="frame" x="10" y="139" width="373" height="34.333333333333343"/>
+                                        <fontDescription key="fontDescription" type="system" pointSize="14"/>
+                                        <textInputTraits key="textInputTraits" keyboardType="numberPad"/>
+                                        <connections>
+                                            <outlet property="delegate" destination="eYc-et-Ghz" id="PdC-bf-7yV"/>
+                                        </connections>
+                                    </textField>
+                                    <button opaque="NO" contentMode="scaleToFill" restorationIdentifier="buttonIdentify" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="vzM-wo-5nk">
+                                        <rect key="frame" x="115" y="185.33333333333331" width="163" height="34.333333333333343"/>
+                                        <state key="normal" title="Button"/>
+                                        <buttonConfiguration key="configuration" style="filled" title="Identificar Usuário"/>
+                                        <connections>
+                                            <action selector="didTapIdentify:" destination="BYZ-38-t0r" eventType="touchUpInside" id="xGc-P9-Wu2"/>
+                                        </connections>
+                                    </button>
+                                    <button opaque="NO" contentMode="scaleToFill" restorationIdentifier="buttonRegisterDevice" enabled="NO" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="uFU-BE-E6P">
+                                        <rect key="frame" x="123" y="231.66666666666669" width="147" height="34.333333333333314"/>
+                                        <state key="normal" title="Button"/>
+                                        <buttonConfiguration key="configuration" style="tinted" title="Registrar device"/>
+                                        <connections>
+                                            <action selector="didTapRegistration:" destination="BYZ-38-t0r" eventType="touchUpInside" id="J7f-FQ-rh4"/>
+                                        </connections>
+                                    </button>
+                                    <button opaque="NO" contentMode="scaleToFill" restorationIdentifier="buttonNotification" contentHorizontalAlignment="center" contentVerticalAlignment="center" buttonType="system" lineBreakMode="middleTruncation" translatesAutoresizingMaskIntoConstraints="NO" id="gj9-co-rlU">
+                                        <rect key="frame" x="108.66666666666667" y="278" width="175.66666666666663" height="34.333333333333314"/>
+                                        <state key="normal" title="Button"/>
+                                        <buttonConfiguration key="configuration" style="tinted" title="Receber notificação"/>
+                                        <connections>
+                                            <action selector="didTapNotification:" destination="BYZ-38-t0r" eventType="touchUpInside" id="9I7-Zy-kUn"/>
+                                        </connections>
+                                    </button>
+                                </subviews>
+                                <constraints>
+                                    <constraint firstAttribute="trailing" secondItem="zgB-Gb-q81" secondAttribute="trailing" constant="10" id="FAR-th-UI4"/>
+                                    <constraint firstAttribute="trailing" secondItem="ESO-ZT-hxV" secondAttribute="trailing" constant="10" id="PaG-Ro-aNw"/>
+                                    <constraint firstAttribute="width" constant="393" id="WrK-fR-Z0Y"/>
+                                    <constraint firstItem="zgB-Gb-q81" firstAttribute="leading" secondItem="eYc-et-Ghz" secondAttribute="leading" constant="10" id="cM9-ZF-8wR"/>
+                                    <constraint firstItem="ESO-ZT-hxV" firstAttribute="leading" secondItem="eYc-et-Ghz" secondAttribute="leading" constant="10" id="xJN-2c-qAv"/>
+                                </constraints>
+                            </stackView>
+                        </subviews>
+                        <viewLayoutGuide key="safeArea" id="6Tk-OE-BBY"/>
+                        <color key="backgroundColor" systemColor="systemBackgroundColor"/>
+                        <constraints>
+                            <constraint firstItem="eYc-et-Ghz" firstAttribute="centerY" secondItem="8bC-Xf-vdC" secondAttribute="centerY" id="083-PB-Psh"/>
+                            <constraint firstItem="eYc-et-Ghz" firstAttribute="leading" secondItem="6Tk-OE-BBY" secondAttribute="leading" id="PUa-uK-aDH"/>
+                            <constraint firstItem="eYc-et-Ghz" firstAttribute="centerX" secondItem="8bC-Xf-vdC" secondAttribute="centerX" id="zBz-a2-vdP"/>
+                        </constraints>
+                    </view>
+                    <connections>
+                        <outlet property="buttonNotification" destination="gj9-co-rlU" id="1yf-kW-qAJ"/>
+                        <outlet property="buttonRegisterDevice" destination="uFU-BE-E6P" id="gfw-3W-3b5"/>
+                        <outlet property="fieldCpf" destination="zgB-Gb-q81" id="Wcc-ig-L7d"/>
+                        <outlet property="fieldEmail" destination="ESO-ZT-hxV" id="Psp-30-zAd"/>
+                    </connections>
+                </viewController>
+                <placeholder placeholderIdentifier="IBFirstResponder" id="dkx-z0-nzr" sceneMemberID="firstResponder"/>
+            </objects>
+            <point key="canvasLocation" x="64.885496183206101" y="3.5211267605633805"/>
+        </scene>
+    </scenes>
+    <resources>
+        <systemColor name="systemBackgroundColor">
+            <color white="1" alpha="1" colorSpace="custom" customColorSpace="genericGamma22GrayColorSpace"/>
+        </systemColor>
+    </resources>
+</document>

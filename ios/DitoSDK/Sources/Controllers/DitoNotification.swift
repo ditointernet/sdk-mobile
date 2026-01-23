@@ -1,0 +1,146 @@
+//
+//  DitoNotification.swift
+//  DitoSDK
+//
+//  Created by Rodrigo Damacena Gamarra Maciel on 27/01/21.
+//
+
+import Foundation
+
+class DitoNotification {
+
+  private let service: DitoNotificationService
+  private let notificationOffline: DitoNotificationOffline
+
+  init(service: DitoNotificationService = .init(), trackOffline: DitoNotificationOffline = .init())
+  {
+    self.service = service
+    self.notificationOffline = trackOffline
+  }
+
+  /// Registers a Firebase Cloud Messaging (FCM) token
+  /// - Parameter token: The FCM token from Firebase Messaging
+  func registerToken(token: String) {
+    let apiKey = Dito.apiKey
+    let signature = Dito.signature
+    DispatchQueue.global().async {
+      let tokenRequest = self.createTokenRequest(apiKey: apiKey, signature: signature, token: token)
+      self.processTokenRegistration(tokenRequest: tokenRequest)
+    }
+  }
+
+  private func createTokenRequest(apiKey: String, signature: String, token: String) -> DitoTokenRequest {
+    DitoTokenRequest(platformApiKey: apiKey, sha1Signature: signature, token: token)
+  }
+
+  private func processTokenRegistration(tokenRequest: DitoTokenRequest) {
+    guard let reference = notificationOffline.reference, !reference.isEmpty else {
+      notificationOffline.notificationRegister(tokenRequest)
+      DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
+      return
+    }
+    service.register(reference: reference, data: tokenRequest) { [weak self] (register, error) in
+      guard let self = self else { return }
+      if let error = error {
+        self.notificationOffline.notificationRegister(tokenRequest)
+        DitoLogger.error(error.localizedDescription)
+      } else {
+        DitoLogger.information("Notification - Token registrado")
+      }
+    }
+  }
+
+  /// Unregisters a Firebase Cloud Messaging (FCM) token
+  /// - Parameter token: The FCM token to unregister
+  func unregisterToken(token: String) {
+    let apiKey = Dito.apiKey
+    let signature = Dito.signature
+    DispatchQueue.global().async {
+      let tokenRequest = self.createTokenRequest(apiKey: apiKey, signature: signature, token: token)
+      self.processTokenUnregistration(tokenRequest: tokenRequest)
+    }
+  }
+
+  private func processTokenUnregistration(tokenRequest: DitoTokenRequest) {
+    guard let reference = notificationOffline.reference, !reference.isEmpty else {
+      notificationOffline.notificationUnregister(tokenRequest)
+      DitoLogger.warning("Unregister Token - Antes de cancelar um token é preciso identificar o usuário.")
+      return
+    }
+    service.unregister(reference: reference, data: tokenRequest) { [weak self] (register, error) in
+      guard let self = self else { return }
+      if let error = error {
+        self.notificationOffline.notificationUnregister(tokenRequest)
+        DitoLogger.error(error.localizedDescription)
+      } else {
+        DitoLogger.information("Notification - Token cancelado")
+      }
+    }
+  }
+
+  /// Called when notification is received (before click)
+  /// - Parameter userInfo: The notification data dictionary
+  func notificationRead(with userInfo: [AnyHashable: Any]) {
+    let apiKey = Dito.apiKey
+    let signature = Dito.signature
+    DispatchQueue.global(qos: .background).async {
+      let notificationData = self.createNotificationData(from: userInfo)
+      let notificationRequest = self.createNotificationRequest(apiKey: apiKey, signature: signature, data: notificationData)
+      self.processNotificationRead(notificationData: notificationData, notificationRequest: notificationRequest)
+    }
+  }
+
+  private func createNotificationData(from userInfo: [AnyHashable: Any]) -> DitoDataNotification {
+    DitoDataNotification(from: userInfo)
+  }
+
+  private func createNotificationRequest(apiKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
+    DitoNotificationOpenRequest(
+      platformApiKey: apiKey,
+      sha1Signature: signature,
+      data: data
+    )
+  }
+
+  private func processNotificationRead(notificationData: DitoDataNotification, notificationRequest: DitoNotificationOpenRequest) {
+    DitoLogger.information("Notification - Received: \(notificationData.notification)")
+    notificationOffline.notificationRead(notificationRequest)
+  }
+
+  /// Called when notification is clicked
+  /// - Parameters:
+  ///   - notificationId: The notification ID
+  ///   - reference: The user reference
+  ///   - identifier: The identifier
+  func notificationClick(notificationId: String, reference: String, identifier: String) {
+    let apiKey = Dito.apiKey
+    let signature = Dito.signature
+    DispatchQueue.global(qos: .background).async {
+      let data = self.createNotificationData(identifier: identifier, reference: reference)
+      let notificationRequest = self.createNotificationRequest(apiKey: apiKey, signature: signature, data: data)
+      self.processNotificationClick(notificationId: notificationId, notificationRequest: notificationRequest)
+    }
+  }
+
+  private func createNotificationData(identifier: String, reference: String) -> DitoDataNotification {
+    DitoDataNotification(identifier: identifier, reference: reference)
+  }
+
+  private func createNotificationRequest(apiKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
+    DitoNotificationOpenRequest(platformApiKey: apiKey, sha1Signature: signature, data: data)
+  }
+
+  private func processNotificationClick(notificationId: String, notificationRequest: DitoNotificationOpenRequest) {
+    guard !notificationId.isEmpty else { return }
+    service.read(notificationId: notificationId, data: notificationRequest) { [weak self] (register, error) in
+      guard let self = self else { return }
+      if let error = error {
+        self.notificationOffline.notificationRead(notificationRequest)
+        DitoLogger.error(error.localizedDescription)
+      } else {
+        DitoLogger.information("Notification - Registro do notification push enviado")
+      }
+    }
+  }
+
+}

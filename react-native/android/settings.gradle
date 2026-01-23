@@ -1,0 +1,4 @@
+include ':dito-sdk'
+project(':dito-sdk').projectDir = new File('../../android/dito-sdk')
+
+rootProject.name = 'DitoSdkModule'

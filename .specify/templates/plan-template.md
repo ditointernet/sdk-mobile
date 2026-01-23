@@ -17,21 +17,44 @@
   the iteration process.
 -->
 
-**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]  
-**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]  
-**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]  
-**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]  
+**Language/Version**: [e.g., Python 3.11, Swift 5.9, Rust 1.75 or NEEDS CLARIFICATION]
+**Primary Dependencies**: [e.g., FastAPI, UIKit, LLVM or NEEDS CLARIFICATION]
+**Storage**: [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
+**Testing**: [e.g., pytest, XCTest, cargo test or NEEDS CLARIFICATION]
 **Target Platform**: [e.g., Linux server, iOS 15+, WASM or NEEDS CLARIFICATION]
-**Project Type**: [single/web/mobile - determines source structure]  
-**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]  
-**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]  
+**Project Type**: [single/web/mobile - determines source structure]
+**Performance Goals**: [domain-specific, e.g., 1000 req/s, 10k lines/sec, 60 fps or NEEDS CLARIFICATION]
+**Constraints**: [domain-specific, e.g., <200ms p95, <100MB memory, offline-capable or NEEDS CLARIFICATION]
 **Scale/Scope**: [domain-specific, e.g., 10k users, 1M LOC, 50 screens or NEEDS CLARIFICATION]
 
 ## Constitution Check
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+### PRINCÍPIO 1: Qualidade de Código
+- [ ] Estrutura de código segue convenções Flutter/Dart
+- [ ] Nomenclatura consistente e documentação DartDoc planejada
+- [ ] Complexidade ciclomática mantida abaixo de 10 por função
+- [ ] Análise estática configurada (dart analyze)
+
+### PRINCÍPIO 2: Padrões de Teste
+- [ ] Estratégia de testes definida (unitários, integração)
+- [ ] Cobertura mínima de 80% planejada para código de negócio
+- [ ] Testes determinísticos e independentes planejados
+- [ ] Framework de testes selecionado (test package)
+
+### PRINCÍPIO 3: Consistência de Experiência do Usuário
+- [ ] API do plugin segue padrões Flutter/Dart estabelecidos
+- [ ] Nomenclatura consistente planejada em toda a API
+- [ ] Tratamento de erros uniforme definido
+- [ ] Comportamento consistente entre iOS e Android considerado
+
+### PRINCÍPIO 4: Requisitos de Performance
+- [ ] Inicialização do plugin < 100ms
+- [ ] Operações síncronas < 16ms (60 FPS)
+- [ ] Operações assíncronas não bloqueiam thread principal
+- [ ] Comunicação com código nativo otimizada
+- [ ] Timeouts de rede configuráveis planejados
 
 ## Project Structure
 

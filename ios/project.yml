@@ -1,0 +1,26 @@
+name: DitoSDK
+options:
+  bundleIdPrefix: br.com.dito
+  deploymentTarget:
+    iOS: 16.0
+targets:
+  Sample:
+    type: application
+    platform: iOS
+    sources:
+      - path: SampleApplication
+    dependencies:
+      - target: DitoSDK
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+
+  DitoSDK:
+    type: framework
+    platform: iOS
+    sources:
+      - path: DitoSDK
+    settings:
+      base:
+        INFOPLIST_FILE: DitoSDK/Info.plist
+
