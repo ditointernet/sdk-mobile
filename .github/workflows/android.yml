@@ -65,12 +65,12 @@ jobs:
     - name: Build Android SDK
       if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
-      run: bash gradlew build
+      run: ./gradlew build
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
-      run: bash gradlew test
+      run: ./gradlew test
 
     - name: Upload artifacts
       if: steps.check-changes.outputs.has_changes == 'true'
@@ -125,4 +125,4 @@ jobs:
       - name: Build and publish Android SDK
         if: steps.check-changes.outputs.has_code_changes == 'true'
         working-directory: android
-        run: bash gradlew build publishToMavenLocal publish
+        run: ./gradlew build publishToMavenLocal publish
