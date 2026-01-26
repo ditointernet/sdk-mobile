@@ -18,25 +18,62 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Check for relevant changes
+      id: check-changes
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          BASE_REF="${{ github.event.pull_request.base.sha }}"
+          HEAD_REF="${{ github.event.pull_request.head.sha }}"
+        else
+          BASE_REF="${{ github.event.before }}"
+          HEAD_REF="${{ github.event.after }}"
+        fi
+
+        if [ -z "$BASE_REF" ] || [ "$BASE_REF" == "0000000000000000000000000000000000000000" ]; then
+          BASE_REF="HEAD~1"
+        fi
+
+        CHANGED_FILES=$(git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -E "^(android/|\.github/workflows/android\.yml$)" || true)
+
+        if [ -z "$CHANGED_FILES" ]; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(test/|androidTest/|.*Test\.kt$|.*Tests\.kt$|\.github/workflows/android\.yml$)" | grep -E "\.(kt|java|xml|gradle|gradle\.kts|properties)$" || true)
+
+        if [ -n "$CODE_CHANGES" ] || echo "$CHANGED_FILES" | grep -q "\.github/workflows/android\.yml$"; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
 
     - name: Set up JDK
+      if: steps.check-changes.outputs.has_changes == 'true'
       uses: actions/setup-java@v3
       with:
         distribution: 'temurin'
         java-version: '17'
 
     - name: Grant execute permission for gradlew
+      if: steps.check-changes.outputs.has_changes == 'true'
       run: chmod +x android/gradlew
 
     - name: Build Android SDK
+      if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
       run: bash gradlew build
 
     - name: Run Tests
+      if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
       run: bash gradlew test
 
     - name: Upload artifacts
+      if: steps.check-changes.outputs.has_changes == 'true'
       uses: actions/upload-artifact@v4
       with:
         name: android-build
