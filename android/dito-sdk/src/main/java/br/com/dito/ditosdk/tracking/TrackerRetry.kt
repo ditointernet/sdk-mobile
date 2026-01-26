@@ -33,7 +33,7 @@ internal class TrackerRetry(
                     val value = gson.fromJson(it.json, JsonObject::class.java)
                     val api = RemoteService.loginApi()
                     try {
-                        val response = api.signup("portal", identifyOff.id, value).await()
+                        val response = api.signup("portal", identifyOff.id, value)
                         if (response.isSuccessful) {
                             val reference =
                                 response.body()?.getAsJsonObject("data")?.get("reference")?.asString
@@ -74,7 +74,7 @@ internal class TrackerRetry(
     private suspend fun sendEvent(eventOff: EventOff, id: String) {
         try {
             val params = gson.fromJson(eventOff.json, JsonObject::class.java)
-            val response = apiEvent.track(id, params).await()
+            val response = apiEvent.track(id, params)
             if (!response.isSuccessful) {
                 trackerOffline.update(eventOff.id, (eventOff.retry + 1), "Event")
             } else {
@@ -111,7 +111,7 @@ internal class TrackerRetry(
     private suspend fun sendNotificationRead(notificationReadOff: NotificationReadOff, id: String) {
         try {
             val params = gson.fromJson(notificationReadOff.json, JsonObject::class.java)
-            val response = apiNotification.open(id, params).await()
+            val response = apiNotification.open(id, params)
             if (!response.isSuccessful) {
                 trackerOffline.update(
                     notificationReadOff.id,

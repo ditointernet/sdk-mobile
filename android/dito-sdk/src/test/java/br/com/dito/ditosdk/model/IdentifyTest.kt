@@ -63,7 +63,7 @@ class IdentifyTest {
         }
 
         assertThat(identify.data).isNotNull()
-        assertThat(identify.data?.params["key"]).isEqualTo("value")
+        assertThat(identify.data?.params?.get("key")).isEqualTo("value")
     }
 
     @Test

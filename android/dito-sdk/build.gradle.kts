@@ -1,7 +1,7 @@
 plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.jetbrains.kotlin.android)
-    id("com.google.devtools.ksp")
+    id("com.google.devtools.ksp") version "2.0.0-1.0.21"
     id("maven-publish") apply true
 }
 
@@ -9,7 +9,7 @@ group = "com.github.ditointernet"
 
 android {
     namespace = "br.com.dito.ditosdk"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         minSdk = 25
@@ -53,11 +53,11 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.truth)
     testImplementation(libs.androidx.room.testing)
+    testImplementation(libs.androidx.test.core)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
     //Retrofit
-    implementation(libs.retrofit2.kotlin.coroutines.adapter)
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
 

@@ -75,7 +75,7 @@ class RemoteServiceTest {
 
     @Test
     fun `should configure logging when debug is enabled`() {
-        Dito.options = Options(debug = true)
+        Dito.options = Options().apply { debug = true }
 
         val api = RemoteService.loginApi()
 
@@ -84,7 +84,7 @@ class RemoteServiceTest {
 
     @Test
     fun `should not configure logging when debug is disabled`() {
-        Dito.options = Options(debug = false)
+        Dito.options = Options().apply { debug = false }
 
         val api = RemoteService.loginApi()
 

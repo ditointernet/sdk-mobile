@@ -137,20 +137,20 @@ public class Dito {
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
   ///   - token: FCM token for the device
-  nonisolated public static func notificationRead(
+  nonisolated public static func notificationReceived(
     userInfo: [AnyHashable: Any],
     token: String
   ) {
-    notificationRead(with: userInfo, token: token)
+    notificationReceived(with: userInfo, token: token)
   }
 
   /// Called when a notification arrives (before click)
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
   ///   - token: FCM token for the device
-  /// - Warning: This method is deprecated. Use `notificationRead(userInfo:token:)` instead.
-  @available(*, deprecated, message: "Use notificationRead(userInfo:token:) instead for consistency")
-  nonisolated public static func notificationRead(
+  /// - Warning: This method is deprecated. Use `notificationReceived(userInfo:token:)` instead.
+  @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead for consistency")
+  nonisolated public static func notificationReceived(
     with userInfo: [AnyHashable: Any],
     token: String
   ) {
@@ -159,6 +159,32 @@ public class Dito {
       identifyUserForNotification(notificationReceived)
       trackNotificationReceived(notificationReceived, token: token)
     }
+  }
+
+  /// Called when a notification arrives (before click) - DEPRECATED
+  /// - Parameters:
+  ///   - userInfo: The notification data dictionary
+  ///   - token: FCM token for the device
+  /// - Warning: This method is deprecated. Use `notificationReceived(userInfo:token:)` instead.
+  @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead. The name 'notificationRead' is inconsistent with Android's 'notificationReceived'.")
+  nonisolated public static func notificationRead(
+    userInfo: [AnyHashable: Any],
+    token: String
+  ) {
+    notificationReceived(userInfo: userInfo, token: token)
+  }
+
+  /// Called when a notification arrives (before click) - DEPRECATED
+  /// - Parameters:
+  ///   - userInfo: The notification data dictionary
+  ///   - token: FCM token for the device
+  /// - Warning: This method is deprecated. Use `notificationReceived(userInfo:token:)` instead.
+  @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead. The name 'notificationRead' is inconsistent with Android's 'notificationReceived'.")
+  nonisolated public static func notificationRead(
+    with userInfo: [AnyHashable: Any],
+    token: String
+  ) {
+    notificationReceived(with: userInfo, token: token)
   }
 
   private static func createNotificationReceived(from userInfo: [AnyHashable: Any]) -> DitoNotificationReceived {

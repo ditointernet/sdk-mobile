@@ -1,0 +1,6 @@
+# Binários Go
+send_test_notification
+send_test_notification_*
+
+# Arquivos de notificação salvos
+notification_*.json

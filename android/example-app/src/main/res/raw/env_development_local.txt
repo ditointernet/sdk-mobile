@@ -1,0 +1,7 @@
+IDENTIFY_ID=11111111111
+IDENTIFY_NAME=John Doe
+IDENTIFY_EMAIL=john.doe@example.com
+IDENTIFY_CUSTOM_DATA={"age": 30, "city": "São Paulo"}
+
+TRACK_ACTION=purchase
+TRACK_DATA={"product_id": "123", "price": 99.99}

@@ -2,7 +2,6 @@ package br.com.dito.ditosdk.service
 
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.service.utils.gson
-import com.jakewharton.retrofit2.adapter.kotlin.coroutines.CoroutineCallAdapterFactory
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -33,7 +32,6 @@ internal object RemoteService {
 
         val builder = Retrofit.Builder()
                 .baseUrl(baseUrl)
-                .addCallAdapterFactory(CoroutineCallAdapterFactory())
                 .addConverterFactory(GsonConverterFactory.create(gson()))
                 .client(httpClient)
 

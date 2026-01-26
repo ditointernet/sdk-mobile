@@ -22,4 +22,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "Android SDK"
 include(":dito-sdk")
+include(":example-app")
 

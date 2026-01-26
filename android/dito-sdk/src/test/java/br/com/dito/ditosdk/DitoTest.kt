@@ -55,7 +55,7 @@ class DitoTest {
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.packageName } returns "test.package"
-        every { mockPackageManager.getApplicationInfo(any(), any()) } returns mockAppInfo
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
         assertFailsWith<RuntimeException> {
@@ -74,7 +74,7 @@ class DitoTest {
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.packageName } returns "test.package"
-        every { mockPackageManager.getApplicationInfo(any(), any()) } returns mockAppInfo
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
         assertFailsWith<RuntimeException> {
@@ -95,7 +95,7 @@ class DitoTest {
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.packageName } returns "test.package"
-        every { mockPackageManager.getApplicationInfo(any(), any()) } returns mockAppInfo
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
         Dito.init(mockContext, options)
@@ -327,7 +327,7 @@ class DitoTest {
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.packageName } returns "test.package"
-        every { mockPackageManager.getApplicationInfo(any(), any()) } returns mockAppInfo
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
         Dito.init(mockContext, null)
@@ -381,7 +381,7 @@ class DitoTest {
     }
 
     @Test
-    fun `convertCustomData should handle different value types`() {
+    fun `convertCustomData should handle different value types`() = runBlocking {
         initializeDito()
 
         val customData = mapOf(
@@ -408,7 +408,7 @@ class DitoTest {
 
         every { mockContext.packageManager } returns mockPackageManager
         every { mockContext.packageName } returns "test.package"
-        every { mockPackageManager.getApplicationInfo(any(), any()) } returns mockAppInfo
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
         Dito.init(mockContext, Options())

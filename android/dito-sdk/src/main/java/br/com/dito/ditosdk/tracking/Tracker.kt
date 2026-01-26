@@ -31,6 +31,7 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         this.trackerRetry = retry
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     private fun loadIdentify() {
         GlobalScope.launch(Dispatchers.IO) {
             val identify = trackerOffline.getIdentify()
@@ -41,16 +42,22 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun identify(identify: Identify, api: LoginApi, callback: (() -> Unit)?) {
         GlobalScope.launch(Dispatchers.IO) {
             Log.d("begin-identify", "begin identify user")
             id = identify.id
             val params = SigunpRequest(apiKey, apiSecret, identify)
             try {
-                val response = api.signup("portal", identify.id, params).await()
-                handleIdentifyResponse(response, params, callback)
+                val response = api.signup("portal", identify.id, params)
+
+                if(response.code() == 201) {
+                    handleIdentifyResponse(response, params, callback)
+                }else{
+                    throw Exception(response.body().toString())
+                }
             } catch (e: Exception) {
-                trackerOffline.identify(params, null, false)
+                Log.d("error-identify", e.message.toString())
             }
         }
     }
@@ -71,6 +78,7 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         trackerRetry?.uploadEvents()
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun event(event: Event, api: EventApi) {
         GlobalScope.launch(Dispatchers.IO) {
             val params = EventRequest(apiKey, apiSecret, event)
@@ -80,7 +88,7 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
                 return@launch
             }
             try {
-                val response = api.track(id, params).await()
+                val response = api.track(id, params)
                 if (!response.isSuccessful) {
                     trackerOffline.event(params)
                 }
@@ -97,11 +105,12 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         trackerOffline.event(params)
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun registerToken(token: String, api: NotificationApi) {
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 val params = TokenRequest(apiKey, apiSecret, token)
-                val response = api.add(id, params).await()
+                val response = api.add(id, params)
                 if (!response.isSuccessful) {
                     Log.d("Tracker", response.errorBody().toString())
                 }
@@ -117,11 +126,12 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         }
     }
 
+    @OptIn(DelicateCoroutinesApi::class)
     fun unregisterToken(token: String, api: NotificationApi) {
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 val params = TokenRequest(apiKey, apiSecret, token)
-                val response = api.disable(id, params).await()
+                val response = api.disable(id, params)
                 if (!response.isSuccessful) {
                     Log.d("Tracker", response.errorBody().toString())
                 }
@@ -132,14 +142,16 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
     }
 
     @OptIn(DelicateCoroutinesApi::class)
-    fun notificationRead(notificationId: String, api: NotificationApi, notificationReference: String) {
+    fun notificationClick(notificationId: String, api: NotificationApi, notificationReference: String) {
         GlobalScope.launch(Dispatchers.IO) {
             if (notificationReference.isEmpty() || notificationId.isEmpty()) {
                 return@launch
             }
+
             val data = createNotificationData(notificationReference)
             val params = NotificationOpenRequest(apiKey, apiSecret, data)
-            sendNotificationRead(notificationId, api, params)
+
+            sendNotificationClick(notificationId, api, params)
         }
     }
 
@@ -150,13 +162,13 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         return data
     }
 
-    private suspend fun sendNotificationRead(
+    private suspend fun sendNotificationClick(
         notificationId: String,
         api: NotificationApi,
         params: NotificationOpenRequest
     ) {
         try {
-            val response = api.open(notificationId, params).await()
+            val response = api.open(notificationId, params)
             if (!response.isSuccessful) {
                 trackerOffline.notificationRead(params)
             }

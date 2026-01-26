@@ -237,9 +237,9 @@ class DitoTests: XCTestCase {
         ]
         let token = "fcm_token_123"
 
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
 
-        let expectation = XCTestExpectation(description: "Notification read processed")
+        let expectation = XCTestExpectation(description: "Notification received processed")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectation.fulfill()
         }
@@ -262,9 +262,9 @@ class DitoTests: XCTestCase {
         ]
         let token = "fcm_token_123"
 
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
 
-        let expectation = XCTestExpectation(description: "Notification read processed")
+        let expectation = XCTestExpectation(description: "Notification received processed")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectation.fulfill()
         }
@@ -280,9 +280,9 @@ class DitoTests: XCTestCase {
         let userInfo: [AnyHashable: Any] = [:]
         let token = "fcm_token_123"
 
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
 
-        let expectation = XCTestExpectation(description: "Notification read processed")
+        let expectation = XCTestExpectation(description: "Notification received processed")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectation.fulfill()
         }

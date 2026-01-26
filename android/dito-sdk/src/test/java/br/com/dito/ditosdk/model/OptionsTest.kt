@@ -43,7 +43,7 @@ class OptionsTest {
 
     @Test
     fun `Options should accept custom debug value`() {
-        val options = Options(debug = true)
+        val options = Options().apply { debug = true }
 
         assertThat(options.debug).isTrue()
     }
