@@ -100,7 +100,7 @@ jobs:
             exit 0
           fi
 
-          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(Tests/|\.swift$.*Test|\.swift$.*Tests)" | grep -E "\.(swift|m|h|plist|podspec|pbxproj)$" || true)
+          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(Tests/|.*Test\.swift$|.*Tests\.swift$)" | grep -E "\.(swift|m|h|plist|podspec|pbxproj)$|^ios/Podfile$|^ios/project\.yml$" || true)
 
           if [ -n "$CODE_CHANGES" ]; then
             echo "has_code_changes=true" >> $GITHUB_OUTPUT
