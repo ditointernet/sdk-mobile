@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script para detectar quais projetos tiveram mudanças (excluindo apenas testes)
+# Script para detectar quais projetos tiveram mudanças (excluindo arquivos de teste e considerando apenas tipos específicos de arquivos de código/projeto)
 # Uso: ./scripts/detect-changes.sh [base_ref] [head_ref]
 # Se não especificado, compara HEAD com a última tag
 
