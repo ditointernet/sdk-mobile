@@ -27,17 +27,14 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x android/gradlew
-      working-directory: .
 
     - name: Build Android SDK
-      run: |
-        cd android
-        ./gradlew build
+      working-directory: android
+      run: bash gradlew build
 
     - name: Run Tests
-      run: |
-        cd android
-        ./gradlew test
+      working-directory: android
+      run: bash gradlew test
 
     - name: Upload artifacts
       uses: actions/upload-artifact@v4
@@ -90,6 +87,5 @@ jobs:
 
       - name: Build and publish Android SDK
         if: steps.check-changes.outputs.has_code_changes == 'true'
-        run: |
-          cd android
-          ./gradlew build publishToMavenLocal publish
+        working-directory: android
+        run: bash gradlew build publishToMavenLocal publish

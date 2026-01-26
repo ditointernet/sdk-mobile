@@ -113,9 +113,8 @@ jobs:
         run: chmod +x android/gradlew
 
       - name: Build Android SDK
-        run: |
-          cd android
-          ./gradlew build
+        working-directory: android
+        run: bash gradlew build
 
       - name: Upload Android artifacts
         uses: actions/upload-artifact@v4
