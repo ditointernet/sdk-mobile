@@ -1,0 +1,114 @@
+name: dito_sdk_flutter
+repository: https://github.com/ditointernet/dito_sdk_flutter
+
+packages:
+  - .
+  - example
+
+ide:
+  intellij: false
+
+command:
+  bootstrap:
+    useRootAsPackage: true
+
+scripts:
+  analyze:
+    description: Analyze all packages
+    run: flutter analyze
+    exec:
+      concurrency: 1
+
+  format:
+    description: Format all packages
+    run: dart format .
+    exec:
+      concurrency: 1
+
+  format:check:
+    description: Check formatting of all packages
+    run: dart format --set-exit-if-changed .
+    exec:
+      concurrency: 1
+
+  test:
+    description: Run tests in all packages
+    run: flutter test
+    exec:
+      concurrency: 1
+      failFast: true
+    packageFilters:
+      dirExists: test
+
+  test:integration:
+    description: Run integration tests
+    run: flutter test integration_test
+    exec:
+      concurrency: 1
+      failFast: true
+    packageFilters:
+      dirExists: integration_test
+
+  build:plugin:
+    description: Build the Flutter plugin
+    run: flutter pub get
+    exec:
+      concurrency: 1
+    packageFilters:
+      scope: dito_sdk
+
+  build:example:
+    description: Build the example app
+    run: flutter build apk --debug
+    exec:
+      concurrency: 1
+    packageFilters:
+      scope: dito_sdk_example
+
+  clean:
+    description: Clean all packages
+    run: flutter clean
+    exec:
+      concurrency: 1
+
+  pub:get:
+    description: Run pub get in all packages
+    run: flutter pub get
+    exec:
+      concurrency: 1
+
+  lint:
+    description: Run linter in all packages
+    run: flutter analyze --fatal-infos --fatal-warnings
+    exec:
+      concurrency: 1
+      failFast: true
+
+  check:
+    description: Run all checks (format, analyze, test)
+    run: |
+      melos run format:check &&
+      melos run analyze &&
+      melos run test
+
+  run:android:
+    description: Run example app on Android
+    run: flutter run
+    exec:
+      concurrency: 1
+    packageFilters:
+      scope: dito_sdk_example
+
+  run:ios:
+    description: Run example app on iOS
+    run: flutter run
+    exec:
+      concurrency: 1
+    packageFilters:
+      scope: dito_sdk_example
+
+  upgrade:
+    description: Upgrade dependencies in all packages
+    run: flutter pub upgrade
+    exec:
+      concurrency: 1

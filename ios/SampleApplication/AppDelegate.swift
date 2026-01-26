@@ -79,9 +79,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
-    let callNotificationRead: (String) -> Void = { token in
-      // Garantir que o evento de leitura seja disparado mesmo em background
-      Dito.notificationRead(with: userInfo, token: token)
+    let callNotificationReceived: (String) -> Void = { token in
+      // Garantir que o evento de recebimento seja disparado mesmo em background
+      Dito.notificationReceived(userInfo: userInfo, token: token)
       // Notifica o Firebase Messaging sobre a mensagem recebida
       Messaging.messaging().appDidReceiveMessage(userInfo)
       // Chama o completion handler indicando que novos dados foram processados
@@ -89,13 +89,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     }
 
     if let token = self.fcmToken {
-      callNotificationRead(token)
+      callNotificationReceived(token)
     } else {
       // Fallback: tentar obter o token se ainda não estiver armazenado
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
-          callNotificationRead(token)
+          callNotificationReceived(token)
         } else {
           print(
             "FCM token indisponível em background: \(error?.localizedDescription ?? "erro desconhecido")"
@@ -117,12 +117,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     let userInfo = notification.request.content.userInfo
 
     if let token = fcmToken {
-      Dito.notificationRead(with: userInfo, token: token)
+      Dito.notificationReceived(userInfo: userInfo, token: token)
     } else {
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
-          Dito.notificationRead(with: userInfo, token: token)
+          Dito.notificationReceived(userInfo: userInfo, token: token)
         }
       }
     }
@@ -162,13 +162,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
-    if let token = fcmToken {
-      Dito.notificationRead(with: userInfo, token: token)
-    } else {
-      print("Warning: FCM token not available for notificationRead")
-    }
     // Notifica o Dito SDK sobre o clique na notificação
-    Dito.notificationClick(with: userInfo)
+    Dito.notificationClick(userInfo: userInfo)
 
     // Notifica o Firebase Messaging sobre a interação com a notificação
     Messaging.messaging().appDidReceiveMessage(userInfo)

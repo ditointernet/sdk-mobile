@@ -18,7 +18,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
    *
    * - Parameters:
    *   - request: The UNNotificationRequest received from the notification center
-   *   - fcmToken: The FCM token for the device (optional, but recommended for notificationRead)
+   *   - fcmToken: The FCM token for the device (optional, but recommended for notificationReceived)
    * - Returns: true if the notification was processed by Dito SDK, false otherwise
    */
   @objc public static func didReceiveNotificationRequest(
@@ -29,7 +29,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     guard isDitoChannel(userInfo) else {
       return false
     }
-    processNotificationRead(userInfo: userInfo, fcmToken: fcmToken)
+    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
     return true
   }
 
@@ -38,9 +38,9 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     return channel == "Dito"
   }
 
-  private static func processNotificationRead(userInfo: [AnyHashable: Any], fcmToken: String?) {
+  private static func processNotificationReceived(userInfo: [AnyHashable: Any], fcmToken: String?) {
     guard let token = fcmToken else { return }
-    Dito.notificationRead(userInfo: userInfo, token: token)
+    Dito.notificationReceived(userInfo: userInfo, token: token)
   }
 
   /**

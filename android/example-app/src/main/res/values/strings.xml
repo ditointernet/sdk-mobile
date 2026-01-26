@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Dito SDK Example</string>
+    <string name="default_notification_channel_id">dito_sdk_channel</string>
+</resources>

@@ -95,6 +95,7 @@ class MyApplication : Application() {
 
         val options = Options(retry = 5)
         options.debug = true // Opcional: habilitar logs de debug
+        options.iconNotification = R.drawable.ic_notification // Opcional: ícone customizado para notificações
 
         Dito.init(this, options)
     }
@@ -392,10 +393,35 @@ val result = Dito.notificationClick(userInfo) { deeplink ->
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### ⚠️ Integração com Múltiplos Serviços
+
+Se você precisa integrar com **OneSignal, Braze, ou outros SDKs de notificação**, consulte o guia:
+📖 **[Integração com Múltiplos Serviços de Notificação](docs/MULTIPLE_NOTIFICATION_SERVICES.md)**
+
+O Android permite apenas UM `FirebaseMessagingService` por app. O guia acima mostra como criar um serviço delegador que funciona com múltiplos SDKs simultaneamente.
+
 ### Configuração Básica
 
 1. Configure o Firebase no seu projeto
-2. Crie um `FirebaseMessagingService`:
+
+2. Configure o ícone de notificação (opcional mas recomendado):
+
+O SDK usa o seguinte fallback para o ícone de notificação:
+- `Options.iconNotification` (se configurado)
+- `applicationInfo.icon` (ícone do app)
+- `android.R.drawable.ic_dialog_info` (ícone padrão do Android)
+
+**Recomendação**: Configure um ícone customizado para melhor experiência do usuário:
+
+```kotlin
+val options = Options(retry = 5)
+options.iconNotification = R.drawable.ic_notification
+Dito.init(this, options)
+```
+
+**Nota**: O ícone deve ser um drawable monocromático (branco com transparência) seguindo as [diretrizes do Android](https://developer.android.com/develop/ui/views/notifications/badges#design_guidelines).
+
+3. Crie um `FirebaseMessagingService`:
 
 ```kotlin
 import br.com.dito.ditosdk.Dito
@@ -422,7 +448,7 @@ class MyFirebaseMessagingService : FirebaseMessagingService() {
 }
 ```
 
-3. Registre o serviço no `AndroidManifest.xml`:
+4. Registre o serviço no `AndroidManifest.xml`:
 
 ```xml
 <service
@@ -483,6 +509,20 @@ Dito.track(action = "purchase", data = mapOf("product" to "item123"))
 
 ### Problemas de Notificações
 
+**Erro: "Invalid notification (no valid small icon)"**
+
+**Causa**: O SDK não conseguiu encontrar um ícone válido para a notificação.
+
+**Solução**: Configure um ícone de notificação nas opções do SDK:
+
+```kotlin
+val options = Options(retry = 5)
+options.iconNotification = R.drawable.ic_notification
+Dito.init(this, options)
+```
+
+Se você não configurar um ícone customizado, o SDK usará o ícone do aplicativo ou um ícone padrão do Android como fallback.
+
 **Notificações não são recebidas**
 
 **Checklist**:
@@ -490,6 +530,7 @@ Dito.track(action = "purchase", data = mapOf("product" to "item123"))
 2. ✅ `FirebaseMessagingService` registrado no `AndroidManifest.xml`
 3. ✅ Token FCM registrado (`Dito.registerDevice(token)`)
 4. ✅ Permissões de notificação solicitadas
+5. ✅ Ícone de notificação configurado (opcional mas recomendado)
 
 ## 💡 Exemplos Completos
 

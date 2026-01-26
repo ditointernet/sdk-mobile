@@ -97,6 +97,7 @@ await DitoSdk.track({
 
 Para exemplos completos e guias detalhados, consulte a documentação específica de cada plataforma.
 
+
 ## 🛠️ Desenvolvimento
 
 ### Pré-requisitos
@@ -105,6 +106,74 @@ Para exemplos completos e guias detalhados, consulte a documentação específic
 - **React Native**: React Native 0.72.0+ e Node.js 16+
 - **iOS**: Xcode 14+ e iOS 16.0+
 - **Android**: Android Studio e Android API 24+
+- **Melos**: Para gerenciamento do monorepo Flutter
+
+### Configuração Inicial
+
+**Opção 1: Script de Setup Automático (Recomendado)**
+```bash
+cd flutter
+./setup_melos.sh
+```
+
+**Opção 2: Manual**
+
+Instalar Melos:
+```bash
+dart pub global activate melos
+```
+
+Bootstrap do monorepo Flutter:
+```bash
+cd flutter
+melos bootstrap
+```
+
+Este comando irá:
+- Instalar dependências em todos os pacotes Flutter
+- Criar links simbólicos entre os pacotes
+- Executar hooks de pós-instalação
+
+### Comandos Melos Disponíveis
+
+**Análise e Formatação:**
+```bash
+cd flutter
+melos run analyze          # Analisar todos os pacotes
+melos run format           # Formatar código
+melos run format:check     # Verificar formatação
+melos run lint             # Executar linter com warnings fatais
+```
+
+**Testes:**
+```bash
+cd flutter
+melos run test             # Executar testes unitários
+melos run test:integration # Executar testes de integração
+melos run check            # Executar todos os checks (format, analyze, test)
+```
+
+**Build:**
+```bash
+cd flutter
+melos run build:plugin     # Build do plugin Flutter
+melos run build:example    # Build do app de exemplo
+melos run clean            # Limpar todos os pacotes
+```
+
+**Executar App de Exemplo:**
+```bash
+cd flutter
+melos run run:android      # Executar no Android
+melos run run:ios          # Executar no iOS
+```
+
+**Gerenciamento de Dependências:**
+```bash
+cd flutter
+melos run pub:get          # Executar pub get em todos os pacotes
+melos run upgrade          # Atualizar dependências
+```
 
 ### Build de Todas as Plataformas
 
@@ -120,7 +189,13 @@ Para exemplos completos e guias detalhados, consulte a documentação específic
 
 ### Executar Exemplos
 
-**Flutter:**
+**Flutter (usando Melos):**
+```bash
+cd flutter
+melos run run:android  # ou melos run run:ios
+```
+
+**Flutter (tradicional):**
 ```bash
 cd flutter/example
 flutter run

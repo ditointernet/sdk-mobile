@@ -112,6 +112,12 @@ build/
 .idea/
 .fvm/
 
+# Melos
+.melos_tool/
+.melos/
+melos_*.yaml
+.melosrc
+
 # React Native
 .expo/
 .expo-shared/
@@ -206,3 +212,8 @@ coverage/
 *.swo
 *~
 .cache/
+
+# Google Services
+**/*/google-services.json
+serviceAccountKey.json
+send_test_notification

@@ -496,10 +496,31 @@ Este projeto está licenciado sob uma licença proprietária. Veja [LICENSE](../
 - ❌ Proíbe modificação do código fonte
 - ❌ Proíbe cópia e redistribuição do código
 
-## 🔗 Links Úteis
-
-- 🌐 [Website Dito](https://www.dito.com.br)
+## 🔗 Links Úteis- 🌐 [Website Dito](https://www.dito.com.br)
 - 📚 [Documentação Dito](https://developers.dito.com.br)
 - 📖 [Flutter Documentation](https://docs.flutter.dev/)
 - 🎯 [Dart Documentation](https://dart.dev/guides)
 - 🔥 [Firebase Flutter Documentation](https://firebase.google.com/docs/flutter/setup)
+## 🛠️ Desenvolvimento no Monorepo
+
+Este projeto usa **Melos** para gerenciamento de pacotes no monorepo.
+
+### Setup Inicial
+
+```bash
+cd flutter
+./setup_melos.sh
+```
+
+### Comandos Úteis
+
+```bash
+cd flutter
+melos bootstrap        # Instalar dependências de todos os pacotes
+melos run test         # Executar testes
+melos run analyze      # Analisar código
+melos run format       # Formatar código
+melos run check        # Executar todos os checks
+```
+
+Para mais informações, consulte o [Guia Melos](./MELOS.md).

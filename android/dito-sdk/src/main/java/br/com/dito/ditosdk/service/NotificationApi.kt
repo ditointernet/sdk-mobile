@@ -3,7 +3,6 @@ package br.com.dito.ditosdk.service
 import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
 import br.com.dito.ditosdk.service.utils.TokenRequest
 import com.google.gson.JsonObject
-import kotlinx.coroutines.Deferred
 import retrofit2.Response
 import retrofit2.http.Body
 import retrofit2.http.POST
@@ -11,19 +10,19 @@ import retrofit2.http.Path
 
 internal interface NotificationApi {
     @POST("/users/{id}/mobile-tokens/")
-    fun add(@Path("id") id: String, @Body data: TokenRequest)
-            : Deferred<Response<JsonObject>>
+    suspend fun add(@Path("id") id: String, @Body data: TokenRequest)
+            : Response<JsonObject>
 
 
     @POST("/users/{id}/mobile-tokens/disable/")
-    fun disable(@Path("id") id: String, @Body data: TokenRequest)
-            : Deferred<Response<JsonObject>>
+    suspend fun disable(@Path("id") id: String, @Body data: TokenRequest)
+            : Response<JsonObject>
 
     @POST("/notifications/{id}/open/")
-    fun open(@Path("id") id:String, @Body data: NotificationOpenRequest)
-            : Deferred<Response<JsonObject>>
+    suspend fun open(@Path("id") id:String, @Body data: NotificationOpenRequest)
+            : Response<JsonObject>
 
     @POST("/notifications/{id}/open/")
-    fun open(@Path("id") id:String, @Body data: JsonObject)
-            : Deferred<Response<JsonObject>>
+    suspend fun open(@Path("id") id:String, @Body data: JsonObject)
+            : Response<JsonObject>
 }

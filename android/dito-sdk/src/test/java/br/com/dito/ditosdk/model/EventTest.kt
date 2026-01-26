@@ -45,7 +45,7 @@ class EventTest {
         }
 
         assertThat(event.data).isNotNull()
-        assertThat(event.data?.params["product_id"]).isEqualTo("123")
+        assertThat(event.data?.params?.get("product_id")).isEqualTo("123")
     }
 
     @Test

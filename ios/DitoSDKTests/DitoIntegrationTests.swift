@@ -98,9 +98,9 @@ class DitoIntegrationTests: XCTestCase {
         ]
         let token = "fcm_token_integration_123"
 
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
 
-        let expectationRead = XCTestExpectation(description: "Notification read processed")
+        let expectationRead = XCTestExpectation(description: "Notification received processed")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectationRead.fulfill()
         }
@@ -175,9 +175,9 @@ class DitoIntegrationTests: XCTestCase {
         let userInfo: [AnyHashable: Any] = [:]
         let token = "fcm_token_123"
 
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
 
-        let expectation = XCTestExpectation(description: "Notification read with empty userInfo")
+        let expectation = XCTestExpectation(description: "Notification received with empty userInfo")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectation.fulfill()
         }
@@ -242,10 +242,10 @@ class DitoIntegrationTests: XCTestCase {
         let userInfo2: [AnyHashable: Any] = ["notification": "notif_2"]
         let token = "fcm_token_123"
 
-        Dito.notificationRead(userInfo: userInfo1, token: token)
+        Dito.notificationReceived(userInfo: userInfo1, token: token)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            Dito.notificationRead(userInfo: userInfo2, token: token)
+            Dito.notificationReceived(userInfo: userInfo2, token: token)
         }
 
         let expectation = XCTestExpectation(description: "Concurrent notification read")

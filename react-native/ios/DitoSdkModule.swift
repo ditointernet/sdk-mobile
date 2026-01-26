@@ -22,7 +22,7 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
    *
    * - Parameters:
    *   - request: The UNNotificationRequest received from the notification center
-   *   - fcmToken: The FCM token for the device (optional, but recommended for notificationRead)
+   *   - fcmToken: The FCM token for the device (optional, but recommended for notificationReceived)
    * - Returns: true if the notification was processed by Dito SDK, false otherwise
    */
   @objc public static func didReceiveNotificationRequest(
@@ -47,7 +47,7 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
       return
     }
     let userInfo = request.content.userInfo
-    Dito.notificationRead(userInfo: userInfo, token: token)
+    Dito.notificationReceived(userInfo: userInfo, token: token)
   }
 
   /**

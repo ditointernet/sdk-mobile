@@ -20,7 +20,9 @@ internal class TrackerOffline(private var context: Context) {
     private val database = Room.databaseBuilder(
         context,
         DitoSqlHelper::class.java, "dito-offline"
-    ).build()
+    )
+        .fallbackToDestructiveMigration()
+        .build()
 
 
     fun identify(sigunpRequest: SigunpRequest, reference: String?, send: Boolean) {

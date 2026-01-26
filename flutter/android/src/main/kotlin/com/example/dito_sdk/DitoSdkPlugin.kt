@@ -88,6 +88,27 @@ class DitoSdkPlugin :
             val notificationId: String,
             val reference: String
         )
+
+        /**
+         * Handles a notification click/interaction and processes it if it belongs to Dito channel.
+         *
+         * This method should be called when a notification is clicked.
+         * It verifies if the notification belongs to the Dito channel and processes the click accordingly.
+         *
+         * @param context The application context
+         * @param userInfo Map containing notification data (should contain "notification", "reference", and "deeplink" keys)
+         * @return true if the notification was processed by Dito SDK, false otherwise
+         */
+        @JvmStatic
+        fun handleNotificationClick(context: Context, userInfo: Map<String, String>): Boolean {
+            val channel = userInfo["channel"]
+            if (channel != "Dito") {
+                return false
+            }
+            ensureDitoInitialized(context)
+            Dito.notificationClick(userInfo)
+            return true
+        }
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {

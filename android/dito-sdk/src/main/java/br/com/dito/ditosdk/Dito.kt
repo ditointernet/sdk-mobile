@@ -2,10 +2,14 @@ package br.com.dito.ditosdk
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
+import androidx.annotation.RequiresApi
 import br.com.dito.ditosdk.service.RemoteService
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
+import java.nio.charset.StandardCharsets
+import java.util.Base64
 
 object Dito {
 
@@ -25,6 +29,7 @@ object Dito {
      * @param context
      * @param options
      */
+    @RequiresApi(Build.VERSION_CODES.O)
     fun init(context: Context?, options: Options?) {
         this.options = options
 
@@ -34,8 +39,11 @@ object Dito {
         )
 
         appInfo?.metaData?.let {
+//            val bytes = it.getString("br.com.dito.API_SECRET", "").toByteArray(StandardCharsets.UTF_8)
+//            apiSecret = Base64.getEncoder().encodeToString(bytes)
             apiKey = it.getString("br.com.dito.API_KEY", "")
             apiSecret = it.getString("br.com.dito.API_SECRET", "")
+
             hibridMode = it.getString("br.com.dito.HIBRID_MODE", "OFF")
 
             if (apiKey.isEmpty() || apiSecret.isEmpty()) {
@@ -66,7 +74,7 @@ object Dito {
         customData: Map<String, Any>? = null
     ) {
         val identifyObject = createIdentifyObject(id, name, email, customData)
-        identify(identifyObject, null)
+        tracker.identify(identifyObject, RemoteService.loginApi(), null)
     }
 
     private fun createIdentifyObject(
@@ -178,9 +186,17 @@ object Dito {
      * Called when a notification arrives (before click)
      * @param userInfo Map containing notification data (should contain "notification" and "reference" keys)
      */
-    fun notificationRead(userInfo: Map<String, String>) {
+    fun notificationClick(userInfo: Map<String, String>) {
         val notificationData = extractNotificationReadData(userInfo)
-        processNotificationRead(notificationData)
+
+        if (notificationData.reference.isEmpty()) {
+            return
+        }
+        if (notificationData.notificationId.isEmpty()) {
+            return
+        }
+
+        sendNotificationClick(notificationData.notificationId, notificationData.reference)
     }
 
     private fun extractNotificationReadData(userInfo: Map<String, String>): NotificationReadData {
@@ -192,23 +208,16 @@ object Dito {
         return NotificationReadData(notificationId, reference, logId, notificationName, userId)
     }
 
-    private fun processNotificationRead(data: NotificationReadData) {
-        if (data.reference.isEmpty()) {
-            return
-        }
-        if (data.notificationId.isEmpty()) {
-            return
-        }
-        sendNotificationRead(data)
+    fun processNotificationReceived(data: NotificationReadData) {
         identifyUserForNotification(data.userId)
         trackNotificationReceived(data)
     }
 
-    private fun sendNotificationRead(data: NotificationReadData) {
-        tracker.notificationRead(
-            data.notificationId,
+    private fun sendNotificationClick(notificationId: String, userId: String) {
+        tracker.notificationClick(
+            notificationId,
             RemoteService.notificationApi(),
-            data.reference
+            userId
         )
     }
 
@@ -234,34 +243,13 @@ object Dito {
         )
     }
 
-    private data class NotificationReadData(
+    data class NotificationReadData(
         val notificationId: String,
         val reference: String,
         val logId: String,
         val notificationName: String,
         val userId: String
     )
-
-    /**
-     * Called when a notification arrives (before click)
-     * @param notification Notification ID
-     * @param reference User reference
-     * @deprecated Use notificationRead(userInfo:) instead for consistency with iOS SDK
-     */
-    @Deprecated(
-        message = "Use notificationRead(userInfo:) instead for consistency with iOS SDK",
-        replaceWith = ReplaceWith("notificationRead(mapOf(\"notification\" to (notification ?: \"\"), \"reference\" to (reference ?: \"\")))")
-    )
-    fun notificationRead(notification: String?, reference: String?) {
-        if (reference.isNullOrEmpty() || notification.isNullOrEmpty()) {
-            return
-        }
-        val userInfo = mapOf(
-            "notification" to notification,
-            "reference" to reference
-        )
-        notificationRead(userInfo)
-    }
 
     /**
      * Called when a notification is clicked
@@ -294,7 +282,7 @@ object Dito {
 
     private fun processNotificationClick(data: NotificationData) {
         if (data.notificationId != null && data.reference != null) {
-            notificationRead(data.notificationId, data.reference)
+            sendNotificationClick(data.notificationId, data.reference)
         }
     }
 
