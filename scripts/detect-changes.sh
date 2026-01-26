@@ -37,7 +37,7 @@ has_code_changes() {
     local code_files=""
     case "$project" in
         ios)
-            code_files=$(echo "$changed_files" | grep -vE "(Tests/|.*Test\.swift$|.*Tests\.swift$)" | grep -E "\.(swift|m|h|plist|podspec|pbxproj)$" || true)
+            code_files=$(echo "$changed_files" | grep -vE "(Tests/|.*Test\.swift$|.*Tests\.swift$)" | grep -E "(\.(swift|m|h|plist|podspec|pbxproj|yml)$|/Podfile$|/project\.yml$)" || true)
             ;;
         android)
             code_files=$(echo "$changed_files" | grep -vE "(test/|androidTest/|.*Test\.kt$|.*Tests\.kt$)" | grep -E "\.(kt|java|xml|gradle|gradle\.kts|properties)$" || true)
