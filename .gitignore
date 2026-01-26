@@ -112,6 +112,12 @@ build/
 .idea/
 .fvm/
 
+# Melos
+.melos_tool/
+.melos/
+melos_*.yaml
+.melosrc
+
 # React Native
 .expo/
 .expo-shared/
