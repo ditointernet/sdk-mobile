@@ -40,7 +40,7 @@ jobs:
         ./gradlew test
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: android-build
         path: android/dito-sdk/build/outputs
@@ -48,23 +48,48 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
+      - name: Check for code changes
+        id: check-changes
+        run: |
+          BASE_REF=$(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~1")
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF"..HEAD | grep "^android/" || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "has_code_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(test/|androidTest/|.*Test\.kt$|.*Tests\.kt$)" | grep -E "\.(kt|java|xml|gradle|gradle\.kts|properties)$" || true)
+
+          if [ -n "$CODE_CHANGES" ]; then
+            echo "has_code_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_code_changes=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set up JDK
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         uses: actions/setup-java@v3
         with:
           distribution: 'temurin'
           java-version: '17'
 
       - name: Grant execute permission for gradlew
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         run: chmod +x android/gradlew
 
       - name: Build and publish Android SDK
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         run: |
           cd android
           ./gradlew build publishToMavenLocal publish

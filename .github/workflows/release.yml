@@ -91,7 +91,7 @@ jobs:
           xcodebuild -workspace DitoSDK.xcworkspace -scheme DitoSDK -configuration Release clean build
 
       - name: Upload iOS artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ios-build
           path: ios/build
@@ -118,7 +118,7 @@ jobs:
           ./gradlew build
 
       - name: Upload Android artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: android-build
           path: android/dito-sdk/build/outputs
@@ -158,7 +158,7 @@ jobs:
           flutter build ios --debug --no-codesign
 
       - name: Upload Flutter artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: flutter-build
           path: flutter/build
@@ -198,7 +198,7 @@ jobs:
           npm run type-check || npx tsc --noEmit || echo "TypeScript not configured"
 
       - name: Upload React Native artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: react-native-build
           path: react-native/dist
