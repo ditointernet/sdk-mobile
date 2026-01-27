@@ -55,7 +55,7 @@ interface EventOfflineDao {
     @Query("UPDATE event SET retry=:retry  WHERE _id =:id")
     fun update(id: Int, retry: Int)
 
-    @Query("DELETE FROM identify WHERE _id =:id")
+    @Query("DELETE FROM event WHERE _id =:id")
     fun delete(id: Int)
 }
 
@@ -75,10 +75,10 @@ interface NotificationOfflineDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     fun insert(vararg notification: NotificationOffline)
 
-    @Query("UPDATE event SET retry=:retry  WHERE _id =:id")
+    @Query("UPDATE notification SET retry=:retry  WHERE _id =:id")
     fun update(id: Int, retry: Int)
 
-    @Query("DELETE FROM identify WHERE _id =:id")
+    @Query("DELETE FROM notification WHERE _id =:id")
     fun delete(id: Int)
 }
 

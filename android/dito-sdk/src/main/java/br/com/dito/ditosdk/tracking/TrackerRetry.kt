@@ -12,12 +12,13 @@ import kotlinx.coroutines.launch
 internal class TrackerRetry(
     private var tracker: Tracker,
     private var trackerOffline: TrackerOffline,
-    private var retry: Int = 5
+    private var retry: Int = 5,
+    private val loginApi: br.com.dito.ditosdk.service.LoginApi = RemoteService.loginApi(),
+    private val eventApi: br.com.dito.ditosdk.service.EventApi = RemoteService.eventApi(),
+    private val notificationApi: br.com.dito.ditosdk.service.NotificationApi = RemoteService.notificationApi()
 ) {
 
     private val gson = br.com.dito.ditosdk.service.utils.gson()
-    private val apiEvent = RemoteService.eventApi()
-    private val apiNotification = RemoteService.notificationApi()
 
     fun uploadEvents() {
         checkIdentify()
@@ -31,9 +32,8 @@ internal class TrackerRetry(
             identifyOff?.let {
                 if (!it.send) {
                     val value = gson.fromJson(it.json, JsonObject::class.java)
-                    val api = RemoteService.loginApi()
                     try {
-                        val response = api.signup("portal", identifyOff.id, value)
+                        val response = loginApi.signup("portal", identifyOff.id, value)
                         if (response.isSuccessful) {
                             val reference =
                                 response.body()?.getAsJsonObject("data")?.get("reference")?.asString
@@ -74,7 +74,7 @@ internal class TrackerRetry(
     private suspend fun sendEvent(eventOff: EventOff, id: String) {
         try {
             val params = gson.fromJson(eventOff.json, JsonObject::class.java)
-            val response = apiEvent.track(id, params)
+            val response = eventApi.track(id, params)
             if (!response.isSuccessful) {
                 trackerOffline.update(eventOff.id, (eventOff.retry + 1), "Event")
             } else {
@@ -111,7 +111,7 @@ internal class TrackerRetry(
     private suspend fun sendNotificationRead(notificationReadOff: NotificationReadOff, id: String) {
         try {
             val params = gson.fromJson(notificationReadOff.json, JsonObject::class.java)
-            val response = apiNotification.open(id, params)
+            val response = notificationApi.open(id, params)
             if (!response.isSuccessful) {
                 trackerOffline.update(
                     notificationReadOff.id,

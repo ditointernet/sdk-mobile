@@ -6,9 +6,7 @@ import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.tracking.Tracker
 import com.google.common.truth.Truth.assertThat
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
+import io.mockk.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -36,10 +34,17 @@ class DitoTest {
     }
 
     private fun resetDitoState() {
+        setField("options", null)
+        setField("apiKey", "")
+        setField("apiSecret", "")
+        setField("hibridMode", "")
+    }
+
+    private fun setField(fieldName: String, value: Any?) {
         try {
-            val optionsField = Dito::class.java.getDeclaredField("options")
-            optionsField.isAccessible = true
-            optionsField.set(null, null)
+            val field = Dito::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            field.set(null, value)
         } catch (e: Exception) {
         }
     }
@@ -303,9 +308,9 @@ class DitoTest {
             "reference" to "ref123"
         )
 
-        val result = Dito.notificationClick(userInfo)
+        val result: NotificationResult = Dito.notificationClick(userInfo, null)
 
-        assertThat(result.deepLink as String).isEmpty()
+        assertThat(result.deepLink).isEmpty()
     }
 
     @Test

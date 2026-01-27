@@ -5,16 +5,12 @@ import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.service.EventApi
 import br.com.dito.ditosdk.service.LoginApi
 import br.com.dito.ditosdk.service.NotificationApi
-import br.com.dito.ditosdk.service.utils.SigunpRequest
 import br.com.dito.ditosdk.service.utils.EventRequest
 import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
+import br.com.dito.ditosdk.service.utils.SigunpRequest
 import com.google.common.truth.Truth.assertThat
 import com.google.gson.JsonObject
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.mockk
-import io.mockk.slot
-import io.mockk.ofType
+import io.mockk.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -50,35 +46,35 @@ class TrackerTest {
             })
         }
         val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } returns response
+        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
 
         tracker.identify(identify, mockLoginApi, null)
 
         delay(100)
-        coVerify { mockLoginApi.signup("portal", "user123", ofType<SigunpRequest>()) }
+        coVerify { mockLoginApi.signup("portal", "user123", any<SigunpRequest>()) }
     }
 
     @Test
     fun `identify should save offline on API error`() = runBlocking {
         val identify = Identify("user123")
-        val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } returns response
+        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
+        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
 
         tracker.identify(identify, mockLoginApi, null)
 
         delay(100)
-        coVerify { trackerOffline.identify(any(), null, false) }
+        verify { trackerOffline.identify(any(), null, false) }
     }
 
     @Test
     fun `identify should save offline on exception`() = runBlocking {
         val identify = Identify("user123")
-        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } throws Exception("Network error")
+        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } throws Exception("Network error")
 
         tracker.identify(identify, mockLoginApi, null)
 
         delay(100)
-        coVerify { trackerOffline.identify(any(), null, false) }
+        verify { trackerOffline.identify(any(), null, false) }
     }
 
     @Test
@@ -92,7 +88,7 @@ class TrackerTest {
             })
         }
         val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } returns response
+        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
 
         tracker.identify(identify, mockLoginApi, callback)
 
@@ -105,37 +101,37 @@ class TrackerTest {
         tracker.id = "user123"
         val event = Event("purchase")
         val response = Response.success(JsonObject())
-        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
+        coEvery { mockEventApi.track(any(), any<EventRequest>()) } returns response
 
         tracker.event(event, mockEventApi)
 
         delay(100)
-        coVerify { mockEventApi.track("user123", ofType<EventRequest>()) }
+        coVerify { mockEventApi.track("user123", any<EventRequest>()) }
     }
 
     @Test
     fun `event should save offline on API error`() = runBlocking {
         tracker.id = "user123"
         val event = Event("purchase")
-        val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
+        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
+        coEvery { mockEventApi.track(any(), any<EventRequest>()) } returns response
 
         tracker.event(event, mockEventApi)
 
         delay(100)
-        coVerify { trackerOffline.event(any()) }
+        verify { trackerOffline.event(any()) }
     }
 
     @Test
     fun `event should save offline on exception`() = runBlocking {
         tracker.id = "user123"
         val event = Event("purchase")
-        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } throws Exception("Network error")
+        coEvery { mockEventApi.track(any(), any<EventRequest>()) } throws Exception("Network error")
 
         tracker.event(event, mockEventApi)
 
         delay(100)
-        coVerify { trackerOffline.event(any()) }
+        verify { trackerOffline.event(any()) }
     }
 
     @Test
@@ -163,36 +159,36 @@ class TrackerTest {
     }
 
     @Test
-    fun `notificationRead should not call API when reference is empty`() = runBlocking {
+    fun `notificationClick should not call API when reference is empty`() = runBlocking {
         tracker.id = "user123"
 
-        tracker.notificationRead("", mockNotificationApi, "")
+        tracker.notificationClick("", mockNotificationApi, "")
 
         delay(100)
-        coVerify(exactly = 0) { mockNotificationApi.open(any(), any()) }
+        coVerify(exactly = 0) { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) }
     }
 
     @Test
-    fun `notificationRead should call API with correct parameters`() = runBlocking {
+    fun `notificationClick should call API with correct parameters`() = runBlocking {
         tracker.id = "user123"
         val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
+        coEvery { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) } returns response
 
-        tracker.notificationRead("notif123", mockNotificationApi, "ref123")
+        tracker.notificationClick("notif123", mockNotificationApi, "ref123")
 
         delay(100)
-        coVerify { mockNotificationApi.open("notif123", ofType<NotificationOpenRequest>()) }
+        coVerify { mockNotificationApi.open("notif123", any<NotificationOpenRequest>()) }
     }
 
     @Test
-    fun `notificationRead should save offline on API error`() = runBlocking {
+    fun `notificationClick should save offline on API error`() = runBlocking {
         tracker.id = "user123"
-        val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
+        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
+        coEvery { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) } returns response
 
-        tracker.notificationRead("notif123", mockNotificationApi, "ref123")
+        tracker.notificationClick("notif123", mockNotificationApi, "ref123")
 
         delay(100)
-        coVerify { trackerOffline.notificationRead(any()) }
+        verify { trackerOffline.notificationRead(any()) }
     }
 }

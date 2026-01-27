@@ -6,16 +6,9 @@ import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.EventApi
 import br.com.dito.ditosdk.service.LoginApi
 import br.com.dito.ditosdk.service.NotificationApi
-import br.com.dito.ditosdk.service.utils.SigunpRequest
-import br.com.dito.ditosdk.service.utils.EventRequest
-import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
 import com.google.common.truth.Truth.assertThat
 import com.google.gson.JsonObject
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.ofType
+import io.mockk.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -39,10 +32,17 @@ class TrackerRetryTest {
         trackerOffline = mockk(relaxed = true)
         tracker = Tracker("apiKey", "apiSecret", trackerOffline)
         tracker.id = "user123"
-        trackerRetry = TrackerRetry(tracker, trackerOffline, 5)
         mockLoginApi = mockk(relaxed = true)
         mockEventApi = mockk(relaxed = true)
         mockNotificationApi = mockk(relaxed = true)
+        trackerRetry = TrackerRetry(
+            tracker,
+            trackerOffline,
+            5,
+            mockLoginApi,
+            mockEventApi,
+            mockNotificationApi
+        )
     }
 
     @Test
@@ -56,12 +56,12 @@ class TrackerRetryTest {
             })
         }
         val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } returns response
+        coEvery { mockLoginApi.signup(any(), any(), any<JsonObject>()) } returns response
 
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.updateIdentify("user123", true) }
+        verify { trackerOffline.updateIdentify("user123", true) }
     }
 
     @Test
@@ -72,7 +72,7 @@ class TrackerRetryTest {
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
+        verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
     }
 
     @Test
@@ -83,7 +83,7 @@ class TrackerRetryTest {
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.delete(1, "Event") }
+        verify { trackerOffline.delete(1, "Event") }
     }
 
     @Test
@@ -91,13 +91,13 @@ class TrackerRetryTest {
         val eventOff = EventOff(1, "{}", 0)
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
-        val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
+        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
+        coEvery { mockEventApi.track(any(), any<JsonObject>()) } returns response
 
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.update(1, 1, "Event") }
+        verify { trackerOffline.update(1, 1, "Event") }
     }
 
     @Test
@@ -106,12 +106,12 @@ class TrackerRetryTest {
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
         val response = Response.success(JsonObject())
-        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
+        coEvery { mockEventApi.track(any(), any<JsonObject>()) } returns response
 
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.delete(1, "Event") }
+        verify { trackerOffline.delete(1, "Event") }
     }
 
     @Test
@@ -122,7 +122,7 @@ class TrackerRetryTest {
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.delete(1, "NotificationRead") }
+        verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
     @Test
@@ -130,13 +130,13 @@ class TrackerRetryTest {
         val notificationOff = NotificationReadOff(1, "{}", 0)
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
-        val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
+        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
+        coEvery { mockNotificationApi.open(any(), any<JsonObject>()) } returns response
 
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.update(1, 1, "NotificationRead") }
+        verify { trackerOffline.update(1, 1, "NotificationRead") }
     }
 
     @Test
@@ -145,12 +145,12 @@ class TrackerRetryTest {
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
         val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
+        coEvery { mockNotificationApi.open(any(), any<JsonObject>()) } returns response
 
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.delete(1, "NotificationRead") }
+        verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
     @Test
@@ -162,8 +162,8 @@ class TrackerRetryTest {
         trackerRetry.uploadEvents()
 
         delay(200)
-        coVerify { trackerOffline.getIdentify() }
-        coVerify { trackerOffline.getAllEvents() }
-        coVerify { trackerOffline.getAllNotificationRead() }
+        verify { trackerOffline.getIdentify() }
+        verify { trackerOffline.getAllEvents() }
+        verify { trackerOffline.getAllNotificationRead() }
     }
 }

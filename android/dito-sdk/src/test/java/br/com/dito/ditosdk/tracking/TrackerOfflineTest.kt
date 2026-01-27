@@ -11,6 +11,7 @@ import com.google.common.truth.Truth.assertThat
 import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -25,7 +26,16 @@ class TrackerOfflineTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
-        trackerOffline = TrackerOffline(context)
+        trackerOffline = TrackerOffline(
+            context,
+            useInMemoryDatabase = true,
+            allowMainThreadQueries = true
+        )
+    }
+
+    @After
+    fun tearDown() {
+        trackerOffline.database.close()
     }
 
     @Test

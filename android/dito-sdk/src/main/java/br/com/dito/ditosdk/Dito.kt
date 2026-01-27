@@ -299,7 +299,10 @@ object Dito {
     }
 
     internal fun isInitialized(): Boolean {
-        return apiKey.isNotEmpty() && apiSecret.isNotEmpty()
+        return ::apiKey.isInitialized &&
+            ::apiSecret.isInitialized &&
+            apiKey.isNotEmpty() &&
+            apiSecret.isNotEmpty()
     }
 
     fun getHibridMode(): String {

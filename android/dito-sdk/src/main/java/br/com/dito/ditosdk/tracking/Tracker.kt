@@ -37,7 +37,7 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
             val identify = trackerOffline.getIdentify()
             identify?.let {
                 id = it.id
-                reference = it.reference
+                reference = it.reference.orEmpty()
             }
         }
     }
@@ -50,14 +50,10 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
             val params = SigunpRequest(apiKey, apiSecret, identify)
             try {
                 val response = api.signup("portal", identify.id, params)
-
-                if(response.code() == 201) {
-                    handleIdentifyResponse(response, params, callback)
-                }else{
-                    throw Exception(response.body().toString())
-                }
+                handleIdentifyResponse(response, params, callback)
             } catch (e: Exception) {
                 Log.d("error-identify", e.message.toString())
+                trackerOffline.identify(params, null, false)
             }
         }
     }
