@@ -5,7 +5,8 @@ plugins {
     id("maven-publish") apply true
 }
 
-group = "com.github.ditointernet"
+group = "br.com.dito"
+version = System.getenv("VERSION_NAME") ?: "2.0.0"
 
 android {
     namespace = "br.com.dito.ditosdk"
@@ -82,6 +83,21 @@ afterEvaluate {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
+
+                groupId = "br.com.dito"
+                artifactId = "ditosdk"
+                version = project.version.toString()
+            }
+        }
+
+        repositories {
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/ditointernet/sdk-mobile")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR") ?: ""
+                    password = System.getenv("GITHUB_TOKEN") ?: ""
+                }
             }
         }
     }

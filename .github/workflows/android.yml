@@ -122,7 +122,21 @@ jobs:
         if: steps.check-changes.outputs.has_code_changes == 'true'
         run: chmod +x android/gradlew
 
+      - name: Get version from tag or use default
+        if: steps.check-changes.outputs.has_code_changes == 'true'
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          else
+            echo "version=2.0.0-SNAPSHOT" >> $GITHUB_OUTPUT
+          fi
+
       - name: Build and publish Android SDK
         if: steps.check-changes.outputs.has_code_changes == 'true'
         working-directory: android
-        run: ./gradlew build publishToMavenLocal publish
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
+        run: ./gradlew :dito-sdk:build :dito-sdk:publish

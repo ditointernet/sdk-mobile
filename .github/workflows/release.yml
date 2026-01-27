@@ -276,6 +276,8 @@ jobs:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
           PUB_CREDENTIALS: ${{ secrets.PUB_CREDENTIALS }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION_NAME: ${{ needs.extract-changelog.outputs.version }}
         run: |
           PROJECTS=()
           if [ "${{ needs.detect-changes.outputs.ios }}" == "true" ]; then
