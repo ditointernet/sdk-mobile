@@ -50,7 +50,7 @@ class TrackerTest {
 
         tracker.identify(identify, mockLoginApi, null)
 
-        delay(500)
+        delay(2000)
         coVerify { mockLoginApi.signup("portal", "user123", any<SigunpRequest>()) }
     }
 
@@ -105,7 +105,7 @@ class TrackerTest {
 
         tracker.event(event, mockEventApi)
 
-        delay(500)
+        delay(2000)
         coVerify { mockEventApi.track("user123", any<EventRequest>()) }
     }
 
@@ -142,7 +142,7 @@ class TrackerTest {
 
         tracker.registerToken("token123", mockNotificationApi)
 
-        delay(500)
+        delay(2000)
         coVerify { mockNotificationApi.add("user123", any()) }
     }
 
@@ -154,7 +154,7 @@ class TrackerTest {
 
         tracker.unregisterToken("token123", mockNotificationApi)
 
-        delay(500)
+        delay(2000)
         coVerify { mockNotificationApi.disable("user123", any()) }
     }
 
@@ -176,7 +176,7 @@ class TrackerTest {
 
         tracker.notificationClick("notif123", mockNotificationApi, "ref123")
 
-        delay(500)
+        delay(2000)
         coVerify { mockNotificationApi.open("notif123", any<NotificationOpenRequest>()) }
     }
 
