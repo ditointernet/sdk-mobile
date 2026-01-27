@@ -11,15 +11,22 @@ import com.google.gson.JsonObject
 import io.mockk.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.cancel
+import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import retrofit2.Response
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class TrackerRetryTest {
 
+    private val testScope = TestScope()
     private lateinit var tracker: Tracker
     private lateinit var trackerOffline: TrackerOffline
     private lateinit var trackerRetry: TrackerRetry
@@ -30,7 +37,7 @@ class TrackerRetryTest {
     @Before
     fun setup() {
         trackerOffline = mockk(relaxed = true)
-        tracker = Tracker("apiKey", "apiSecret", trackerOffline)
+        tracker = Tracker("apiKey", "apiSecret", trackerOffline, testScope)
         tracker.id = "user123"
         mockLoginApi = mockk(relaxed = true)
         mockEventApi = mockk(relaxed = true)
@@ -41,12 +48,18 @@ class TrackerRetryTest {
             5,
             mockLoginApi,
             mockEventApi,
-            mockNotificationApi
+            mockNotificationApi,
+            testScope
         )
     }
 
+    @After
+    fun tearDown() {
+        testScope.cancel()
+    }
+
     @Test
-    fun `checkIdentify should update identify when API succeeds`() = runBlocking {
+    fun `checkIdentify should update identify when API succeeds`() = testScope.runTest {
         val identifyOff = IdentifyOff("user123", "{}", "ref123", false)
         every { trackerOffline.getIdentify() } returns identifyOff
 
@@ -60,34 +73,34 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.updateIdentify("user123", true) }
     }
 
     @Test
-    fun `checkIdentify should not update when identify is already sent`() = runBlocking {
+    fun `checkIdentify should not update when identify is already sent`() = testScope.runTest {
         val identifyOff = IdentifyOff("user123", "{}", "ref123", true)
         every { trackerOffline.getIdentify() } returns identifyOff
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
     }
 
     @Test
-    fun `checkEvent should delete event when retry limit reached`() = runBlocking {
+    fun `checkEvent should delete event when retry limit reached`() = testScope.runTest {
         val eventOff = EventOff(1, "{}", 5)
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.delete(1, "Event") }
     }
 
     @Test
-    fun `checkEvent should update retry on failure`() = runBlocking {
+    fun `checkEvent should update retry on failure`() = testScope.runTest {
         val eventOff = EventOff(1, "{}", 0)
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
@@ -96,12 +109,12 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.update(1, 1, "Event") }
     }
 
     @Test
-    fun `checkEvent should delete event on success`() = runBlocking {
+    fun `checkEvent should delete event on success`() = testScope.runTest {
         val eventOff = EventOff(1, "{}", 0)
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
@@ -110,23 +123,23 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.delete(1, "Event") }
     }
 
     @Test
-    fun `checkNotificationRead should delete notification when retry limit reached`() = runBlocking {
+    fun `checkNotificationRead should delete notification when retry limit reached`() = testScope.runTest {
         val notificationOff = NotificationReadOff(1, "{}", 5)
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
     @Test
-    fun `checkNotificationRead should update retry on failure`() = runBlocking {
+    fun `checkNotificationRead should update retry on failure`() = testScope.runTest {
         val notificationOff = NotificationReadOff(1, "{}", 0)
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
@@ -135,12 +148,12 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.update(1, 1, "NotificationRead") }
     }
 
     @Test
-    fun `checkNotificationRead should delete notification on success`() = runBlocking {
+    fun `checkNotificationRead should delete notification on success`() = testScope.runTest {
         val notificationOff = NotificationReadOff(1, "{}", 0)
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
@@ -149,19 +162,19 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
     @Test
-    fun `uploadEvents should check all types`() = runBlocking {
+    fun `uploadEvents should check all types`() = testScope.runTest {
         every { trackerOffline.getIdentify() } returns null
         every { trackerOffline.getAllEvents() } returns null
         every { trackerOffline.getAllNotificationRead() } returns null
 
         trackerRetry.uploadEvents()
 
-        delay(500)
+        advanceUntilIdle()
         verify { trackerOffline.getIdentify() }
         verify { trackerOffline.getAllEvents() }
         verify { trackerOffline.getAllNotificationRead() }

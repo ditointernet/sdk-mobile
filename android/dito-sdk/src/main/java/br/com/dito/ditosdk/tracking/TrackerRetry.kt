@@ -5,8 +5,9 @@ import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.RemoteService
 import com.google.gson.JsonObject
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 internal class TrackerRetry(
@@ -15,7 +16,8 @@ internal class TrackerRetry(
     private var retry: Int = 5,
     private val loginApi: br.com.dito.ditosdk.service.LoginApi = RemoteService.loginApi(),
     private val eventApi: br.com.dito.ditosdk.service.EventApi = RemoteService.eventApi(),
-    private val notificationApi: br.com.dito.ditosdk.service.NotificationApi = RemoteService.notificationApi()
+    private val notificationApi: br.com.dito.ditosdk.service.NotificationApi = RemoteService.notificationApi(),
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 ) {
 
     private val gson = br.com.dito.ditosdk.service.utils.gson()
@@ -27,7 +29,7 @@ internal class TrackerRetry(
     }
 
     private fun checkIdentify() {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val identifyOff = trackerOffline.getIdentify()
             identifyOff?.let {
                 if (!it.send) {
@@ -50,7 +52,7 @@ internal class TrackerRetry(
     }
 
     private fun checkEvent() {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val events = trackerOffline.getAllEvents()
             events?.forEach {
                 try {
@@ -87,7 +89,7 @@ internal class TrackerRetry(
 
 
     private fun checkNotificationRead() {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val notifications = trackerOffline.getAllNotificationRead()
             notifications?.forEach {
                 try {
