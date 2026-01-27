@@ -6,9 +6,7 @@ import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.tracking.Tracker
 import com.google.common.truth.Truth.assertThat
-import io.mockk.every
-import io.mockk.mockk
-import io.mockk.verify
+import io.mockk.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -36,10 +34,17 @@ class DitoTest {
     }
 
     private fun resetDitoState() {
+        setField("options", null)
+        setField("apiKey", "")
+        setField("apiSecret", "")
+        setField("hibridMode", "")
+    }
+
+    private fun setField(fieldName: String, value: Any?) {
         try {
-            val optionsField = Dito::class.java.getDeclaredField("options")
-            optionsField.isAccessible = true
-            optionsField.set(null, null)
+            val field = Dito::class.java.getDeclaredField(fieldName)
+            field.isAccessible = true
+            field.set(null, value)
         } catch (e: Exception) {
         }
     }
@@ -116,7 +121,7 @@ class DitoTest {
 
         Dito.identify("user123", "John Doe", "john@example.com", customData)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -125,7 +130,7 @@ class DitoTest {
 
         Dito.identify("user123", null, null, null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -134,7 +139,7 @@ class DitoTest {
 
         Dito.identify("user123", "John", "john@example.com", emptyMap())
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -144,7 +149,7 @@ class DitoTest {
         val data = mapOf("product_id" to "123", "price" to 99.99)
         Dito.track("purchase", data)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -153,7 +158,7 @@ class DitoTest {
 
         Dito.track("view", null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -162,7 +167,7 @@ class DitoTest {
 
         Dito.registerDevice(null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -171,7 +176,7 @@ class DitoTest {
 
         Dito.registerDevice("")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -180,7 +185,7 @@ class DitoTest {
 
         Dito.registerDevice("token123")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -189,7 +194,7 @@ class DitoTest {
 
         Dito.unregisterDevice(null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -198,7 +203,7 @@ class DitoTest {
 
         Dito.unregisterDevice("")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -207,11 +212,11 @@ class DitoTest {
 
         Dito.unregisterDevice("token123")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
-    fun `notificationRead should process valid userInfo`() = runBlocking {
+    fun `notificationClick should process valid userInfo`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -222,13 +227,13 @@ class DitoTest {
             "user_id" to "user123"
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
-    fun `notificationRead should not process when reference is empty`() = runBlocking {
+    fun `notificationClick should not process when reference is empty`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -236,13 +241,13 @@ class DitoTest {
             "reference" to ""
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
-    fun `notificationRead should not process when notification is empty`() = runBlocking {
+    fun `notificationClick should not process when notification is empty`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -250,9 +255,9 @@ class DitoTest {
             "reference" to "ref123"
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -271,7 +276,7 @@ class DitoTest {
             assertThat(deepLink).isEqualTo("https://example.com")
         }
 
-        delay(100)
+        delay(500)
         assertThat(result.notificationId).isEqualTo("notif123")
         assertThat(result.reference).isEqualTo("ref123")
         assertThat(result.deepLink).isEqualTo("https://example.com")
@@ -303,7 +308,7 @@ class DitoTest {
             "reference" to "ref123"
         )
 
-        val result = Dito.notificationClick(userInfo)
+        val result: NotificationResult = Dito.notificationClick(userInfo, null)
 
         assertThat(result.deepLink).isEmpty()
     }
@@ -336,21 +341,29 @@ class DitoTest {
     }
 
     @Test
-    fun `deprecated notificationRead should process valid parameters`() = runBlocking {
+    fun `notificationClick should process valid parameters`() = runBlocking {
         initializeDito()
 
-        Dito.notificationRead("notif123", "ref123")
+        val userInfo = mapOf(
+            "notification" to "notif123",
+            "reference" to "ref123"
+        )
+        Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
-    fun `deprecated notificationRead should not process null parameters`() = runBlocking {
+    fun `notificationClick should not process empty parameters`() = runBlocking {
         initializeDito()
 
-        Dito.notificationRead(null, null)
+        val userInfo = mapOf(
+            "notification" to "",
+            "reference" to ""
+        )
+        Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -360,7 +373,7 @@ class DitoTest {
         val event = Event("purchase")
         Dito.track(event)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -377,7 +390,7 @@ class DitoTest {
             callbackInvoked = true
         }
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -394,7 +407,7 @@ class DitoTest {
 
         Dito.identify("user123", null, null, customData)
 
-        delay(100)
+        delay(500)
     }
 
     private fun initializeDito() {

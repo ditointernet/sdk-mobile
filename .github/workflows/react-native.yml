@@ -18,8 +18,41 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+
+    - name: Check for relevant changes
+      id: check-changes
+      run: |
+        if [ "${{ github.event_name }}" == "pull_request" ]; then
+          BASE_REF="${{ github.event.pull_request.base.sha }}"
+          HEAD_REF="${{ github.event.pull_request.head.sha }}"
+        else
+          BASE_REF="${{ github.event.before }}"
+          HEAD_REF="${{ github.event.after }}"
+        fi
+
+        if [ -z "$BASE_REF" ] || [ "$BASE_REF" == "0000000000000000000000000000000000000000" ]; then
+          BASE_REF="HEAD~1"
+        fi
+
+        CHANGED_FILES=$(git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -E "^(react-native/|\.github/workflows/react-native\.yml$)" || true)
+
+        if [ -z "$CHANGED_FILES" ]; then
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+          exit 0
+        fi
+
+        CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(__tests__/|.*\.test\.(ts|tsx)$|.*\.spec\.(ts|tsx)$|\.github/workflows/react-native\.yml$)" | grep -E "\.(ts|tsx|js|jsx|json)$" || true)
+
+        if [ -n "$CODE_CHANGES" ] || echo "$CHANGED_FILES" | grep -q "\.github/workflows/react-native\.yml$"; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
 
     - name: Set up Node.js
+      if: steps.check-changes.outputs.has_changes == 'true'
       uses: actions/setup-node@v3
       with:
         node-version: '18'
@@ -27,27 +60,32 @@ jobs:
         cache-dependency-path: react-native/package-lock.json
 
     - name: Install dependencies
+      if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd react-native
         npm ci
 
     - name: Lint
+      if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd react-native
         npm run lint || echo "Lint script not configured"
 
     - name: Run tests
+      if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd react-native
         npm test -- --coverage || echo "Tests not configured"
 
     - name: Type check
+      if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd react-native
         npm run type-check || npx tsc --noEmit || echo "TypeScript not configured"
 
     - name: Upload artifacts
-      uses: actions/upload-artifact@v3
+      if: steps.check-changes.outputs.has_changes == 'true'
+      uses: actions/upload-artifact@v4
       with:
         name: react-native-build
         path: react-native/dist
@@ -55,12 +93,37 @@ jobs:
 
   release:
     needs: build
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: |
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/main' &&
+      !contains(github.event.head_commit.message, '[skip release]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Check for code changes
+        id: check-changes
+        run: |
+          BASE_REF=$(git describe --tags --abbrev=0 2>/dev/null || echo "HEAD~1")
+          CHANGED_FILES=$(git diff --name-only "$BASE_REF"..HEAD | grep "^react-native/" || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "has_code_changes=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          CODE_CHANGES=$(echo "$CHANGED_FILES" | grep -vE "(__tests__/|.*\.test\.(ts|tsx)$|.*\.spec\.(ts|tsx)$)" | grep -E "\.(ts|tsx|js|jsx|json)$" || true)
+
+          if [ -n "$CODE_CHANGES" ]; then
+            echo "has_code_changes=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_code_changes=false" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up Node.js
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         uses: actions/setup-node@v3
         with:
           node-version: '18'
@@ -68,11 +131,13 @@ jobs:
           cache-dependency-path: react-native/package-lock.json
 
       - name: Install dependencies
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         run: |
           cd react-native
           npm ci
 
       - name: Publish to npm
+        if: steps.check-changes.outputs.has_code_changes == 'true'
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |

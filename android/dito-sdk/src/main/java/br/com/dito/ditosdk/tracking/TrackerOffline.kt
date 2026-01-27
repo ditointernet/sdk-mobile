@@ -15,14 +15,32 @@ import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
 import br.com.dito.ditosdk.service.utils.SigunpRequest
 import com.google.gson.Gson
 
-internal class TrackerOffline(private var context: Context) {
+internal class TrackerOffline(
+    context: Context,
+    useInMemoryDatabase: Boolean = false,
+    allowMainThreadQueries: Boolean = false
+) {
     private var gson: Gson = br.com.dito.ditosdk.service.utils.gson()
-    private val database = Room.databaseBuilder(
-        context,
-        DitoSqlHelper::class.java, "dito-offline"
-    )
-        .fallbackToDestructiveMigration()
-        .build()
+    internal val database = createDatabase(context, useInMemoryDatabase, allowMainThreadQueries)
+
+    private fun createDatabase(
+        context: Context,
+        useInMemoryDatabase: Boolean,
+        allowMainThreadQueries: Boolean
+    ): DitoSqlHelper {
+        val builder = if (useInMemoryDatabase) {
+            Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
+        } else {
+            Room.databaseBuilder(context, DitoSqlHelper::class.java, "dito-offline")
+                .fallbackToDestructiveMigration()
+        }
+
+        if (allowMainThreadQueries) {
+            builder.allowMainThreadQueries()
+        }
+
+        return builder.build()
+    }
 
 
     fun identify(sigunpRequest: SigunpRequest, reference: String?, send: Boolean) {
@@ -92,8 +110,12 @@ internal class TrackerOffline(private var context: Context) {
 
     fun getAllEvents(): List<EventOff>? {
         return try {
-            database.eventDao().getAll().map {
-                gson.fromJson(it.json, EventOff::class.java)
+            val events = database.eventDao().getAll()
+            if (events.isEmpty()) {
+                return null
+            }
+            events.map {
+                EventOff(it._id ?: 0, it.json.orEmpty(), it.retry)
             }
         } catch (e: Exception) {
             null
@@ -102,8 +124,12 @@ internal class TrackerOffline(private var context: Context) {
 
     fun getAllNotificationRead(): List<NotificationReadOff>? {
         return try {
-            database.notificationDao().getAll().map {
-                gson.fromJson(it.json, NotificationReadOff::class.java)
+            val notifications = database.notificationDao().getAll()
+            if (notifications.isEmpty()) {
+                return null
+            }
+            notifications.map {
+                NotificationReadOff(it._id ?: 0, it.json.orEmpty(), it.retry)
             }
         } catch (e: Exception) {
             null
@@ -115,9 +141,9 @@ internal class TrackerOffline(private var context: Context) {
             val identify = database.identifyDao().getAll().first()
 
             return IdentifyOff(
-                identify._id.toString(),
-                identify.json.toString(),
-                identify.reference.toString(),
+                identify._id,
+                identify.json.orEmpty(),
+                identify.reference,
                 identify.send
             )
         } catch (e: Exception) {

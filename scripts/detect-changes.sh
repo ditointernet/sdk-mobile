@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Script para detectar quais projetos tiveram mudanças
+# Script para detectar quais projetos tiveram mudanças (excluindo arquivos de teste e considerando apenas tipos específicos de arquivos de código/projeto)
 # Uso: ./scripts/detect-changes.sh [base_ref] [head_ref]
 # Se não especificado, compara HEAD com a última tag
 
@@ -26,19 +26,49 @@ if ! git rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
     BASE_REF="HEAD~1"
 fi
 
-if git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -q "^ios/"; then
+has_code_changes() {
+    local project=$1
+    local changed_files=$(git diff --name-only "$BASE_REF".."$HEAD_REF" | grep "^${project}/" || true)
+
+    if [ -z "$changed_files" ]; then
+        return 1
+    fi
+
+    local code_files=""
+    case "$project" in
+        ios)
+            code_files=$(echo "$changed_files" | grep -vE "(Tests/|.*Test\.swift$|.*Tests\.swift$)" | grep -E "(\.(swift|m|h|plist|podspec|pbxproj|yml)$|/Podfile$|/project\.yml$)" || true)
+            ;;
+        android)
+            code_files=$(echo "$changed_files" | grep -vE "(test/|androidTest/|.*Test\.kt$|.*Tests\.kt$)" | grep -E "\.(kt|java|xml|gradle|gradle\.kts|properties)$" || true)
+            ;;
+        flutter)
+            code_files=$(echo "$changed_files" | grep -vE "(test/|.*_test\.dart$)" | grep -E "\.(dart|yaml|yml|json)$" || true)
+            ;;
+        react-native)
+            code_files=$(echo "$changed_files" | grep -vE "(__tests__/|.*\.test\.(ts|tsx)$|.*\.spec\.(ts|tsx)$)" | grep -E "\.(ts|tsx|js|jsx|json)$" || true)
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+
+    [ -n "$code_files" ] && return 0 || return 1
+}
+
+if has_code_changes "ios"; then
     CHANGED_PROJECTS+=("ios")
 fi
 
-if git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -q "^android/"; then
+if has_code_changes "android"; then
     CHANGED_PROJECTS+=("android")
 fi
 
-if git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -q "^flutter/"; then
+if has_code_changes "flutter"; then
     CHANGED_PROJECTS+=("flutter")
 fi
 
-if git diff --name-only "$BASE_REF".."$HEAD_REF" | grep -q "^react-native/"; then
+if has_code_changes "react-native"; then
     CHANGED_PROJECTS+=("react-native")
 fi
 

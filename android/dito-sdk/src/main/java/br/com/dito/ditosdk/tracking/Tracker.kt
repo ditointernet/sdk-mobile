@@ -15,7 +15,12 @@ import com.google.gson.JsonObject
 import kotlinx.coroutines.*
 import retrofit2.Response
 
-internal class Tracker(private var apiKey: String, apiSecret: String, private var trackerOffline: TrackerOffline) {
+internal class Tracker(
+    private var apiKey: String,
+    apiSecret: String,
+    private var trackerOffline: TrackerOffline,
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+) {
 
     private var apiSecret: String = DitoSDKUtils.SHA1(apiSecret)
 
@@ -31,33 +36,27 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         this.trackerRetry = retry
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     private fun loadIdentify() {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val identify = trackerOffline.getIdentify()
             identify?.let {
                 id = it.id
-                reference = it.reference
+                reference = it.reference.orEmpty()
             }
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun identify(identify: Identify, api: LoginApi, callback: (() -> Unit)?) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             Log.d("begin-identify", "begin identify user")
             id = identify.id
             val params = SigunpRequest(apiKey, apiSecret, identify)
             try {
                 val response = api.signup("portal", identify.id, params)
-
-                if(response.code() == 201) {
-                    handleIdentifyResponse(response, params, callback)
-                }else{
-                    throw Exception(response.body().toString())
-                }
+                handleIdentifyResponse(response, params, callback)
             } catch (e: Exception) {
                 Log.d("error-identify", e.message.toString())
+                trackerOffline.identify(params, null, false)
             }
         }
     }
@@ -78,9 +77,8 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         trackerRetry?.uploadEvents()
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun event(event: Event, api: EventApi) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             val params = EventRequest(apiKey, apiSecret, event)
             if (!::id.isInitialized) {
                 Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
@@ -105,9 +103,8 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         trackerOffline.event(params)
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun registerToken(token: String, api: NotificationApi) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             try {
                 val params = TokenRequest(apiKey, apiSecret, token)
                 val response = api.add(id, params)
@@ -126,9 +123,8 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun unregisterToken(token: String, api: NotificationApi) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             try {
                 val params = TokenRequest(apiKey, apiSecret, token)
                 val response = api.disable(id, params)
@@ -141,9 +137,8 @@ internal class Tracker(private var apiKey: String, apiSecret: String, private va
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
     fun notificationClick(notificationId: String, api: NotificationApi, notificationReference: String) {
-        GlobalScope.launch(Dispatchers.IO) {
+        scope.launch {
             if (notificationReference.isEmpty() || notificationId.isEmpty()) {
                 return@launch
             }
