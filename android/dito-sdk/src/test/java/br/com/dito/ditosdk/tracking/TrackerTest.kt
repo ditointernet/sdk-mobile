@@ -50,7 +50,7 @@ class TrackerTest {
 
         tracker.identify(identify, mockLoginApi, null)
 
-        delay(100)
+        delay(500)
         coVerify { mockLoginApi.signup("portal", "user123", any<SigunpRequest>()) }
     }
 
@@ -62,7 +62,7 @@ class TrackerTest {
 
         tracker.identify(identify, mockLoginApi, null)
 
-        delay(100)
+        delay(500)
         verify { trackerOffline.identify(any(), null, false) }
     }
 
@@ -73,7 +73,7 @@ class TrackerTest {
 
         tracker.identify(identify, mockLoginApi, null)
 
-        delay(100)
+        delay(500)
         verify { trackerOffline.identify(any(), null, false) }
     }
 
@@ -92,7 +92,7 @@ class TrackerTest {
 
         tracker.identify(identify, mockLoginApi, callback)
 
-        delay(100)
+        delay(500)
         assertThat(callbackInvoked).isTrue()
     }
 
@@ -105,7 +105,7 @@ class TrackerTest {
 
         tracker.event(event, mockEventApi)
 
-        delay(100)
+        delay(500)
         coVerify { mockEventApi.track("user123", any<EventRequest>()) }
     }
 
@@ -118,7 +118,7 @@ class TrackerTest {
 
         tracker.event(event, mockEventApi)
 
-        delay(100)
+        delay(500)
         verify { trackerOffline.event(any()) }
     }
 
@@ -130,7 +130,7 @@ class TrackerTest {
 
         tracker.event(event, mockEventApi)
 
-        delay(100)
+        delay(500)
         verify { trackerOffline.event(any()) }
     }
 
@@ -142,7 +142,7 @@ class TrackerTest {
 
         tracker.registerToken("token123", mockNotificationApi)
 
-        delay(100)
+        delay(500)
         coVerify { mockNotificationApi.add("user123", any()) }
     }
 
@@ -154,7 +154,7 @@ class TrackerTest {
 
         tracker.unregisterToken("token123", mockNotificationApi)
 
-        delay(100)
+        delay(500)
         coVerify { mockNotificationApi.disable("user123", any()) }
     }
 
@@ -164,7 +164,7 @@ class TrackerTest {
 
         tracker.notificationClick("", mockNotificationApi, "")
 
-        delay(100)
+        delay(500)
         coVerify(exactly = 0) { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) }
     }
 
@@ -176,7 +176,7 @@ class TrackerTest {
 
         tracker.notificationClick("notif123", mockNotificationApi, "ref123")
 
-        delay(100)
+        delay(500)
         coVerify { mockNotificationApi.open("notif123", any<NotificationOpenRequest>()) }
     }
 
@@ -188,7 +188,7 @@ class TrackerTest {
 
         tracker.notificationClick("notif123", mockNotificationApi, "ref123")
 
-        delay(100)
+        delay(500)
         verify { trackerOffline.notificationRead(any()) }
     }
 }

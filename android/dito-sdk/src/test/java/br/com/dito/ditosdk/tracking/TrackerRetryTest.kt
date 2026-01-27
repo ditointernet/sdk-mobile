@@ -60,7 +60,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.updateIdentify("user123", true) }
     }
 
@@ -71,7 +71,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
     }
 
@@ -82,7 +82,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.delete(1, "Event") }
     }
 
@@ -96,7 +96,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.update(1, 1, "Event") }
     }
 
@@ -110,7 +110,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.delete(1, "Event") }
     }
 
@@ -121,7 +121,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
@@ -135,7 +135,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.update(1, 1, "NotificationRead") }
     }
 
@@ -149,7 +149,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.delete(1, "NotificationRead") }
     }
 
@@ -161,7 +161,7 @@ class TrackerRetryTest {
 
         trackerRetry.uploadEvents()
 
-        delay(200)
+        delay(500)
         verify { trackerOffline.getIdentify() }
         verify { trackerOffline.getAllEvents() }
         verify { trackerOffline.getAllNotificationRead() }

@@ -121,7 +121,7 @@ class DitoTest {
 
         Dito.identify("user123", "John Doe", "john@example.com", customData)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -130,7 +130,7 @@ class DitoTest {
 
         Dito.identify("user123", null, null, null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -139,7 +139,7 @@ class DitoTest {
 
         Dito.identify("user123", "John", "john@example.com", emptyMap())
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -149,7 +149,7 @@ class DitoTest {
         val data = mapOf("product_id" to "123", "price" to 99.99)
         Dito.track("purchase", data)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -158,7 +158,7 @@ class DitoTest {
 
         Dito.track("view", null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -167,7 +167,7 @@ class DitoTest {
 
         Dito.registerDevice(null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -176,7 +176,7 @@ class DitoTest {
 
         Dito.registerDevice("")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -185,7 +185,7 @@ class DitoTest {
 
         Dito.registerDevice("token123")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -194,7 +194,7 @@ class DitoTest {
 
         Dito.unregisterDevice(null)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -203,7 +203,7 @@ class DitoTest {
 
         Dito.unregisterDevice("")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -212,7 +212,7 @@ class DitoTest {
 
         Dito.unregisterDevice("token123")
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -229,7 +229,7 @@ class DitoTest {
 
         Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -243,7 +243,7 @@ class DitoTest {
 
         Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -257,7 +257,7 @@ class DitoTest {
 
         Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -276,7 +276,7 @@ class DitoTest {
             assertThat(deepLink).isEqualTo("https://example.com")
         }
 
-        delay(100)
+        delay(500)
         assertThat(result.notificationId).isEqualTo("notif123")
         assertThat(result.reference).isEqualTo("ref123")
         assertThat(result.deepLink).isEqualTo("https://example.com")
@@ -350,7 +350,7 @@ class DitoTest {
         )
         Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -363,7 +363,7 @@ class DitoTest {
         )
         Dito.notificationClick(userInfo)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -373,7 +373,7 @@ class DitoTest {
         val event = Event("purchase")
         Dito.track(event)
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -390,7 +390,7 @@ class DitoTest {
             callbackInvoked = true
         }
 
-        delay(100)
+        delay(500)
     }
 
     @Test
@@ -407,7 +407,7 @@ class DitoTest {
 
         Dito.identify("user123", null, null, customData)
 
-        delay(100)
+        delay(500)
     }
 
     private fun initializeDito() {

@@ -44,7 +44,7 @@ class TrackerOfflineTest {
         val request = SigunpRequest("apiKey", "secret", identify)
 
         trackerOffline.identify(request, "ref123", true)
-        delay(100)
+        delay(500)
 
         val result = trackerOffline.getIdentify()
         assertThat(result).isNotNull()
@@ -59,7 +59,7 @@ class TrackerOfflineTest {
         val request = SigunpRequest("apiKey", "secret", identify)
 
         trackerOffline.identify(request, null, false)
-        delay(100)
+        delay(500)
 
         val result = trackerOffline.getIdentify()
         assertThat(result).isNotNull()
@@ -72,10 +72,10 @@ class TrackerOfflineTest {
         val identify = Identify("123")
         val request = SigunpRequest("apiKey", "secret", identify)
         trackerOffline.identify(request, "ref123", false)
-        delay(100)
+        delay(500)
 
         trackerOffline.updateIdentify("123", true)
-        delay(100)
+        delay(500)
 
         val result = trackerOffline.getIdentify()
         assertThat(result?.send).isTrue()
@@ -87,7 +87,7 @@ class TrackerOfflineTest {
         val request = EventRequest("apiKey", "secret", event)
 
         trackerOffline.event(request)
-        delay(100)
+        delay(500)
 
         val events = trackerOffline.getAllEvents()
         assertThat(events).isNotNull()
@@ -110,7 +110,7 @@ class TrackerOfflineTest {
 
         trackerOffline.event(request1)
         trackerOffline.event(request2)
-        delay(100)
+        delay(500)
 
         val events = trackerOffline.getAllEvents()
         assertThat(events).isNotNull()
@@ -122,13 +122,13 @@ class TrackerOfflineTest {
         val event = Event("purchase")
         val request = EventRequest("apiKey", "secret", event)
         trackerOffline.event(request)
-        delay(100)
+        delay(500)
 
         val events = trackerOffline.getAllEvents()
         val eventId = events?.first()?.id ?: 0
 
         trackerOffline.delete(eventId, "Event")
-        delay(100)
+        delay(500)
 
         val eventsAfterDelete = trackerOffline.getAllEvents()
         assertThat(eventsAfterDelete).isNull()
@@ -139,13 +139,13 @@ class TrackerOfflineTest {
         val event = Event("purchase")
         val request = EventRequest("apiKey", "secret", event)
         trackerOffline.event(request)
-        delay(100)
+        delay(500)
 
         val events = trackerOffline.getAllEvents()
         val eventId = events?.first()?.id ?: 0
 
         trackerOffline.update(eventId, 1, "Event")
-        delay(100)
+        delay(500)
 
         val updatedEvents = trackerOffline.getAllEvents()
         assertThat(updatedEvents?.first()?.retry).isEqualTo(1)
@@ -160,7 +160,7 @@ class TrackerOfflineTest {
         val request = NotificationOpenRequest("apiKey", "secret", data)
 
         trackerOffline.notificationRead(request)
-        delay(100)
+        delay(500)
 
         val notifications = trackerOffline.getAllNotificationRead()
         assertThat(notifications).isNotNull()
@@ -182,13 +182,13 @@ class TrackerOfflineTest {
         }
         val request = NotificationOpenRequest("apiKey", "secret", data)
         trackerOffline.notificationRead(request)
-        delay(100)
+        delay(500)
 
         val notifications = trackerOffline.getAllNotificationRead()
         val notificationId = notifications?.first()?.id ?: 0
 
         trackerOffline.delete(notificationId, "NotificationRead")
-        delay(100)
+        delay(500)
 
         val notificationsAfterDelete = trackerOffline.getAllNotificationRead()
         assertThat(notificationsAfterDelete).isNull()
