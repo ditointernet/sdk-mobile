@@ -6,12 +6,16 @@ import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.EventApi
 import br.com.dito.ditosdk.service.LoginApi
 import br.com.dito.ditosdk.service.NotificationApi
+import br.com.dito.ditosdk.service.utils.SigunpRequest
+import br.com.dito.ditosdk.service.utils.EventRequest
+import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
 import com.google.common.truth.Truth.assertThat
 import com.google.gson.JsonObject
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.ofType
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
@@ -52,7 +56,7 @@ class TrackerRetryTest {
             })
         }
         val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), any()) } returns response
+        coEvery { mockLoginApi.signup(any(), any(), ofType<SigunpRequest>()) } returns response
 
         trackerRetry.uploadEvents()
 
@@ -88,7 +92,7 @@ class TrackerRetryTest {
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
         val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockEventApi.track(any(), any()) } returns response
+        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
 
         trackerRetry.uploadEvents()
 
@@ -102,7 +106,7 @@ class TrackerRetryTest {
         every { trackerOffline.getAllEvents() } returns listOf(eventOff)
 
         val response = Response.success(JsonObject())
-        coEvery { mockEventApi.track(any(), any()) } returns response
+        coEvery { mockEventApi.track(any(), ofType<EventRequest>()) } returns response
 
         trackerRetry.uploadEvents()
 
@@ -127,7 +131,7 @@ class TrackerRetryTest {
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
         val response = Response.error<JsonObject>(400, mockk())
-        coEvery { mockNotificationApi.open(any(), any()) } returns response
+        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
 
         trackerRetry.uploadEvents()
 
@@ -141,7 +145,7 @@ class TrackerRetryTest {
         every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
 
         val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.open(any(), any()) } returns response
+        coEvery { mockNotificationApi.open(any(), ofType<NotificationOpenRequest>()) } returns response
 
         trackerRetry.uploadEvents()
 

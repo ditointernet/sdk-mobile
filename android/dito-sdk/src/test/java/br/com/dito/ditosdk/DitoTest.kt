@@ -211,7 +211,7 @@ class DitoTest {
     }
 
     @Test
-    fun `notificationRead should process valid userInfo`() = runBlocking {
+    fun `notificationClick should process valid userInfo`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -222,13 +222,13 @@ class DitoTest {
             "user_id" to "user123"
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
         delay(100)
     }
 
     @Test
-    fun `notificationRead should not process when reference is empty`() = runBlocking {
+    fun `notificationClick should not process when reference is empty`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -236,13 +236,13 @@ class DitoTest {
             "reference" to ""
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
         delay(100)
     }
 
     @Test
-    fun `notificationRead should not process when notification is empty`() = runBlocking {
+    fun `notificationClick should not process when notification is empty`() = runBlocking {
         initializeDito()
 
         val userInfo = mapOf(
@@ -250,7 +250,7 @@ class DitoTest {
             "reference" to "ref123"
         )
 
-        Dito.notificationRead(userInfo)
+        Dito.notificationClick(userInfo)
 
         delay(100)
     }
@@ -305,7 +305,7 @@ class DitoTest {
 
         val result = Dito.notificationClick(userInfo)
 
-        assertThat(result.deepLink).isEmpty()
+        assertThat(result.deepLink as String).isEmpty()
     }
 
     @Test
@@ -336,19 +336,27 @@ class DitoTest {
     }
 
     @Test
-    fun `deprecated notificationRead should process valid parameters`() = runBlocking {
+    fun `notificationClick should process valid parameters`() = runBlocking {
         initializeDito()
 
-        Dito.notificationRead("notif123", "ref123")
+        val userInfo = mapOf(
+            "notification" to "notif123",
+            "reference" to "ref123"
+        )
+        Dito.notificationClick(userInfo)
 
         delay(100)
     }
 
     @Test
-    fun `deprecated notificationRead should not process null parameters`() = runBlocking {
+    fun `notificationClick should not process empty parameters`() = runBlocking {
         initializeDito()
 
-        Dito.notificationRead(null, null)
+        val userInfo = mapOf(
+            "notification" to "",
+            "reference" to ""
+        )
+        Dito.notificationClick(userInfo)
 
         delay(100)
     }

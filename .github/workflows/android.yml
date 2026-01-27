@@ -65,12 +65,17 @@ jobs:
     - name: Build Android SDK
       if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
-      run: ./gradlew build
+      run: ./gradlew :dito-sdk:build
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
       working-directory: android
-      run: ./gradlew test
+      run: ./gradlew :dito-sdk:test
+
+    - name: Run Lint
+      if: steps.check-changes.outputs.has_changes == 'true'
+      working-directory: android
+      run: ./gradlew :dito-sdk:lint
 
     - name: Upload artifacts
       if: steps.check-changes.outputs.has_changes == 'true'
@@ -127,7 +132,8 @@ jobs:
         id: version
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            VERSION="${GITHUB_REF#refs/tags/v}"
+            VERSION="${{ github.ref_name }}"
+            VERSION="${VERSION#v}"
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
           else
             echo "version=2.0.0-SNAPSHOT" >> $GITHUB_OUTPUT
@@ -138,5 +144,6 @@ jobs:
         working-directory: android
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
           VERSION_NAME: ${{ steps.version.outputs.version }}
-        run: ./gradlew :dito-sdk:build :dito-sdk:publish
+        run: ./gradlew :dito-sdk:publish --exclude-task test --exclude-task check

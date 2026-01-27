@@ -60,9 +60,14 @@ fi
 if [ "$PUBLISH_ANDROID" = true ]; then
     echo "🤖 Publishing Android SDK to Maven..."
     cd android
-    if ./gradlew publishToMavenLocal publish; then
+    export GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+    export GITHUB_ACTOR="${GITHUB_ACTOR:-}"
+    export VERSION_NAME="${VERSION_NAME:-2.0.0}"
+    if ./gradlew :dito-sdk:publish --exclude-task test --exclude-task check --exclude-task lint; then
         SUCCESSFUL_PROJECTS+=("android")
         echo "✅ Android SDK published successfully"
+        echo "📦 Published: br.com.dito:ditosdk:${VERSION_NAME}"
+        echo "🔗 Repository: https://github.com/ditointernet/sdk-mobile/packages"
     else
         FAILED_PROJECTS+=("android")
         echo "❌ Failed to publish Android SDK"
