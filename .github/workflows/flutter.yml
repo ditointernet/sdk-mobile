@@ -1,13 +1,7 @@
 name: Flutter Plugin CI
 
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'flutter/**'
-      - '.github/workflows/flutter.yml'
   pull_request:
-    branches: [ main, develop ]
     paths:
       - 'flutter/**'
       - '.github/workflows/flutter.yml'

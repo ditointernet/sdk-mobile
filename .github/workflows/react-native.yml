@@ -1,13 +1,7 @@
 name: React Native Plugin CI
 
 on:
-  push:
-    branches: [ main, develop ]
-    paths:
-      - 'react-native/**'
-      - '.github/workflows/react-native.yml'
   pull_request:
-    branches: [ main, develop ]
     paths:
       - 'react-native/**'
       - '.github/workflows/react-native.yml'
