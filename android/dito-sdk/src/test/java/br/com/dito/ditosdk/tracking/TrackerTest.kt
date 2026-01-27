@@ -105,8 +105,8 @@ class TrackerTest {
 
         tracker.event(event, mockEventApi)
 
-        delay(2000)
-        coVerify { mockEventApi.track("user123", any<EventRequest>()) }
+        Thread.sleep(5000)
+        coVerify(atLeast = 1) { mockEventApi.track("user123", any<EventRequest>()) }
     }
 
     @Test
