@@ -6,6 +6,5 @@ target 'Sample' do
   use_frameworks!
 
   # Pods for Sample
-  pod 'Toast-Swift', '~> 5.1.1'
 
 end

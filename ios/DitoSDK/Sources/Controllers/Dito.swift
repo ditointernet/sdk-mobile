@@ -141,7 +141,7 @@ public class Dito {
     userInfo: [AnyHashable: Any],
     token: String
   ) {
-    notificationReceived(with: userInfo, token: token)
+      notificationReceived(with: userInfo, token: token)
   }
 
   /// Called when a notification arrives (before click)

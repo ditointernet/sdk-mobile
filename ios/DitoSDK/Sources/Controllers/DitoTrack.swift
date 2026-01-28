@@ -27,12 +27,12 @@ class DitoTrack {
 
   private func completeTracking(data: DitoEvent) {
     DispatchQueue.global().async {
-      let eventRequest = createEventRequest(from: data)
-      guard let reference = getValidReference() else {
-        handleTrackingWithoutReference(eventRequest: eventRequest)
+      let eventRequest = self.createEventRequest(from: data)
+      guard let reference = self.getValidReference() else {
+        self.handleTrackingWithoutReference(eventRequest: eventRequest)
         return
       }
-      performTracking(reference: reference, eventRequest: eventRequest)
+      self.performTracking(reference: reference, eventRequest: eventRequest)
     }
   }
 

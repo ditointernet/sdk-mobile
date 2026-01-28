@@ -10,7 +10,7 @@ Pod::Spec.new do |s|
   s.source_files = '*.{h,m,swift}'
   s.public_header_files = '*.h'
   s.dependency 'React-Core'
-  s.dependency 'DitoSDK', :path => '../../ios'
+  s.dependency 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios'
   s.platform = :ios, '16.0'
   s.swift_version = '6.1'
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'VALID_ARCHS[sdk=iphonesimulator*]' => 'x86_64' }

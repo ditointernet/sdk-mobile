@@ -126,10 +126,6 @@ class DitoNotification {
     DitoDataNotification(identifier: identifier, reference: reference)
   }
 
-  private func createNotificationRequest(apiKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
-    DitoNotificationOpenRequest(platformApiKey: apiKey, sha1Signature: signature, data: data)
-  }
-
   private func processNotificationClick(notificationId: String, notificationRequest: DitoNotificationOpenRequest) {
     guard !notificationId.isEmpty else { return }
     service.read(notificationId: notificationId, data: notificationRequest) { [weak self] (register, error) in
