@@ -48,11 +48,27 @@ npm install @ditointernet/dito-sdk
 yarn add @ditointernet/dito-sdk
 ```
 
+**Nota para iOS**: O SDK iOS é automaticamente instalado via CocoaPods quando você executa `pod install` no diretório `ios/` do seu projeto React Native, pois o plugin já está configurado para usar o monorepo com `:subdirectory => 'ios'`.
+
 ## ⚙️ Configuração Inicial
 
 ### 1. Configure as plataformas nativas
 
-Siga as instruções de configuração para [iOS](../ios/README.md) e [Android](../android/README.md).
+#### iOS
+
+Execute `pod install` no diretório `ios/` do seu projeto React Native:
+
+```bash
+cd ios
+pod install
+cd ..
+```
+
+O SDK iOS será instalado automaticamente do monorepo. Para mais detalhes, consulte o [iOS README](../ios/README.md).
+
+#### Android
+
+Siga as instruções de configuração em [Android README](../android/README.md).
 
 ### 2. Inicialize o SDK
 
@@ -507,6 +523,7 @@ Se você estiver enfrentando problemas de performance, verifique:
 **iOS:**
 - Certifique-se de que o iOS deployment target é pelo menos 16.0
 - Execute `pod install` no diretório `ios/` do seu projeto React Native
+- O SDK iOS é instalado automaticamente do monorepo via `:subdirectory => 'ios'`
 
 ### Eventos não aparecem no painel Dito
 

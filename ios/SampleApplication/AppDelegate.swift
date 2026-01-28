@@ -8,14 +8,19 @@ import UserNotifications
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
   var fcmToken: String?
+  var window: UIWindow?
 
   func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication
       .LaunchOptionsKey: Any]?
   ) -> Bool {
+    print("🔵 AppDelegate: didFinishLaunchingWithOptions called")
+
     // Configura o Firebase primeiro (necessário para Analytics e Messaging)
     FirebaseApp.configure()
+    print("✅ Firebase configured")
+
     Analytics.setAnalyticsCollectionEnabled(true)
     // Registra evento de abertura do app no Analytics
     Analytics.logEvent(AnalyticsEventAppOpen, parameters: nil)
@@ -24,39 +29,59 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     Messaging.messaging().delegate = self
 
     // Inicializa o Dito SDK (configurações internas do SDK)
-    Dito.configure(<#T##self: Dito##Dito#>)
+    Dito.shared.configure()
 
     // Configura o centro de notificações e registra o app para receber push
     UNUserNotificationCenter.current().delegate = self
     registerForPushNotifications(application: application)
 
+    // FALLBACK: Se não estiver usando Scenes (iOS 12 ou configuração antiga)
+    // Criar window manualmente
+    if window == nil {
+      print("⚠️ AppDelegate: Window is nil, creating manually (not using Scenes)")
+      window = UIWindow(frame: UIScreen.main.bounds)
+
+      let storyboard = UIStoryboard(name: "Main", bundle: nil)
+      if let initialViewController = storyboard.instantiateInitialViewController() {
+        window?.rootViewController = initialViewController
+        window?.makeKeyAndVisible()
+        print("✅ AppDelegate: Window created and initial view controller loaded")
+      } else {
+        print("❌ AppDelegate: Failed to load initial view controller from Main storyboard")
+      }
+    }
+
+    print("✅ AppDelegate: didFinishLaunchingWithOptions completed successfully")
     return true
   }
 
-  func application(
-    _ application: UIApplication,
-    configurationForConnecting connectingSceneSession: UISceneSession,
-    options: UIScene.ConnectionOptions
-  ) -> UISceneConfiguration {
-    return UISceneConfiguration(
-      name: "Default Configuration",
-      sessionRole: connectingSceneSession.role
-    )
-  }
 
   func application(
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
   ) {
+    print("✅ AppDelegate: APNS token recebido")
+
     // IMPORTANTE: setar o token APNS no Firebase Messaging ANTES de solicitar o token FCM
     Messaging.messaging().apnsToken = deviceToken
+    print("✅ AppDelegate: APNS token configurado no Firebase Messaging")
 
-    Messaging.messaging().token { [weak self] fcmToken, error in
-      if let error = error {
-        print("Error fetching FCM registration token: \(error)")
-      } else if let fcmToken = fcmToken {
-        self?.fcmToken = fcmToken
-        print("FCM registration token: \(fcmToken)")
+    // Aguardar um pouco antes de solicitar o FCM token
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+      Messaging.messaging().token { fcmToken, error in
+        if let error = error {
+          print("❌ AppDelegate: Error fetching FCM registration token: \(error.localizedDescription)")
+        } else if let fcmToken = fcmToken {
+          self?.fcmToken = fcmToken
+          print("✅ AppDelegate: FCM registration token obtido: \(fcmToken)")
+
+          // Notificar ViewController se necessário
+          NotificationCenter.default.post(
+            name: NSNotification.Name("FCMTokenReceived"),
+            object: nil,
+            userInfo: ["token": fcmToken]
+          )
+        }
       }
     }
   }
@@ -65,9 +90,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     _ application: UIApplication,
     didFailToRegisterForRemoteNotificationsWithError error: Error
   ) {
-    print(
-      "Failed to register for remote notifications: \(error.localizedDescription)"
-    )
+    print("❌ AppDelegate: Failed to register for remote notifications: \(error.localizedDescription)")
+
+    // No simulador, push notifications não funcionam completamente
+    // Mas ainda podemos tentar obter o FCM token (pode funcionar em alguns casos)
+    #if targetEnvironment(simulator)
+    print("⚠️ AppDelegate: Executando no simulador - push notifications limitadas")
+    print("⚠️ AppDelegate: Tentando obter FCM token mesmo assim...")
+
+    // Tentar obter FCM token mesmo sem APNS (pode não funcionar)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+      Messaging.messaging().token { fcmToken, error in
+        if let error = error {
+          print("❌ AppDelegate: FCM token não disponível no simulador: \(error.localizedDescription)")
+          print("💡 AppDelegate: Para testar push notifications, use um dispositivo físico")
+        } else if let fcmToken = fcmToken {
+          self?.fcmToken = fcmToken
+          print("✅ AppDelegate: FCM token obtido no simulador: \(fcmToken)")
+        }
+      }
+    }
+    #else
+    print("💡 AppDelegate: Verifique se o entitlement 'aps-environment' está configurado no target")
+    #endif
   }
 
   // MARK: Background remote notification (silent / content-available)
@@ -79,6 +124,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
+    // Salvar notificação para debug
+    NotificationDebugHelper.saveNotification(userInfo)
+
     let callNotificationReceived: (String) -> Void = { token in
       // Garantir que o evento de recebimento seja disparado mesmo em background
       Dito.notificationReceived(userInfo: userInfo, token: token)
@@ -115,6 +163,9 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
     let userInfo = notification.request.content.userInfo
+
+    // Salvar notificação para debug
+    NotificationDebugHelper.saveNotification(userInfo)
 
     if let token = fcmToken {
       Dito.notificationReceived(userInfo: userInfo, token: token)
@@ -162,6 +213,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
+
+    // Salvar notificação para debug (se ainda não foi salva)
+    NotificationDebugHelper.saveNotification(userInfo)
+
     // Notifica o Dito SDK sobre o clique na notificação
     Dito.notificationClick(userInfo: userInfo)
 

@@ -32,7 +32,13 @@ Com o DitoSDK você pode:
 #### 1. Adicione o DitoSDK ao Podfile
 
 ```ruby
-pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_ios.git', :branch => 'main'
+pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios', :tag => 'v2.0.0'
+```
+
+Ou para usar uma branch específica:
+
+```ruby
+pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios', :branch => 'main'
 ```
 
 #### 2. Instale as dependências
@@ -47,12 +53,12 @@ pod install
 
 1. Abra seu projeto no Xcode
 2. Vá em **File > Add Packages...**
-3. Adicione o repositório: `https://github.com/ditointernet/dito_ios.git`
-4. Selecione a branch `main`
+3. Adicione o repositório: `https://github.com/ditointernet/dito_sdk_flutter.git`
+4. Selecione a branch `main` ou a tag `v2.0.0`
 
 #### 2. Adicione o pacote ao seu target
 
-Selecione o target do seu app e adicione o pacote `DitoSDK`.
+Selecione o target do seu app e adicione o pacote `DitoSDK` do diretório `ios/`.
 
 ## ⚙️ Configuração Inicial
 

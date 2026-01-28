@@ -15,7 +15,7 @@ A new Flutter plugin project.
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'DitoSDK', :path => '../../ios'
+  s.dependency 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios'
   s.platform = :ios, '13.0'
 
   # Flutter.framework does not contain a i386 slice.
