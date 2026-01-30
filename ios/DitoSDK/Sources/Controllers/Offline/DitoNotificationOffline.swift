@@ -58,7 +58,7 @@ struct DitoNotificationOffline {
   }
 
   var reference: String? {
-    return identifyOffline.getIdentify?.id
+    return identifyOffline.getIdentify?.reference
   }
 
   var getNotificationRegister: NotificationDefaults? {

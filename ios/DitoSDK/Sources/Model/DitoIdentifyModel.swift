@@ -6,7 +6,11 @@ struct DitoIdentifyModel: Codable {
   let signedRequest: String
   let status: Int
 
-  private enum CodingKeys: String, CodingKey {
+  private enum RootKeys: String, CodingKey {
+    case data
+  }
+
+  private enum DataKeys: String, CodingKey {
     case reference
     case signedRequest = "signed_request"
     case status
@@ -17,11 +21,11 @@ struct DitoIdentifyModel: Codable {
 
     reference = try values.decodeIfPresent(String.self, forKey: .reference)
       .unwrappedValue
-    signedRequest = try values.decodeIfPresent(
+    signedRequest = try dataContainer.decodeIfPresent(
       String.self,
       forKey: .signedRequest
     ).unwrappedValue
-    status = try values.decodeIfPresent(Int.self, forKey: .status)
+    status = try dataContainer.decodeIfPresent(Int.self, forKey: .status)
       .unwrappedValue
   }
 }
