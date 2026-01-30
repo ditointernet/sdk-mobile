@@ -15,7 +15,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_IdentifyURL_IsCorrect() {
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             userData: nil
         )
@@ -42,7 +42,7 @@ class DitoServiceTests: XCTestCase {
     func testDitoRouterService_TrackURL_IsCorrect() {
         let event = DitoEvent(action: "test_action")
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             event: event
         )
@@ -66,7 +66,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_RegisterTokenURL_IsCorrect() {
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             token: "fcm_token"
         )
@@ -90,7 +90,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_UnregisterTokenURL_HasTrailingSlash() {
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             token: "fcm_token"
         )
@@ -115,7 +115,7 @@ class DitoServiceTests: XCTestCase {
     func testDitoRouterService_HTTPBodyIsEncoded() {
         let event = DitoEvent(action: "test_action", revenue: 100.0)
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             event: event
         )
@@ -145,7 +145,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_Headers_AreSetCorrectly() {
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             userData: nil
         )
@@ -173,7 +173,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_Timeout_IsSetCorrectly() {
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             userData: nil
         )
@@ -194,7 +194,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoRouterService_CachePolicy_IsSetCorrectly() {
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             userData: nil
         )
@@ -221,7 +221,7 @@ class DitoServiceTests: XCTestCase {
         )
 
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             event: event
         )
@@ -243,7 +243,7 @@ class DitoServiceTests: XCTestCase {
 
     func testDitoTokenRequest_HasAllRequiredFields() {
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             token: "fcm_token"
         )
@@ -274,7 +274,7 @@ class DitoServiceTests: XCTestCase {
         )
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_sig",
             userData: user
         )

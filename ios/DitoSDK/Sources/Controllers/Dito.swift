@@ -2,16 +2,21 @@ import Foundation
 
 public class Dito {
   public static let shared = Dito()
-  static var apiKey: String = ""
-  static var apiSecret: String = ""
+  static var appKey: String = ""
+  static var appSecret: String = ""
   static var signature: String = ""
   private var reachability = try! Reachability()
   private lazy var retry = DitoRetry()
 
+  public static func enableDebugMode(_ enabled: Bool = true) {
+    DitoLogger.isDebugEnabled = enabled
+  }
+
   init() {
-    Dito.apiKey = Bundle.main.apiKey
-    Dito.apiSecret = Bundle.main.apiSecret
-    Dito.signature = Bundle.main.apiSecret.sha1
+    Dito.appKey = Bundle.main.appKey
+    let data = Bundle.main.appSecret.data(using: .utf8) ?? Data()
+    Dito.appSecret = data.base64EncodedString()
+    Dito.signature = Bundle.main.appSecret.sha1
   }
 
   public func configure() {
@@ -141,7 +146,11 @@ public class Dito {
     userInfo: [AnyHashable: Any],
     token: String
   ) {
-      notificationReceived(with: userInfo, token: token)
+    let notificationReceived = createNotificationReceived(from: userInfo)
+    DispatchQueue.main.async {
+      identifyUserForNotification(notificationReceived)
+      trackNotificationReceived(notificationReceived, token: token)
+    }
   }
 
   /// Called when a notification arrives (before click)
@@ -154,8 +163,8 @@ public class Dito {
     with userInfo: [AnyHashable: Any],
     token: String
   ) {
+    let notificationReceived = createNotificationReceived(from: userInfo)
     DispatchQueue.main.async {
-      let notificationReceived = createNotificationReceived(from: userInfo)
       identifyUserForNotification(notificationReceived)
       trackNotificationReceived(notificationReceived, token: token)
     }
@@ -230,7 +239,17 @@ public class Dito {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> DitoNotificationReceived {
-    return notificationClick(with: userInfo, callback: callback)
+    let notificationReceived = DitoNotificationReceived(with: userInfo)
+    DispatchQueue.main.async {
+      let notificationController = DitoNotification()
+      notificationController.notificationClick(
+        notificationId: notificationReceived.notification,
+        reference: notificationReceived.reference,
+        identifier: notificationReceived.identifier
+      )
+    }
+    callback?(notificationReceived.deeplink)
+    return notificationReceived
   }
 
   /// Called when a notification is clicked

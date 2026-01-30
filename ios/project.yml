@@ -13,16 +13,32 @@ targets:
           - "*.md"
           - "ViewControllerComplete.swift"
           - "Main.storyboard"
+          - "NotificationDebugViewController.swift"
+          - "EnvLoader.swift"
     dependencies:
       - target: DitoSDK
+      - framework: Pods/FirebaseAnalytics/Frameworks/FirebaseAnalytics.xcframework
+        embed: false
+      - framework: Pods/GoogleAppMeasurement/Frameworks/GoogleAppMeasurement.xcframework
+        embed: false
+      - framework: Pods/GoogleAppMeasurement/Frameworks/GoogleAppMeasurementIdentitySupport.xcframework
+        embed: false
+      - framework: Pods/GoogleAdsOnDeviceConversion/Frameworks/GoogleAdsOnDeviceConversion.xcframework
+        embed: false
     configFiles:
       Debug: Pods/Target Support Files/Pods-Sample/Pods-Sample.debug.xcconfig
       Release: Pods/Target Support Files/Pods-Sample/Pods-Sample.release.xcconfig
     preBuildScripts:
-      - script: "${PODS_ROOT}/Target Support Files/Pods-Sample/Pods-Sample-frameworks.sh"
+      - script: "\"${PODS_ROOT}/Target Support Files/Pods-Sample/Pods-Sample-frameworks.sh\""
         name: "[CP] Embed Pods Frameworks"
         runOnlyWhenInstalling: false
         showEnvVars: false
+        outputFiles:
+          - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseCore.framework"
+          - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseCoreInternal.framework"
+          - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseMessaging.framework"
+          - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseInstallations.framework"
+          - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseAnalytics.framework"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.samplesdk

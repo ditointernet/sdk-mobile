@@ -14,13 +14,16 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         print("✅ SceneDelegate: WindowScene created successfully")
 
         let window = UIWindow(windowScene: windowScene)
-        
+
         let viewController = ViewController()
-        window.rootViewController = viewController
-        
+        let navigationController = UINavigationController(rootViewController: viewController)
+        navigationController.navigationBar.prefersLargeTitles = false
+
+        window.rootViewController = navigationController
+
         self.window = window
         window.makeKeyAndVisible()
-        print("✅ SceneDelegate: Window created with ViewController (no storyboard)")
+        print("✅ SceneDelegate: Window created with NavigationController (no storyboard)")
     }
 
     func sceneDidDisconnect(_ scene: UIScene) {

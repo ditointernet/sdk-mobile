@@ -21,11 +21,15 @@ class DitoIdentify {
     data: DitoUser? = nil,
     sha1Signature: String? = nil
   ) {
+    #if DEBUG
+    DitoLogger.information("🆔 [IDENTIFY] user_id=\(id), email=\(data?.email ?? "nil")")
+    #endif
+
     let resolvedSignature = sha1Signature ?? Dito.signature
-    let apiKey = Dito.apiKey
+    let appKey = Dito.appKey
     identifyOffline.initiateIdentify()
     let signupRequest = createSignupRequest(
-      apiKey: apiKey,
+      appKey: appKey,
       signature: resolvedSignature,
       userData: data
     )
@@ -37,12 +41,12 @@ class DitoIdentify {
   }
 
   private func createSignupRequest(
-    apiKey: String,
+    appKey: String,
     signature: String,
     userData: DitoUser?
   ) -> DitoSignupRequest {
     DitoSignupRequest(
-      platformApiKey: apiKey,
+      platformAppKey: appKey,
       sha1Signature: signature,
       userData: userData
     )
@@ -85,6 +89,9 @@ class DitoIdentify {
     identify: DitoIdentifyModel?
   ) {
     guard let reference = identify?.reference else {
+      #if DEBUG
+      DitoLogger.warning("⚠️ [IDENTIFY] Response sem reference - salvando offline")
+      #endif
       identifyOffline.identify(
         id: id,
         params: signupRequest,
@@ -93,13 +100,22 @@ class DitoIdentify {
       )
       return
     }
+
+    #if DEBUG
+    DitoLogger.debug("💾 [IDENTIFY] Salvando reference=\(reference)")
+    #endif
+
     identifyOffline.identify(
       id: id,
       params: signupRequest,
       reference: reference,
       send: true
     )
-    DitoLogger.information("Identify realizado")
+
+    #if DEBUG
+    DitoLogger.information("✅ [IDENTIFY] Sucesso - reference salva")
+    #endif
+
     retry.loadOffline()
   }
 }

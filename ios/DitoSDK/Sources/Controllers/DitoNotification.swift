@@ -21,31 +21,49 @@ class DitoNotification {
   /// Registers a Firebase Cloud Messaging (FCM) token
   /// - Parameter token: The FCM token from Firebase Messaging
   func registerToken(token: String) {
-    let apiKey = Dito.apiKey
+    #if DEBUG
+    DitoLogger.information("📱 [REGISTER TOKEN] token=\(token.prefix(20))...")
+    #endif
+
+    let appKey = Dito.appKey
     let signature = Dito.signature
-    DispatchQueue.global().async {
-      let tokenRequest = self.createTokenRequest(apiKey: apiKey, signature: signature, token: token)
-      self.processTokenRegistration(tokenRequest: tokenRequest)
+
+    if notificationOffline.isSaving {
+      #if DEBUG
+      DitoLogger.debug("⏳ [REGISTER TOKEN] Aguardando identify completar...")
+      #endif
+      notificationOffline.setRegisterAsCompletion {
+        DispatchQueue.global().async {
+          let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
+          self.processTokenRegistration(tokenRequest: tokenRequest)
+        }
+      }
+    } else {
+      DispatchQueue.global().async {
+        let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
+        self.processTokenRegistration(tokenRequest: tokenRequest)
+      }
     }
   }
 
-  private func createTokenRequest(apiKey: String, signature: String, token: String) -> DitoTokenRequest {
-    DitoTokenRequest(platformApiKey: apiKey, sha1Signature: signature, token: token)
+  private func createTokenRequest(appKey: String, signature: String, token: String) -> DitoTokenRequest {
+    DitoTokenRequest(platformAppKey: appKey, sha1Signature: signature, token: token)
   }
 
   private func processTokenRegistration(tokenRequest: DitoTokenRequest) {
     guard let reference = notificationOffline.reference, !reference.isEmpty else {
       notificationOffline.notificationRegister(tokenRequest)
-      DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
+      DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
       return
     }
+
     service.register(reference: reference, data: tokenRequest) { [weak self] (register, error) in
       guard let self = self else { return }
       if let error = error {
         self.notificationOffline.notificationRegister(tokenRequest)
         DitoLogger.error(error.localizedDescription)
       } else {
-        DitoLogger.information("Notification - Token registrado")
+        DitoLogger.information("✅ [REGISTER TOKEN] Sucesso")
       }
     }
   }
@@ -53,27 +71,45 @@ class DitoNotification {
   /// Unregisters a Firebase Cloud Messaging (FCM) token
   /// - Parameter token: The FCM token to unregister
   func unregisterToken(token: String) {
-    let apiKey = Dito.apiKey
+    #if DEBUG
+    DitoLogger.information("📴 [UNREGISTER TOKEN] token=\(token.prefix(20))...")
+    #endif
+
+    let appKey = Dito.appKey
     let signature = Dito.signature
-    DispatchQueue.global().async {
-      let tokenRequest = self.createTokenRequest(apiKey: apiKey, signature: signature, token: token)
-      self.processTokenUnregistration(tokenRequest: tokenRequest)
+
+    if notificationOffline.isSaving {
+      #if DEBUG
+      DitoLogger.debug("⏳ [UNREGISTER TOKEN] Aguardando identify completar...")
+      #endif
+      notificationOffline.setRegisterAsCompletion {
+        DispatchQueue.global().async {
+          let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
+          self.processTokenUnregistration(tokenRequest: tokenRequest)
+        }
+      }
+    } else {
+      DispatchQueue.global().async {
+        let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
+        self.processTokenUnregistration(tokenRequest: tokenRequest)
+      }
     }
   }
 
   private func processTokenUnregistration(tokenRequest: DitoTokenRequest) {
     guard let reference = notificationOffline.reference, !reference.isEmpty else {
       notificationOffline.notificationUnregister(tokenRequest)
-      DitoLogger.warning("Unregister Token - Antes de cancelar um token é preciso identificar o usuário.")
+      DitoLogger.warning("⚠️ [UNREGISTER TOKEN] Usuário não identificado - salvando offline")
       return
     }
+
     service.unregister(reference: reference, data: tokenRequest) { [weak self] (register, error) in
       guard let self = self else { return }
       if let error = error {
         self.notificationOffline.notificationUnregister(tokenRequest)
         DitoLogger.error(error.localizedDescription)
       } else {
-        DitoLogger.information("Notification - Token cancelado")
+        DitoLogger.information("✅ [UNREGISTER TOKEN] Sucesso")
       }
     }
   }
@@ -81,11 +117,16 @@ class DitoNotification {
   /// Called when notification is received (before click)
   /// - Parameter userInfo: The notification data dictionary
   func notificationRead(with userInfo: [AnyHashable: Any]) {
-    let apiKey = Dito.apiKey
+    let appKey = Dito.appKey
     let signature = Dito.signature
     DispatchQueue.global(qos: .background).async {
       let notificationData = self.createNotificationData(from: userInfo)
-      let notificationRequest = self.createNotificationRequest(apiKey: apiKey, signature: signature, data: notificationData)
+
+      #if DEBUG
+      DitoLogger.information("🔔 [NOTIFICATION RECEIVED] id=\(notificationData.notification)")
+      #endif
+
+      let notificationRequest = self.createNotificationRequest(appKey: appKey, signature: signature, data: notificationData)
       self.processNotificationRead(notificationData: notificationData, notificationRequest: notificationRequest)
     }
   }
@@ -94,16 +135,15 @@ class DitoNotification {
     DitoDataNotification(from: userInfo)
   }
 
-  private func createNotificationRequest(apiKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
+  private func createNotificationRequest(appKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
     DitoNotificationOpenRequest(
-      platformApiKey: apiKey,
+      platformAppKey: appKey,
       sha1Signature: signature,
       data: data
     )
   }
 
   private func processNotificationRead(notificationData: DitoDataNotification, notificationRequest: DitoNotificationOpenRequest) {
-    DitoLogger.information("Notification - Received: \(notificationData.notification)")
     notificationOffline.notificationRead(notificationRequest)
   }
 
@@ -113,11 +153,15 @@ class DitoNotification {
   ///   - reference: The user reference
   ///   - identifier: The identifier
   func notificationClick(notificationId: String, reference: String, identifier: String) {
-    let apiKey = Dito.apiKey
+    #if DEBUG
+    DitoLogger.information("👆 [NOTIFICATION CLICK] id=\(notificationId)")
+    #endif
+
+    let appKey = Dito.appKey
     let signature = Dito.signature
     DispatchQueue.global(qos: .background).async {
       let data = self.createNotificationData(identifier: identifier, reference: reference)
-      let notificationRequest = self.createNotificationRequest(apiKey: apiKey, signature: signature, data: data)
+      let notificationRequest = self.createNotificationRequest(appKey: appKey, signature: signature, data: data)
       self.processNotificationClick(notificationId: notificationId, notificationRequest: notificationRequest)
     }
   }
@@ -128,13 +172,14 @@ class DitoNotification {
 
   private func processNotificationClick(notificationId: String, notificationRequest: DitoNotificationOpenRequest) {
     guard !notificationId.isEmpty else { return }
+
     service.read(notificationId: notificationId, data: notificationRequest) { [weak self] (register, error) in
       guard let self = self else { return }
       if let error = error {
         self.notificationOffline.notificationRead(notificationRequest)
         DitoLogger.error(error.localizedDescription)
       } else {
-        DitoLogger.information("Notification - Registro do notification push enviado")
+        DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
       }
     }
   }

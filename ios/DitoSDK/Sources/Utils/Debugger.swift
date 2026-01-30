@@ -32,9 +32,9 @@ struct Debugger {
 
     switch debugState {
     case .verbose:
-      print(info)
+      DitoLogger.debug(info)
     case .path:
-      if type == .path { print(info) }
+      if type == .path { DitoLogger.debug(info) }
     case .none:
       return
     }

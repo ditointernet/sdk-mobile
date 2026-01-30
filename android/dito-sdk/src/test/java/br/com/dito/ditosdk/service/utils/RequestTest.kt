@@ -17,11 +17,11 @@ class RequestTest {
     }
 
     @Test
-    fun `SigunpRequest should store platformApiKey`() {
+    fun `SigunpRequest should store platformAppKey`() {
         val identify = Identify("user123")
         val request = SigunpRequest("apiKey", "secret", identify)
 
-        assertThat(request.platformApiKey).isEqualTo("apiKey")
+        assertThat(request.platformAppKey).isEqualTo("apiKey")
     }
 
     @Test

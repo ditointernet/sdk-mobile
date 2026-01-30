@@ -62,7 +62,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -134,7 +134,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -182,7 +182,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -251,7 +251,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )

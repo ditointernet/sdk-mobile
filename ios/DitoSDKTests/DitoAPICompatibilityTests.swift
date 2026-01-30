@@ -7,7 +7,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         let router = DitoRouterService.unregister(
             reference: "test_ref",
             data: DitoTokenRequest(
-                platformApiKey: "test_key",
+                platformAppKey: "test_key",
                 sha1Signature: "test_sig",
                 token: "test_token"
             )
@@ -29,7 +29,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         let router = DitoRouterService.open(
             notificationId: "notif_123",
             data: DitoNotificationOpenRequest(
-                platformApiKey: "test_key",
+                platformAppKey: "test_key",
                 sha1Signature: "test_sig",
                 data: DitoDataNotification(
                     identifier: "123",
@@ -62,7 +62,7 @@ class DitoAPICompatibilityTests: XCTestCase {
 
     func testDitoTokenRequest_JSONStructure_MatchesAndroid() {
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_api_key",
+            platformAppKey: "test_api_key",
             sha1Signature: "test_signature",
             token: "test_fcm_token"
         )
@@ -102,7 +102,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         )
 
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_api_key",
+            platformAppKey: "test_api_key",
             sha1Signature: "test_signature",
             event: event
         )
@@ -144,7 +144,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         )
 
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_api_key",
+            platformAppKey: "test_api_key",
             sha1Signature: "test_signature",
             event: event
         )
@@ -220,28 +220,28 @@ class DitoAPICompatibilityTests: XCTestCase {
         let testCases: [(String, DitoRouterService, String)] = [
             (
                 "Identify",
-                .identify(network: "portal", id: "user123", data: DitoSignupRequest(platformApiKey: "key", sha1Signature: "sig", userData: nil)),
+                .identify(network: "portal", id: "user123", data: DitoSignupRequest(platformAppKey: "key", sha1Signature: "sig", userData: nil)),
                 "https://login.plataformasocial.com.br/users/portal/user123/signup"
             ),
             (
                 "Track",
-                .track(reference: "ref123", data: DitoEventRequest(platformApiKey: "key", sha1Signature: "sig", event: DitoEvent(action: "test"))),
+                .track(reference: "ref123", data: DitoEventRequest(platformAppKey: "key", sha1Signature: "sig", event: DitoEvent(action: "test"))),
                 "https://events.plataformasocial.com.br/users/ref123"
             ),
             (
                 "Register Token",
-                .register(reference: "ref123", data: DitoTokenRequest(platformApiKey: "key", sha1Signature: "sig", token: "token")),
+                .register(reference: "ref123", data: DitoTokenRequest(platformAppKey: "key", sha1Signature: "sig", token: "token")),
                 "https://notification.plataformasocial.com.br/users/ref123/mobile-tokens/"
             ),
             (
                 "Unregister Token",
-                .unregister(reference: "ref123", data: DitoTokenRequest(platformApiKey: "key", sha1Signature: "sig", token: "token")),
+                .unregister(reference: "ref123", data: DitoTokenRequest(platformAppKey: "key", sha1Signature: "sig", token: "token")),
                 "https://notification.plataformasocial.com.br/users/ref123/mobile-tokens/disable/"
             ),
             (
                 "Open Notification",
                 .open(notificationId: "notif123", data: DitoNotificationOpenRequest(
-                    platformApiKey: "key",
+                    platformAppKey: "key",
                     sha1Signature: "sig",
                     data: DitoDataNotification(
                         identifier: "123",

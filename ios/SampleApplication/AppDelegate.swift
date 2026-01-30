@@ -15,6 +15,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication
       .LaunchOptionsKey: Any]?
   ) -> Bool {
+    #if DEBUG
+    Dito.enableDebugMode(true)``
+    print("🐛 Debug mode enabled for Dito SDK")
+    #endif
+
     print("🔵 AppDelegate: didFinishLaunchingWithOptions called")
 
     // Configura o Firebase primeiro (necessário para Analytics e Messaging)
@@ -40,11 +45,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     if window == nil {
       print("⚠️ AppDelegate: Window is nil, creating manually (not using Scenes)")
       window = UIWindow(frame: UIScreen.main.bounds)
-      
+
       let viewController = ViewController()
-      window?.rootViewController = viewController
+      let navigationController = UINavigationController(rootViewController: viewController)
+      navigationController.navigationBar.prefersLargeTitles = false
+
+      window?.rootViewController = navigationController
       window?.makeKeyAndVisible()
-      print("✅ AppDelegate: Window created with ViewController (no storyboard)")
+      print("✅ AppDelegate: Window created with NavigationController (no storyboard)")
     }
 
     print("✅ AppDelegate: didFinishLaunchingWithOptions completed successfully")
