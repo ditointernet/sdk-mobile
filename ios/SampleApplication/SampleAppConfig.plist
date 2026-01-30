@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>IDENTIFY_ID</key>
+	<string>11111111111</string>
+	<key>IDENTIFY_NAME</key>
+	<string>John Doe</string>
+	<key>IDENTIFY_EMAIL</key>
+	<string>john.doe@example.com</string>
+	<key>IDENTIFY_CUSTOM_DATA</key>
+	<string>{"age": 30, "city": "São Paulo"}</string>
+	<key>TRACK_ACTION</key>
+	<string>purchase</string>
+	<key>TRACK_DATA</key>
+	<string>{"product_id": "123", "price": 99.99}</string>
+</dict>
+</plist>

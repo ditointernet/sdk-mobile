@@ -10,31 +10,13 @@ class InfoPlistHelper {
     }
 
     static func loadSampleAppConfig() -> [String: String] {
-        var config: [String: String] = [:]
+        var config = PlistLoader.loadSampleAppConfig()
 
         if let apiKey = getValue(forKey: "ApiKey") {
             config["API_KEY"] = apiKey
         }
         if let apiSecret = getValue(forKey: "ApiSecret") {
             config["API_SECRET"] = apiSecret
-        }
-        if let identifyId = getValue(forKey: "IDENTIFY_ID") {
-            config["IDENTIFY_ID"] = identifyId
-        }
-        if let identifyName = getValue(forKey: "IDENTIFY_NAME") {
-            config["IDENTIFY_NAME"] = identifyName
-        }
-        if let identifyEmail = getValue(forKey: "IDENTIFY_EMAIL") {
-            config["IDENTIFY_EMAIL"] = identifyEmail
-        }
-        if let identifyCustomData = getValue(forKey: "IDENTIFY_CUSTOM_DATA") {
-            config["IDENTIFY_CUSTOM_DATA"] = identifyCustomData
-        }
-        if let trackAction = getValue(forKey: "TRACK_ACTION") {
-            config["TRACK_ACTION"] = trackAction
-        }
-        if let trackData = getValue(forKey: "TRACK_DATA") {
-            config["TRACK_DATA"] = trackData
         }
 
         return config
@@ -272,7 +254,12 @@ class ViewController: UIViewController {
     }
 
     private func loadDefaultValues() {
-        identifyIdField.text = config["IDENTIFY_ID"]
+        if let email = config["IDENTIFY_EMAIL"], !email.isEmpty {
+            identifyIdField.text = email.sha1()
+        } else {
+            identifyIdField.text = config["IDENTIFY_ID"]
+        }
+
         identifyNameField.text = config["IDENTIFY_NAME"]
         identifyEmailField.text = config["IDENTIFY_EMAIL"]
         identifyCustomDataField.text = config["IDENTIFY_CUSTOM_DATA"]

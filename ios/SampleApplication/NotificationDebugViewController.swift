@@ -3,6 +3,8 @@ import DitoSDK
 
 class NotificationDebugViewController: UIViewController {
 
+    private let scrollView = UIScrollView()
+    private let contentStack = UIStackView()
     private let countLabel = UILabel()
     private let refreshButton = UIButton(type: .system)
     private let latestButton = UIButton(type: .system)
@@ -24,18 +26,36 @@ class NotificationDebugViewController: UIViewController {
         title = "🔔 Debug de Notificações"
         view.backgroundColor = .systemBackground
 
-        // Configurar botão de fechar
         navigationItem.leftBarButtonItem = UIBarButtonItem(
             barButtonSystemItem: .close,
             target: self,
             action: #selector(closeTapped)
         )
 
-        // Count Label
+        scrollView.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.translatesAutoresizingMaskIntoConstraints = false
+        contentStack.axis = .vertical
+        contentStack.spacing = 16
+
+        view.addSubview(scrollView)
+        scrollView.addSubview(contentStack)
+
+        NSLayoutConstraint.activate([
+            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+
+            contentStack.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 16),
+            contentStack.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 16),
+            contentStack.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -16),
+            contentStack.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -16),
+            contentStack.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -32)
+        ])
+
         countLabel.font = .boldSystemFont(ofSize: 16)
         countLabel.translatesAutoresizingMaskIntoConstraints = false
 
-        // Buttons
         refreshButton.setTitle("Atualizar", for: .normal)
         refreshButton.addTarget(self, action: #selector(refreshTapped), for: .touchUpInside)
         refreshButton.translatesAutoresizingMaskIntoConstraints = false
@@ -44,21 +64,32 @@ class NotificationDebugViewController: UIViewController {
         latestButton.addTarget(self, action: #selector(latestTapped), for: .touchUpInside)
         latestButton.translatesAutoresizingMaskIntoConstraints = false
 
-        // TableView
+        let buttonStack = UIStackView(arrangedSubviews: [refreshButton, latestButton])
+        buttonStack.axis = .horizontal
+        buttonStack.spacing = 8
+        buttonStack.distribution = .fillEqually
+        buttonStack.translatesAutoresizingMaskIntoConstraints = false
+
         tableView.delegate = self
         tableView.dataSource = self
         tableView.register(UITableViewCell.self, forCellReuseIdentifier: "NotificationCell")
         tableView.translatesAutoresizingMaskIntoConstraints = false
+        tableView.layer.cornerRadius = 8
+        tableView.heightAnchor.constraint(equalToConstant: 200).isActive = true
 
-        // TextView
+        let listContainer = UIStackView(arrangedSubviews: [countLabel, buttonStack, tableView])
+        listContainer.axis = .vertical
+        listContainer.spacing = 12
+        listContainer.translatesAutoresizingMaskIntoConstraints = false
+
         contentTextView.font = UIFont.monospacedSystemFont(ofSize: 12, weight: .regular)
         contentTextView.backgroundColor = UIColor.systemGray6
         contentTextView.layer.cornerRadius = 8
         contentTextView.text = "Selecione uma notificação para ver o conteúdo"
         contentTextView.isEditable = false
         contentTextView.translatesAutoresizingMaskIntoConstraints = false
+        contentTextView.heightAnchor.constraint(equalToConstant: 200).isActive = true
 
-        // Action Buttons
         copyButton.setTitle("Copiar JSON", for: .normal)
         copyButton.addTarget(self, action: #selector(copyTapped), for: .touchUpInside)
         copyButton.isEnabled = false
@@ -69,47 +100,46 @@ class NotificationDebugViewController: UIViewController {
         simulateButton.isEnabled = false
         simulateButton.translatesAutoresizingMaskIntoConstraints = false
 
-        // Layout
-        view.addSubview(countLabel)
-        view.addSubview(refreshButton)
-        view.addSubview(latestButton)
-        view.addSubview(tableView)
-        view.addSubview(contentTextView)
-        view.addSubview(copyButton)
-        view.addSubview(simulateButton)
+        let actionsContainer = UIStackView(arrangedSubviews: [copyButton, simulateButton])
+        actionsContainer.axis = .vertical
+        actionsContainer.spacing = 12
+        actionsContainer.translatesAutoresizingMaskIntoConstraints = false
+
+        contentStack.addArrangedSubview(createCard(title: "Notificações Salvas", contentView: listContainer))
+        contentStack.addArrangedSubview(createCard(title: "Conteúdo", contentView: contentTextView))
+        contentStack.addArrangedSubview(createCard(title: "Ações", contentView: actionsContainer))
+    }
+
+    private func createCard(title: String, contentView: UIView) -> UIView {
+        let cardView = UIView()
+        cardView.backgroundColor = .secondarySystemBackground
+        cardView.layer.cornerRadius = 8
+        cardView.layer.shadowColor = UIColor.black.cgColor
+        cardView.layer.shadowOpacity = 0.1
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 2)
+        cardView.layer.shadowRadius = 4
+        cardView.translatesAutoresizingMaskIntoConstraints = false
+
+        let titleLabel = UILabel()
+        titleLabel.text = title
+        titleLabel.font = .boldSystemFont(ofSize: 18)
+        titleLabel.translatesAutoresizingMaskIntoConstraints = false
+
+        let cardStack = UIStackView(arrangedSubviews: [titleLabel, contentView])
+        cardStack.axis = .vertical
+        cardStack.spacing = 12
+        cardStack.translatesAutoresizingMaskIntoConstraints = false
+
+        cardView.addSubview(cardStack)
 
         NSLayoutConstraint.activate([
-            countLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 16),
-            countLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            countLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
-            refreshButton.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 16),
-            refreshButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            refreshButton.widthAnchor.constraint(equalTo: latestButton.widthAnchor),
-
-            latestButton.topAnchor.constraint(equalTo: countLabel.bottomAnchor, constant: 16),
-            latestButton.leadingAnchor.constraint(equalTo: refreshButton.trailingAnchor, constant: 8),
-            latestButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
-            tableView.topAnchor.constraint(equalTo: refreshButton.bottomAnchor, constant: 16),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            tableView.heightAnchor.constraint(equalToConstant: 200),
-
-            contentTextView.topAnchor.constraint(equalTo: tableView.bottomAnchor, constant: 16),
-            contentTextView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            contentTextView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            contentTextView.heightAnchor.constraint(equalToConstant: 200),
-
-            copyButton.topAnchor.constraint(equalTo: contentTextView.bottomAnchor, constant: 16),
-            copyButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            copyButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-
-            simulateButton.topAnchor.constraint(equalTo: copyButton.bottomAnchor, constant: 16),
-            simulateButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            simulateButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            simulateButton.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -16)
+            cardStack.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
+            cardStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
+            cardStack.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
+            cardStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
         ])
+
+        return cardView
     }
 
     private func loadNotifications() {

@@ -9,6 +9,10 @@ targets:
     platform: iOS
     sources:
       - path: SampleApplication
+        excludes:
+          - "*.md"
+          - "ViewControllerComplete.swift"
+          - "Main.storyboard"
     dependencies:
       - target: DitoSDK
     configFiles:

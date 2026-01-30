@@ -40,15 +40,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     if window == nil {
       print("⚠️ AppDelegate: Window is nil, creating manually (not using Scenes)")
       window = UIWindow(frame: UIScreen.main.bounds)
-
-      let storyboard = UIStoryboard(name: "Main", bundle: nil)
-      if let initialViewController = storyboard.instantiateInitialViewController() {
-        window?.rootViewController = initialViewController
-        window?.makeKeyAndVisible()
-        print("✅ AppDelegate: Window created and initial view controller loaded")
-      } else {
-        print("❌ AppDelegate: Failed to load initial view controller from Main storyboard")
-      }
+      
+      let viewController = ViewController()
+      window?.rootViewController = viewController
+      window?.makeKeyAndVisible()
+      print("✅ AppDelegate: Window created with ViewController (no storyboard)")
     }
 
     print("✅ AppDelegate: didFinishLaunchingWithOptions completed successfully")
