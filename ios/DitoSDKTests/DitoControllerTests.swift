@@ -6,12 +6,12 @@ class DitoControllerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
     }
 
     func testDitoIdentify_WithValidEmail() {

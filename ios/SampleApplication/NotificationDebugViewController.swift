@@ -168,14 +168,6 @@ class NotificationDebugViewController: UIViewController {
         contentTextView.setContentOffset(.zero, animated: false)
     }
 
-    private func showToast(_ message: String) {
-        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
-        present(alert, animated: true)
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-            alert.dismiss(animated: true)
-        }
-    }
 }
 
 // MARK: - UITableViewDataSource

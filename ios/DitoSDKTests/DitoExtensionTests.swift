@@ -41,6 +41,82 @@ class DitoExtensionTests: XCTestCase {
         XCTAssertNil(validated, "Invalid format email should be nil")
     }
 
+    func testValidateEmail_WithoutAtSymbol() {
+        let invalidEmail = "testexample.com"
+        let validated = invalidEmail.validateEmail
+
+        XCTAssertNil(validated, "Email without @ symbol should be nil")
+    }
+
+    func testValidateEmail_WithoutDomain() {
+        let invalidEmail = "test@"
+        let validated = invalidEmail.validateEmail
+
+        XCTAssertNil(validated, "Email without domain should be nil")
+    }
+
+    func testValidateEmail_WithSpaces() {
+        let invalidEmail = "test @example.com"
+        let validated = invalidEmail.validateEmail
+
+        XCTAssertNil(validated, "Email with spaces should be nil")
+    }
+
+    func testValidateEmail_EmptyString() {
+        let emptyEmail = ""
+        let validated = emptyEmail.validateEmail
+
+        XCTAssertNil(validated, "Empty string should be nil")
+    }
+
+    func testValidateEmail_WithPlusSign() {
+        let validEmail = "test+tag@example.com"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with + sign is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
+    func testValidateEmail_WithHyphen() {
+        let validEmail = "test-name@example.com"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with hyphen is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
+    func testValidateEmail_WithDot() {
+        let validEmail = "test.name@example.com"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with dot is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
+    func testValidateEmail_WithUnderscore() {
+        let validEmail = "test_name@example.com"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with underscore is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
+    func testValidateEmail_WithMultipleDots() {
+        let validEmail = "test.name.tag@example.co.uk"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with multiple dots is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
+    func testValidateEmail_WithNumbers() {
+        let validEmail = "test123@example456.com"
+        let validated = validEmail.validateEmail
+
+        XCTAssertNotNil(validated, "Email with numbers is valid")
+        XCTAssertEqual(validated, validEmail)
+    }
+
     func testConvertToObject_WithValidJSON() {
         let jsonString = """
         {"name": "Test", "value": 123}

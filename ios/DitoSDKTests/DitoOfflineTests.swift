@@ -5,12 +5,12 @@ class DitoOfflineTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
     }
 
     func testDitoIdentifyOffline_InitiateIdentify_SavesStamp() {

@@ -11,13 +11,11 @@ class DitoSDKTests: XCTestCase {
     override func setUp() {
         super.setUp()
         sut = DitoNotificationReadDataManager()
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
+        setupTestEnvironment()
     }
 
     override func tearDown() {
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
+        teardownTestEnvironment()
         super.tearDown()
     }
 
@@ -139,14 +137,16 @@ class DitoSDKTests: XCTestCase {
             }
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
         wait(for: [expectIdentify], timeout: self.timeout)
 
         // Step 2: After identify is complete, track the event
-        let event = DitoEvent(
-            action: "evento de teste"
-        )
-        Dito.track(event: event)
+        Dito.track(action: "evento de teste", data: nil)
 
         // Step 3: Wait a moment for track to be saved to CoreData
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -192,7 +192,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
         Dito.registerDevice(token: token)
         wait(for: [expect], timeout: self.timeout)
 
@@ -222,7 +227,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
         Dito.unregisterDevice(token: token)
         wait(for: [expect], timeout: self.timeout)
 
@@ -261,7 +271,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: nil,
+            email: nil,
+            customData: nil
+        )
         wait(for: [expect], timeout: self.timeout)
 
         XCTAssertEqual(user.createdAt, dateFormatter.string(from: createdAt))
@@ -290,7 +305,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: nil,
+            email: email,
+            customData: nil
+        )
 
         wait(for: [expect], timeout: self.timeout)
 
@@ -321,7 +341,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: nil,
+            email: email,
+            customData: nil
+        )
 
         wait(for: [expect], timeout: self.timeout)
 
@@ -354,7 +379,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: nil,
+            email: nil,
+            customData: nil
+        )
 
         wait(for: [expect], timeout: self.timeout)
 
@@ -381,7 +411,12 @@ class DitoSDKTests: XCTestCase {
             expect.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
 
         wait(for: [expect], timeout: self.timeout)
 

@@ -6,11 +6,12 @@ class DitoTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
     }
 
     func testSha1_ReturnsCorrectHash() {

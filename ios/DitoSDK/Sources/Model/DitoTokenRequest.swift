@@ -5,9 +5,9 @@ struct DitoTokenRequest: Codable {
   let platformApiKey: String
   let sha1Signature: String
   let token: String
-  let tokenType: String = "firebase"  // Always Firebase
   let platform: String = "Apple iPhone"
   let idType: String = "id"
+  let encoding: String = "base64"
 
   /// Initializes a token request for Firebase Cloud Messaging
   /// - Parameters:
@@ -24,9 +24,9 @@ struct DitoTokenRequest: Codable {
     case platformApiKey = "platform_api_key"
     case sha1Signature = "sha1_signature"
     case token
-    case tokenType = "ios_token_type"
     case platform
     case idType = "id_type"
+    case encoding
   }
 
   public func encode(to encoder: Encoder) throws {
@@ -34,8 +34,8 @@ struct DitoTokenRequest: Codable {
     try container.encode(platformApiKey, forKey: .platformApiKey)
     try container.encode(sha1Signature, forKey: .sha1Signature)
     try container.encode(token, forKey: .token)
-    try container.encode(tokenType, forKey: .tokenType)
     try container.encode(platform, forKey: .platform)
     try container.encode(idType, forKey: .idType)
+    try container.encode(encoding, forKey: .encoding)
   }
 }

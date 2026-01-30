@@ -4,16 +4,15 @@ struct DitoEventRequest: Codable {
 
   let platformApiKey: String
   let sha1Signature: String
-  let event: String
+  let event: DitoEvent
   var networkName: String = "pt"
   var encoding: String = "base64"
   var idType: String = "id"
 
   init(platformApiKey: String, sha1Signature: String, event: DitoEvent) {
-
     self.platformApiKey = platformApiKey
     self.sha1Signature = sha1Signature
-    self.event = event.toString.unwrappedValue
+    self.event = event
   }
 
   enum CodingKeys: String, CodingKey {
