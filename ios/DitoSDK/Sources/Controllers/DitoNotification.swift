@@ -51,7 +51,7 @@ class DitoNotification {
   }
 
   private func processTokenRegistration(tokenRequest: DitoTokenRequest) {
-    guard let reference = notificationOffline.reference, !reference.isEmpty else {
+      guard let reference = notificationOffline.reference, !reference.isEmpty else {
       notificationOffline.notificationRegister(tokenRequest)
       DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
       return

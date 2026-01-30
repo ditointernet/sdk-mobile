@@ -8,8 +8,6 @@ import br.com.dito.ditosdk.service.RemoteService
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
-import java.nio.charset.StandardCharsets
-import java.util.Base64
 
 object Dito {
 
@@ -39,25 +37,57 @@ object Dito {
         )
 
         appInfo?.metaData?.let {
-//            val bytes = it.getString("br.com.dito.API_SECRET", "").toByteArray(StandardCharsets.UTF_8)
-//            apiSecret = Base64.getEncoder().encodeToString(bytes)
-            apiKey = it.getString("br.com.dito.API_KEY", "")
-            apiSecret = it.getString("br.com.dito.API_SECRET", "")
-
-            hibridMode = it.getString("br.com.dito.HIBRID_MODE", "OFF")
-
-            if (apiKey.isEmpty() || apiSecret.isEmpty()) {
-                throw RuntimeException("É preciso configurar API_KEY e API_SECRET no AndroidManifest.")
-            }
-
-            val trackerOffline = TrackerOffline(context)
-
-            tracker = Tracker(apiKey, apiSecret, trackerOffline)
-
-            val trackerRetry = TrackerRetry(tracker, trackerOffline, options?.retry ?: 5)
-            tracker.setTrackerRetry(trackerRetry)
-            trackerRetry.uploadEvents()
+            val resolvedApiKey = it.getString("br.com.dito.API_KEY", "")
+            val resolvedApiSecret = it.getString("br.com.dito.API_SECRET", "")
+            val resolvedHibridMode = it.getString("br.com.dito.HIBRID_MODE", "OFF")
+            configureTracker(context, options, resolvedApiKey, resolvedApiSecret, resolvedHibridMode)
         }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.O)
+    fun init(
+        context: Context?,
+        apiKey: String,
+        apiSecret: String,
+        options: Options?
+    ) {
+        this.options = options
+        val resolvedHibridMode = resolveHibridMode(context)
+        if (context == null) {
+            throw RuntimeException("Context is not available")
+        }
+        configureTracker(context, options, apiKey, apiSecret, resolvedHibridMode)
+    }
+
+    private fun resolveHibridMode(context: Context?): String {
+        val appInfo = context?.packageManager?.getApplicationInfo(
+            context.packageName,
+            PackageManager.GET_META_DATA
+        )
+        return appInfo?.metaData?.getString("br.com.dito.HIBRID_MODE", "OFF") ?: "OFF"
+    }
+
+    private fun configureTracker(
+        context: Context,
+        options: Options?,
+        apiKey: String,
+        apiSecret: String,
+        hibridMode: String
+    ) {
+        this.apiKey = apiKey
+        this.apiSecret = apiSecret
+        this.hibridMode = hibridMode
+
+        if (apiKey.isEmpty() || apiSecret.isEmpty()) {
+            throw RuntimeException("É preciso configurar API_KEY e API_SECRET no AndroidManifest.")
+        }
+
+        val trackerOffline = TrackerOffline(context)
+        tracker = Tracker(apiKey, apiSecret, trackerOffline)
+
+        val trackerRetry = TrackerRetry(tracker, trackerOffline, options?.retry ?: 5)
+        tracker.setTrackerRetry(trackerRetry)
+        trackerRetry.uploadEvents()
     }
 
     /**
@@ -197,6 +227,17 @@ object Dito {
         }
 
         sendNotificationClick(notificationData.notificationId, notificationData.reference)
+    }
+
+    fun notificationRead(userInfo: Map<String, String>) {
+        val notificationData = extractNotificationReadData(userInfo)
+        if (notificationData.reference.isEmpty()) {
+            return
+        }
+        if (notificationData.notificationId.isEmpty()) {
+            return
+        }
+        processNotificationReceived(notificationData)
     }
 
     private fun extractNotificationReadData(userInfo: Map<String, String>): NotificationReadData {

@@ -36,6 +36,14 @@ public class Dito {
     }
   }
 
+  public static func configure(appKey: String, appSecret: String) {
+    Dito.appKey = appKey
+    let data = appSecret.data(using: .utf8) ?? Data()
+    Dito.appSecret = data.base64EncodedString()
+    Dito.signature = appSecret.sha1
+    Dito.shared.configure()
+  }
+
   nonisolated public static func sha1(for email: String) -> String {
     return email.sha1
   }

@@ -140,13 +140,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       completionHandler(.newData)
     }
 
-    if let token = self.fcmToken {
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+    if let token = cachedToken {
       callNotificationReceived(token)
     } else {
       // Fallback: tentar obter o token se ainda não estiver armazenado
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
+          UserDefaults.standard.set(token, forKey: "FCMToken")
           callNotificationReceived(token)
         } else {
           print(
@@ -166,17 +168,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler:
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    let userInfo = notification.request.content.userInfo
+      let userInfo = notification.request.content.userInfo
 
     // Salvar notificação para debug
     NotificationDebugHelper.saveNotification(userInfo)
 
-    if let token = fcmToken {
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+    if let token = cachedToken {
       Dito.notificationReceived(userInfo: userInfo, token: token)
     } else {
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
+          UserDefaults.standard.set(token, forKey: "FCMToken")
           Dito.notificationReceived(userInfo: userInfo, token: token)
         }
       }

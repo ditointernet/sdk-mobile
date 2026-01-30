@@ -83,7 +83,7 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
       return
     }
 
-    Dito.shared.configure()
+    Dito.configure(appKey: apiKey, appSecret: apiSecret)
     resolve(nil)
   }
 
