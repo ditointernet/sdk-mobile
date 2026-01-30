@@ -28,7 +28,8 @@ struct DitoEventRequest: Codable {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(platformAppKey, forKey: .platformAppKey)
     try container.encode(sha1Signature, forKey: .sha1Signature)
-    try container.encode(event, forKey: .event)
+    let eventJSON = event.toString.unwrappedValue
+    try container.encode(eventJSON, forKey: .event)
     try container.encode(networkName, forKey: .networkName)
     try container.encode(encoding, forKey: .encoding)
     try container.encode(idType, forKey: .idType)

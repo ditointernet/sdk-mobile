@@ -201,6 +201,9 @@ public class Dito {
   }
 
   private static func identifyUserForNotification(_ notificationReceived: DitoNotificationReceived) {
+    guard !notificationReceived.userId.isEmpty else {
+      return
+    }
     let identifyController = DitoIdentify()
     identifyController.identify(
       id: notificationReceived.userId,

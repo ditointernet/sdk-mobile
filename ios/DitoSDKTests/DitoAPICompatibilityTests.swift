@@ -93,7 +93,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         print("✅ DitoTokenRequest JSON structure (matches Android):\n\(jsonString)")
     }
 
-    func testDitoEventRequest_EventIsObject_NotString() {
+    func testDitoEventRequest_EventIsString() {
         let event = DitoEvent(
             action: "test_action",
             revenue: 99.99,
@@ -122,18 +122,20 @@ class DitoAPICompatibilityTests: XCTestCase {
 
         let eventField = jsonObject["event"]
         XCTAssertTrue(
-            eventField is [String: Any],
-            "Event field must be an object (dictionary), not a string. This matches Android behavior."
+            eventField is String,
+            "Event field must be a string to match Android."
         )
 
-        if let eventObject = eventField as? [String: Any] {
-            XCTAssertNotNil(eventObject["action"], "Event object must have action field")
+        if let eventString = eventField as? String,
+           let eventData = eventString.data(using: .utf8),
+           let eventObject = try? JSONSerialization.jsonObject(with: eventData) as? [String: Any] {
+            XCTAssertNotNil(eventObject["action"], "Event must have action field")
             XCTAssertEqual(eventObject["action"] as? String, "test_action")
-            XCTAssertNotNil(eventObject["revenue"], "Event object must have revenue field")
-            XCTAssertNotNil(eventObject["created_at"], "Event object must have created_at field")
+            XCTAssertNotNil(eventObject["revenue"], "Event must have revenue field")
+            XCTAssertNotNil(eventObject["created_at"], "Event must have created_at field")
         }
 
-        print("✅ DitoEventRequest JSON structure (event as object, matches Android):\n\(jsonString)")
+        print("✅ DitoEventRequest JSON structure (event as string, matches Android):\n\(jsonString)")
     }
 
     func testDitoEventRequest_JSONStructure_MatchesAndroid() {
@@ -162,6 +164,7 @@ class DitoAPICompatibilityTests: XCTestCase {
         XCTAssertNotNil(jsonObject["platform_api_key"])
         XCTAssertNotNil(jsonObject["sha1_signature"])
         XCTAssertNotNil(jsonObject["event"])
+        XCTAssertTrue(jsonObject["event"] is String)
         XCTAssertNotNil(jsonObject["id_type"])
         XCTAssertNotNil(jsonObject["network_name"])
         XCTAssertNotNil(jsonObject["encoding"])

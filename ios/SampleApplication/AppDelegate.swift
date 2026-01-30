@@ -16,7 +16,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       .LaunchOptionsKey: Any]?
   ) -> Bool {
     #if DEBUG
-    Dito.enableDebugMode(true)``
+    Dito.enableDebugMode(true)
     print("🐛 Debug mode enabled for Dito SDK")
     #endif
 

@@ -213,7 +213,7 @@ class DitoServiceTests: XCTestCase {
         XCTAssertEqual(urlRequest.cachePolicy, .reloadIgnoringCacheData)
     }
 
-    func testDitoEventRequest_SerializesEventAsObject() {
+    func testDitoEventRequest_SerializesEventAsString() {
         let event = DitoEvent(
             action: "purchase",
             revenue: 99.99,
@@ -231,12 +231,14 @@ class DitoServiceTests: XCTestCase {
 
         guard let jsonData = try? encoder.encode(eventRequest),
               let jsonObject = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-              let eventObject = jsonObject["event"] as? [String: Any] else {
+              let eventString = jsonObject["event"] as? String,
+              let eventData = eventString.data(using: .utf8),
+              let eventObject = try? JSONSerialization.jsonObject(with: eventData) as? [String: Any] else {
             XCTFail("Failed to encode or parse event request")
             return
         }
 
-        XCTAssertTrue(eventObject is [String: Any], "Event should be an object")
+        XCTAssertTrue(eventObject is [String: Any], "Event should be a JSON string")
         XCTAssertEqual(eventObject["action"] as? String, "purchase")
         XCTAssertEqual(eventObject["revenue"] as? Double, 99.99)
     }

@@ -6,27 +6,22 @@ struct DitoIdentifyModel: Codable {
   let signedRequest: String
   let status: Int
 
-  private enum RootKeys: String, CodingKey {
-    case data
-  }
-
-  private enum DataKeys: String, CodingKey {
+  private enum CodingKeys: String, CodingKey {
     case reference
     case signedRequest = "signed_request"
     case status
   }
 
   init(from decoder: Decoder) throws {
-    let rootContainer = try decoder.container(keyedBy: RootKeys.self)
-    let dataContainer = try rootContainer.nestedContainer(keyedBy: DataKeys.self, forKey: .data)
+    let values = try decoder.container(keyedBy: CodingKeys.self)
 
-    reference = try dataContainer.decodeIfPresent(String.self, forKey: .reference)
+    reference = try values.decodeIfPresent(String.self, forKey: .reference)
       .unwrappedValue
-    signedRequest = try dataContainer.decodeIfPresent(
+    signedRequest = try values.decodeIfPresent(
       String.self,
       forKey: .signedRequest
     ).unwrappedValue
-    status = try dataContainer.decodeIfPresent(Int.self, forKey: .status)
+    status = try values.decodeIfPresent(Int.self, forKey: .status)
       .unwrappedValue
   }
 }

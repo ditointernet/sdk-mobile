@@ -69,7 +69,7 @@ class DitoRetry {
       #if DEBUG
       DitoLogger.debug("🔄 [RETRY] Reenviando identify offline para id=\(id)")
       #endif
-      
+
       return await withCheckedContinuation { continuation in
         self.serviceIdentify.signup(
           network: "portal",
@@ -128,7 +128,7 @@ class DitoRetry {
         )
         continue
       }
-      
+
       #if DEBUG
       DitoLogger.debug("🔄 [RETRY] Reenviando evento: \(eventRequest.event.action) (tentativa \(currentRetry + 1))")
       #endif
@@ -215,17 +215,19 @@ class DitoRetry {
       else {
         continue
       }
-      
+
+      let notificationId = notificationRequest.data.notification
+
       #if DEBUG
-      DitoLogger.debug("🔄 [RETRY] Reenviando notification read: \(notificationRequest.data.identifier) (tentativa \(notifRetry + 1))")
+      DitoLogger.debug("🔄 [RETRY] Reenviando notification read: \(notificationId) (tentativa \(notifRetry + 1))")
       #endif
 
       if let reference = self.notificationReadOffline.reference,
-        !reference.isEmpty, !notificationRequest.data.identifier.isEmpty
+        !reference.isEmpty, !notificationId.isEmpty
       {
         await withCheckedContinuation { continuation in
           self.serviceNotification.read(
-            notificationId: notificationRequest.data.identifier,
+            notificationId: notificationId,
             data: notificationRequest
           ) { [weak self] (register, error) in
 

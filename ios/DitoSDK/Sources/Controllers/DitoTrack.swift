@@ -53,9 +53,9 @@ class DitoTrack {
 
     #if DEBUG
     if let ref = reference, !ref.isEmpty {
-      DitoLogger.debug("✓ [TRACK] Reference encontrada: \(ref)")
+      DitoLogger.debug("✓ [TRACK] Identificador encontrado: \(ref)")
     } else {
-      DitoLogger.warning("⚠️ [TRACK] Reference não encontrada ou vazia")
+      DitoLogger.warning("⚠️ [TRACK] Identificador não encontrado ou vazio")
     }
     #endif
 

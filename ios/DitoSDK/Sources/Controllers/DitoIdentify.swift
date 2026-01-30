@@ -33,7 +33,7 @@ class DitoIdentify {
       signature: resolvedSignature,
       userData: data
     )
-    guard hasValidEmail(data) else {
+    guard hasValidId(id) else {
       identifyOffline.finishIdentify()
       return
     }
@@ -52,18 +52,21 @@ class DitoIdentify {
     )
   }
 
-  private func hasValidEmail(_ userData: DitoUser?) -> Bool {
-    userData?.email != nil
+  private func hasValidId(_ id: String) -> Bool {
+    !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private func performSignup(id: String, signupRequest: DitoSignupRequest) {
     service.signup(network: "portal", id: id, data: signupRequest) {
-      [weak self] identify, error in
-      guard let self = self else { return }
+      identify, error in
       if let error = error {
         self.handleSignupError(id: id, signupRequest: signupRequest, error: error)
       } else {
-        self.handleSignupSuccess(id: id, signupRequest: signupRequest, identify: identify)
+        self.handleSignupSuccess(
+          id: id,
+          signupRequest: signupRequest,
+          identify: identify
+        )
       }
       self.identifyOffline.finishIdentify()
     }
