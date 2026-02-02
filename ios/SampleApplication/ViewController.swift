@@ -1,6 +1,7 @@
 import CoreData
 import DitoSDK
 import FirebaseMessaging
+import SwiftUI
 import UIKit
 
 /// Helper para acessar valores do Info.plist
@@ -10,31 +11,13 @@ class InfoPlistHelper {
     }
 
     static func loadSampleAppConfig() -> [String: String] {
-        var config: [String: String] = [:]
+        var config = PlistLoader.loadSampleAppConfig()
 
-        if let apiKey = getValue(forKey: "ApiKey") {
-            config["API_KEY"] = apiKey
+        if let appKey = getValue(forKey: "AppKey") {
+            config["API_KEY"] = appKey
         }
-        if let apiSecret = getValue(forKey: "ApiSecret") {
-            config["API_SECRET"] = apiSecret
-        }
-        if let identifyId = getValue(forKey: "IDENTIFY_ID") {
-            config["IDENTIFY_ID"] = identifyId
-        }
-        if let identifyName = getValue(forKey: "IDENTIFY_NAME") {
-            config["IDENTIFY_NAME"] = identifyName
-        }
-        if let identifyEmail = getValue(forKey: "IDENTIFY_EMAIL") {
-            config["IDENTIFY_EMAIL"] = identifyEmail
-        }
-        if let identifyCustomData = getValue(forKey: "IDENTIFY_CUSTOM_DATA") {
-            config["IDENTIFY_CUSTOM_DATA"] = identifyCustomData
-        }
-        if let trackAction = getValue(forKey: "TRACK_ACTION") {
-            config["TRACK_ACTION"] = trackAction
-        }
-        if let trackData = getValue(forKey: "TRACK_DATA") {
-            config["TRACK_DATA"] = trackData
+        if let appSecret = getValue(forKey: "AppSecret") {
+            config["API_SECRET"] = appSecret
         }
 
         return config
@@ -57,11 +40,24 @@ class InfoPlistHelper {
 
 class ViewController: UIViewController {
 
+    // MARK: - Layout Constants
+    private enum Layout {
+        static let cardSpacing: CGFloat = 16
+        static let cardPadding: CGFloat = 16
+        static let horizontalPadding: CGFloat = 16
+        static let textFieldMinHeight: CGFloat = 44
+        static let textViewMinHeight: CGFloat = 120
+        static let cardCornerRadius: CGFloat = 12
+        static let labelSpacing: CGFloat = 6
+        static let innerSpacing: CGFloat = 12
+    }
+
     // MARK: - Properties
     private let config = InfoPlistHelper.loadSampleAppConfig()
     private var fcmToken: String = ""
     private let scrollView = UIScrollView()
     private let contentView = UIStackView()
+    private let copyTokenButton = UIButton(type: .system)
 
     // Status
     private let statusLabel = UILabel()
@@ -117,10 +113,14 @@ class ViewController: UIViewController {
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         contentView.translatesAutoresizingMaskIntoConstraints = false
         contentView.axis = .vertical
-        contentView.spacing = 16
+        contentView.spacing = Layout.cardSpacing
+        scrollView.alwaysBounceVertical = true
 
         view.addSubview(scrollView)
         scrollView.addSubview(contentView)
+
+        let contentLayoutGuide = scrollView.contentLayoutGuide
+        let frameLayoutGuide = scrollView.frameLayoutGuide
 
         NSLayoutConstraint.activate([
             scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
@@ -128,32 +128,70 @@ class ViewController: UIViewController {
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
 
-            contentView.topAnchor.constraint(equalTo: scrollView.topAnchor, constant: 16),
-            contentView.leadingAnchor.constraint(equalTo: scrollView.leadingAnchor, constant: 16),
-            contentView.trailingAnchor.constraint(equalTo: scrollView.trailingAnchor, constant: -16),
-            contentView.bottomAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: -16),
-            contentView.widthAnchor.constraint(equalTo: scrollView.widthAnchor, constant: -32)
+            contentView.topAnchor.constraint(equalTo: contentLayoutGuide.topAnchor, constant: Layout.horizontalPadding),
+            contentView.leadingAnchor.constraint(equalTo: contentLayoutGuide.leadingAnchor, constant: Layout.horizontalPadding),
+            contentView.trailingAnchor.constraint(equalTo: contentLayoutGuide.trailingAnchor, constant: -Layout.horizontalPadding),
+            contentView.bottomAnchor.constraint(equalTo: contentLayoutGuide.bottomAnchor, constant: -Layout.horizontalPadding),
+            contentView.widthAnchor.constraint(equalTo: frameLayoutGuide.widthAnchor, constant: -Layout.horizontalPadding * 2)
         ])
     }
 
     private func setupUI() {
-        // Status Card
-        addCard(title: "Status do SDK", views: [statusLabel])
+        setupStatusCard()
+        setupFcmTokenCard()
+        setupIdentifyCard()
+        setupTrackCard()
+        setupRegisterDeviceCard()
+        setupUnregisterDeviceCard()
+        setupGlobalActionsButtons()
+        setupKeyboardDismiss()
+    }
 
-        // FCM Token Card
-        fcmTokenLabel.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        fcmTokenLabel.numberOfLines = 0
+    private func setupStatusCard() {
+        statusLabel.font = UIFontMetrics(forTextStyle: .callout)
+            .scaledFont(for: .systemFont(ofSize: 15, weight: .semibold))
+        statusLabel.adjustsFontForContentSizeCategory = true
+        addCard(title: "Status do SDK", views: [statusLabel])
+    }
+
+    private func setupFcmTokenCard() {
+        fcmTokenLabel.font = UIFontMetrics(forTextStyle: .footnote)
+            .scaledFont(for: .monospacedSystemFont(ofSize: 12, weight: .regular))
+        fcmTokenLabel.adjustsFontForContentSizeCategory = true
+        fcmTokenLabel.numberOfLines = 3
+        fcmTokenLabel.lineBreakMode = .byTruncatingMiddle
+
+        let tokenContainer = UIStackView()
+        tokenContainer.axis = .horizontal
+        tokenContainer.spacing = 12
+        tokenContainer.alignment = .center
+
+        copyTokenButton.setTitle("Copiar", for: .normal)
+        copyTokenButton.addTarget(self, action: #selector(copyTokenTapped), for: .touchUpInside)
+        copyTokenButton.setContentHuggingPriority(.required, for: .horizontal)
+        copyTokenButton.isHidden = true
+        styleButton(copyTokenButton)
+
+        tokenContainer.addArrangedSubview(fcmTokenLabel)
+        tokenContainer.addArrangedSubview(copyTokenButton)
+
         getFcmTokenButton.setTitle("Obter Token FCM", for: .normal)
         getFcmTokenButton.addTarget(self, action: #selector(getFcmTokenTapped), for: .touchUpInside)
-        addCard(title: "Firebase Cloud Messaging", views: [fcmTokenLabel, getFcmTokenButton])
+        styleButton(getFcmTokenButton)
 
-        // Identify Card
+        addCard(title: "Firebase Cloud Messaging", views: [tokenContainer, getFcmTokenButton])
+    }
+
+    private func setupIdentifyCard() {
         setupTextField(identifyIdField, placeholder: "ID *")
         setupTextField(identifyNameField, placeholder: "Name")
         setupTextField(identifyEmailField, placeholder: "Email", keyboardType: .emailAddress)
         setupTextView(identifyCustomDataField, placeholder: "Custom Data (JSON)")
+
         testIdentifyButton.setTitle("Testar Identify", for: .normal)
         testIdentifyButton.addTarget(self, action: #selector(testIdentifyTapped), for: .touchUpInside)
+        styleButton(testIdentifyButton)
+
         addCard(title: "Identify", views: [
             createLabeledField("ID *", identifyIdField),
             createLabeledField("Name", identifyNameField),
@@ -161,46 +199,62 @@ class ViewController: UIViewController {
             createLabeledField("Custom Data (JSON)", identifyCustomDataField),
             testIdentifyButton
         ])
+    }
 
-        // Track Card
+    private func setupTrackCard() {
         setupTextField(trackActionField, placeholder: "Action *")
         setupTextView(trackDataField, placeholder: "Data (JSON)")
+
         testTrackButton.setTitle("Testar Track", for: .normal)
         testTrackButton.addTarget(self, action: #selector(testTrackTapped), for: .touchUpInside)
+        styleButton(testTrackButton)
+
         addCard(title: "Track", views: [
             createLabeledField("Action *", trackActionField),
             createLabeledField("Data (JSON)", trackDataField),
             testTrackButton
         ])
+    }
 
-        // Register Device Card
+    private func setupRegisterDeviceCard() {
         setupTextField(registerTokenField, placeholder: "Token *")
+
         testRegisterDeviceButton.setTitle("Testar Register Device", for: .normal)
         testRegisterDeviceButton.addTarget(self, action: #selector(testRegisterDeviceTapped), for: .touchUpInside)
+        styleButton(testRegisterDeviceButton)
+
         addCard(title: "Register Device", views: [
             createLabeledField("Token *", registerTokenField),
             testRegisterDeviceButton
         ])
+    }
 
-        // Unregister Device Card
+    private func setupUnregisterDeviceCard() {
         setupTextField(unregisterTokenField, placeholder: "Token *")
+
         testUnregisterDeviceButton.setTitle("Testar Unregister Device", for: .normal)
         testUnregisterDeviceButton.addTarget(self, action: #selector(testUnregisterDeviceTapped), for: .touchUpInside)
+        styleButton(testUnregisterDeviceButton)
+
         addCard(title: "Unregister Device", views: [
             createLabeledField("Token *", unregisterTokenField),
             testUnregisterDeviceButton
         ])
+    }
 
-        // Global Actions
+    private func setupGlobalActionsButtons() {
         testAllButton.setTitle("Testar Todos os Métodos", for: .normal)
         testAllButton.addTarget(self, action: #selector(testAllTapped), for: .touchUpInside)
+        styleButton(testAllButton)
         contentView.addArrangedSubview(testAllButton)
 
         notificationDebugButton.setTitle("🔔 Debug de Notificações", for: .normal)
         notificationDebugButton.addTarget(self, action: #selector(notificationDebugTapped), for: .touchUpInside)
+        styleButton(notificationDebugButton)
         contentView.addArrangedSubview(notificationDebugButton)
+    }
 
-        // Keyboard dismiss
+    private func setupKeyboardDismiss() {
         let tap = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
         tap.cancelsTouchesInView = false
         view.addGestureRecognizer(tap)
@@ -209,20 +263,21 @@ class ViewController: UIViewController {
     private func addCard(title: String, views: [UIView]) {
         let cardView = UIView()
         cardView.backgroundColor = .secondarySystemBackground
-        cardView.layer.cornerRadius = 8
+        cardView.layer.cornerRadius = Layout.cardCornerRadius
         cardView.layer.shadowColor = UIColor.black.cgColor
-        cardView.layer.shadowOpacity = 0.1
-        cardView.layer.shadowOffset = CGSize(width: 0, height: 2)
-        cardView.layer.shadowRadius = 4
+        cardView.layer.shadowOpacity = 0.08
+        cardView.layer.shadowOffset = CGSize(width: 0, height: 3)
+        cardView.layer.shadowRadius = 6
 
         let cardStack = UIStackView()
         cardStack.axis = .vertical
-        cardStack.spacing = 12
+        cardStack.spacing = Layout.innerSpacing
         cardStack.translatesAutoresizingMaskIntoConstraints = false
 
         let titleLabel = UILabel()
         titleLabel.text = title
-        titleLabel.font = .boldSystemFont(ofSize: 20)
+        titleLabel.font = UIFont.preferredFont(forTextStyle: .headline)
+        titleLabel.adjustsFontForContentSizeCategory = true
         cardStack.addArrangedSubview(titleLabel)
 
         for view in views {
@@ -231,10 +286,10 @@ class ViewController: UIViewController {
 
         cardView.addSubview(cardStack)
         NSLayoutConstraint.activate([
-            cardStack.topAnchor.constraint(equalTo: cardView.topAnchor, constant: 16),
-            cardStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: 16),
-            cardStack.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -16),
-            cardStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -16)
+            cardStack.topAnchor.constraint(equalTo: cardView.topAnchor, constant: Layout.cardPadding),
+            cardStack.leadingAnchor.constraint(equalTo: cardView.leadingAnchor, constant: Layout.cardPadding),
+            cardStack.trailingAnchor.constraint(equalTo: cardView.trailingAnchor, constant: -Layout.cardPadding),
+            cardStack.bottomAnchor.constraint(equalTo: cardView.bottomAnchor, constant: -Layout.cardPadding)
         ])
 
         contentView.addArrangedSubview(cardView)
@@ -243,11 +298,13 @@ class ViewController: UIViewController {
     private func createLabeledField(_ labelText: String, _ field: UIView) -> UIView {
         let container = UIStackView()
         container.axis = .vertical
-        container.spacing = 4
+        container.spacing = Layout.labelSpacing
 
         let label = UILabel()
         label.text = labelText
-        label.font = .systemFont(ofSize: 14, weight: .medium)
+        label.font = UIFont.preferredFont(forTextStyle: .footnote)
+        label.adjustsFontForContentSizeCategory = true
+        label.textColor = .secondaryLabel
         container.addArrangedSubview(label)
         container.addArrangedSubview(field)
 
@@ -258,21 +315,37 @@ class ViewController: UIViewController {
         textField.borderStyle = .roundedRect
         textField.placeholder = placeholder
         textField.keyboardType = keyboardType
+        textField.font = UIFont.preferredFont(forTextStyle: .body)
+        textField.adjustsFontForContentSizeCategory = true
         textField.translatesAutoresizingMaskIntoConstraints = false
-        textField.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        textField.heightAnchor.constraint(greaterThanOrEqualToConstant: Layout.textFieldMinHeight).isActive = true
     }
 
     private func setupTextView(_ textView: UITextView, placeholder: String) {
-        textView.font = .monospacedSystemFont(ofSize: 12, weight: .regular)
-        textView.layer.borderColor = UIColor.systemGray4.cgColor
-        textView.layer.borderWidth = 1
-        textView.layer.cornerRadius = 8
+        textView.font = UIFontMetrics(forTextStyle: .footnote)
+            .scaledFont(for: .monospacedSystemFont(ofSize: 12, weight: .regular))
+        textView.adjustsFontForContentSizeCategory = true
+        textView.backgroundColor = .systemBackground
+        textView.layer.borderColor = UIColor.separator.cgColor
+        textView.layer.borderWidth = 0.5
+        textView.layer.cornerRadius = Layout.cardCornerRadius
+        textView.textContainerInset = UIEdgeInsets(top: 8, left: 4, bottom: 8, right: 4)
         textView.translatesAutoresizingMaskIntoConstraints = false
-        textView.heightAnchor.constraint(equalToConstant: 80).isActive = true
+        textView.heightAnchor.constraint(greaterThanOrEqualToConstant: Layout.textViewMinHeight).isActive = true
+    }
+
+    private func styleButton(_ button: UIButton) {
+        button.titleLabel?.font = UIFont.preferredFont(forTextStyle: .callout)
+        button.titleLabel?.adjustsFontForContentSizeCategory = true
     }
 
     private func loadDefaultValues() {
-        identifyIdField.text = config["IDENTIFY_ID"]
+        if let email = config["IDENTIFY_EMAIL"], !email.isEmpty {
+            identifyIdField.text = email.sha1()
+        } else {
+            identifyIdField.text = config["IDENTIFY_ID"]
+        }
+
         identifyNameField.text = config["IDENTIFY_NAME"]
         identifyEmailField.text = config["IDENTIFY_EMAIL"]
         identifyCustomDataField.text = config["IDENTIFY_CUSTOM_DATA"]
@@ -309,8 +382,7 @@ class ViewController: UIViewController {
                     print("⚠️ ViewController: Erro ao obter FCM token: \(errorMsg)")
                 } else if let token = token {
                     self.fcmToken = token
-                    self.fcmTokenLabel.text = "Token FCM: \(token)"
-                    self.fcmTokenLabel.textColor = .systemGreen
+                    self.updateFcmTokenDisplay(token)
 
                     if self.registerTokenField.text?.isEmpty ?? true {
                         self.registerTokenField.text = token
@@ -323,6 +395,7 @@ class ViewController: UIViewController {
                 } else {
                     self.fcmTokenLabel.text = "Token FCM: Aguardando..."
                     self.fcmTokenLabel.textColor = .systemOrange
+                    self.copyTokenButton.isHidden = true
                 }
             }
         }
@@ -331,8 +404,7 @@ class ViewController: UIViewController {
     @objc private func fcmTokenReceived(_ notification: Notification) {
         if let token = notification.userInfo?["token"] as? String {
             fcmToken = token
-            fcmTokenLabel.text = "Token FCM: \(token)"
-            fcmTokenLabel.textColor = .systemGreen
+            updateFcmTokenDisplay(token)
 
             if registerTokenField.text?.isEmpty ?? true {
                 registerTokenField.text = token
@@ -341,6 +413,20 @@ class ViewController: UIViewController {
                 unregisterTokenField.text = token
             }
         }
+    }
+
+    private func updateFcmTokenDisplay(_ token: String) {
+        let truncatedToken = truncateToken(token)
+        fcmTokenLabel.text = "Token: \(truncatedToken)"
+        fcmTokenLabel.textColor = .systemGreen
+        copyTokenButton.isHidden = false
+    }
+
+    private func truncateToken(_ token: String) -> String {
+        guard token.count > 50 else { return token }
+        let startIndex = token.index(token.startIndex, offsetBy: 20)
+        let endIndex = token.index(token.endIndex, offsetBy: -20)
+        return token[..<startIndex] + "..." + token[endIndex...]
     }
 
     private func checkSDKStatus() {
@@ -475,59 +561,33 @@ class ViewController: UIViewController {
     }
 
     @objc private func notificationDebugTapped() {
-        let debugVC = NotificationDebugViewController()
-        let navController = UINavigationController(rootViewController: debugVC)
-        present(navController, animated: true)
+        let swiftUIView = NotificationDebugView()
+        let hostingController = UIHostingController(rootView: swiftUIView)
+        present(hostingController, animated: true)
     }
 
     @objc private func getFcmTokenTapped() {
         fcmTokenLabel.text = "Token FCM: Solicitando..."
         fcmTokenLabel.textColor = .systemOrange
+        copyTokenButton.isHidden = true
 
-        // Tentar novamente obter o token
         requestFcmToken()
-
-        // Se ainda não tiver APNS token, tentar registrar novamente
         UIApplication.shared.registerForRemoteNotifications()
 
         showToast("Solicitando token FCM...")
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
+    @objc private func copyTokenTapped() {
+        guard !fcmToken.isEmpty else {
+            showToast("Token não disponível")
+            return
+        }
+
+        UIPasteboard.general.string = fcmToken
+        showToast("Token copiado para área de transferência")
     }
 
-    private func showToast(_ message: String) {
-        let toastLabel = UILabel()
-        toastLabel.backgroundColor = UIColor.black.withAlphaComponent(0.8)
-        toastLabel.textColor = .white
-        toastLabel.textAlignment = .center
-        toastLabel.font = UIFont.systemFont(ofSize: 14)
-        toastLabel.text = message
-        toastLabel.numberOfLines = 0
-        toastLabel.alpha = 0.0
-        toastLabel.layer.cornerRadius = 10
-        toastLabel.clipsToBounds = true
-
-        let maxSize = CGSize(width: view.bounds.width - 40, height: view.bounds.height)
-        let expectedSize = toastLabel.sizeThatFits(maxSize)
-        toastLabel.frame = CGRect(
-            x: (view.bounds.width - expectedSize.width - 20) / 2,
-            y: view.bounds.height - 100,
-            width: expectedSize.width + 20,
-            height: expectedSize.height + 10
-        )
-
-        view.addSubview(toastLabel)
-
-        UIView.animate(withDuration: 0.3, animations: {
-            toastLabel.alpha = 1.0
-        }) { _ in
-            UIView.animate(withDuration: 0.3, delay: 2.0, options: .curveEaseOut, animations: {
-                toastLabel.alpha = 0.0
-            }) { _ in
-                toastLabel.removeFromSuperview()
-            }
-        }
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }

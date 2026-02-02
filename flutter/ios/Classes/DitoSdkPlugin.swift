@@ -102,7 +102,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
         return
       }
 
-      Dito.shared.configure()
+      Dito.configure(appKey: apiKey, appSecret: apiSecret)
       result(nil)
     case "identify":
       guard let args = call.arguments as? [String: Any],

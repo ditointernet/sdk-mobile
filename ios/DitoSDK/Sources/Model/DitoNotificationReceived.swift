@@ -1,6 +1,6 @@
 import Foundation
 
-public struct DitoNotificationReceived {
+public struct DitoNotificationReceived: Sendable {
 
   var reference: String = ""
   var identifier: String = ""

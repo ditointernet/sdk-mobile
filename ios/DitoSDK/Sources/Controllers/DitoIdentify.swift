@@ -21,15 +21,19 @@ class DitoIdentify {
     data: DitoUser? = nil,
     sha1Signature: String? = nil
   ) {
+    #if DEBUG
+    DitoLogger.information("🆔 [IDENTIFY] user_id=\(id), email=\(data?.email ?? "nil")")
+    #endif
+
     let resolvedSignature = sha1Signature ?? Dito.signature
-    let apiKey = Dito.apiKey
+    let appKey = Dito.appKey
     identifyOffline.initiateIdentify()
     let signupRequest = createSignupRequest(
-      apiKey: apiKey,
+      appKey: appKey,
       signature: resolvedSignature,
       userData: data
     )
-    guard hasValidEmail(data) else {
+    guard hasValidId(id) else {
       identifyOffline.finishIdentify()
       return
     }
@@ -37,29 +41,32 @@ class DitoIdentify {
   }
 
   private func createSignupRequest(
-    apiKey: String,
+    appKey: String,
     signature: String,
     userData: DitoUser?
   ) -> DitoSignupRequest {
     DitoSignupRequest(
-      platformApiKey: apiKey,
+      platformAppKey: appKey,
       sha1Signature: signature,
       userData: userData
     )
   }
 
-  private func hasValidEmail(_ userData: DitoUser?) -> Bool {
-    userData?.email != nil
+  private func hasValidId(_ id: String) -> Bool {
+    !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
   }
 
   private func performSignup(id: String, signupRequest: DitoSignupRequest) {
     service.signup(network: "portal", id: id, data: signupRequest) {
-      [weak self] identify, error in
-      guard let self = self else { return }
+      identify, error in
       if let error = error {
         self.handleSignupError(id: id, signupRequest: signupRequest, error: error)
       } else {
-        self.handleSignupSuccess(id: id, signupRequest: signupRequest, identify: identify)
+        self.handleSignupSuccess(
+          id: id,
+          signupRequest: signupRequest,
+          identify: identify
+        )
       }
       self.identifyOffline.finishIdentify()
     }
@@ -85,6 +92,9 @@ class DitoIdentify {
     identify: DitoIdentifyModel?
   ) {
     guard let reference = identify?.reference else {
+      #if DEBUG
+      DitoLogger.warning("⚠️ [IDENTIFY] Response sem reference - salvando offline")
+      #endif
       identifyOffline.identify(
         id: id,
         params: signupRequest,
@@ -93,13 +103,22 @@ class DitoIdentify {
       )
       return
     }
+
+    #if DEBUG
+    DitoLogger.debug("💾 [IDENTIFY] Salvando reference=\(reference)")
+    #endif
+
     identifyOffline.identify(
       id: id,
       params: signupRequest,
       reference: reference,
       send: true
     )
-    DitoLogger.information("Identify realizado")
+
+    #if DEBUG
+    DitoLogger.information("✅ [IDENTIFY] Sucesso - reference salva")
+    #endif
+
     retry.loadOffline()
   }
 }

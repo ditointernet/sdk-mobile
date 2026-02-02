@@ -12,9 +12,11 @@ Assim como no Android (que usa `env_development_local.txt` em `res/raw/`), o sam
 
 O `Info.plist` contém as seguintes chaves de configuração:
 
-**API Credentials:**
-- `ApiKey`: Chave de API do Dito
-- `ApiSecret`: Secret da API do Dito
+**API Credentials (codificadas em Base64):**
+- `AppKey`: Chave de API do Dito (valor codificado em Base64)
+- `AppSecret`: Secret da API do Dito (valor codificado em Base64)
+
+> **Nota de Segurança**: As credenciais da API são armazenadas codificadas em Base64 no `Info.plist` para ofuscar os valores. O SDK envia esses valores codificados para a API (o campo `platform_api_key` é enviado em Base64). Apenas para cálculo da assinatura SHA1 o `AppSecret` é decodificado internamente. Para gerar o valor Base64, use: `echo -n "sua-credencial" | base64`
 
 **Identify Data (dados para testar o método `identify`):**
 - `IDENTIFY_ID`: ID do usuário (exemplo: "11111111111")

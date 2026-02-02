@@ -6,12 +6,12 @@ class DitoControllerTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
     }
 
     func testDitoIdentify_WithValidEmail() {
@@ -62,7 +62,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -134,7 +134,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -182,7 +182,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -251,7 +251,7 @@ class DitoControllerTests: XCTestCase {
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )

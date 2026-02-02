@@ -34,9 +34,21 @@ class DitoIdentifyDataManager {
 
     @discardableResult
     func save(id: String, reference: String?, json: String?, send: Bool) -> Bool {
+        #if DEBUG
+        DitoLogger.debug("💾 [DataManager] Salvando identify: id=\(id), reference=\(reference ?? "nil"), send=\(send)")
+        #endif
 
         let newIdentify = IdentifyDefaults(id: id, json: json, reference: reference, send: send)
         UserDefaults.identify = newIdentify
+
+        #if DEBUG
+        // Verificar se foi salvo corretamente
+        if let saved = UserDefaults.identify {
+            DitoLogger.debug("✓ [DataManager] Identify salvo: reference=\(saved.reference ?? "nil")")
+        } else {
+            DitoLogger.error("❌ [DataManager] Falha ao salvar identify")
+        }
+        #endif
 
         return true
     }
@@ -48,8 +60,17 @@ class DitoIdentifyDataManager {
     }
 
     var fetch: IdentifyDefaults? {
+        guard let savedIdentify = UserDefaults.identify else {
+            #if DEBUG
+            DitoLogger.warning("⚠️ [DataManager] Nenhum identify salvo no UserDefaults")
+            #endif
+            return nil
+        }
 
-        guard let savedIdentify = UserDefaults.identify else {return nil}
+        #if DEBUG
+        DitoLogger.debug("📖 [DataManager] Lendo identify: reference=\(savedIdentify.reference ?? "nil")")
+        #endif
+
         return savedIdentify
     }
 

@@ -15,6 +15,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication
       .LaunchOptionsKey: Any]?
   ) -> Bool {
+    #if DEBUG
+    Dito.enableDebugMode(true)
+    print("🐛 Debug mode enabled for Dito SDK")
+    #endif
+
     print("🔵 AppDelegate: didFinishLaunchingWithOptions called")
 
     // Configura o Firebase primeiro (necessário para Analytics e Messaging)
@@ -41,14 +46,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       print("⚠️ AppDelegate: Window is nil, creating manually (not using Scenes)")
       window = UIWindow(frame: UIScreen.main.bounds)
 
-      let storyboard = UIStoryboard(name: "Main", bundle: nil)
-      if let initialViewController = storyboard.instantiateInitialViewController() {
-        window?.rootViewController = initialViewController
-        window?.makeKeyAndVisible()
-        print("✅ AppDelegate: Window created and initial view controller loaded")
-      } else {
-        print("❌ AppDelegate: Failed to load initial view controller from Main storyboard")
-      }
+      let viewController = ViewController()
+      let navigationController = UINavigationController(rootViewController: viewController)
+      navigationController.navigationBar.prefersLargeTitles = false
+
+      window?.rootViewController = navigationController
+      window?.makeKeyAndVisible()
+      print("✅ AppDelegate: Window created with NavigationController (no storyboard)")
     }
 
     print("✅ AppDelegate: didFinishLaunchingWithOptions completed successfully")
@@ -136,13 +140,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       completionHandler(.newData)
     }
 
-    if let token = self.fcmToken {
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+    if let token = cachedToken {
       callNotificationReceived(token)
     } else {
       // Fallback: tentar obter o token se ainda não estiver armazenado
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
+          UserDefaults.standard.set(token, forKey: "FCMToken")
           callNotificationReceived(token)
         } else {
           print(
@@ -162,17 +168,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler:
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    let userInfo = notification.request.content.userInfo
+      let userInfo = notification.request.content.userInfo
 
     // Salvar notificação para debug
     NotificationDebugHelper.saveNotification(userInfo)
 
-    if let token = fcmToken {
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+    if let token = cachedToken {
       Dito.notificationReceived(userInfo: userInfo, token: token)
     } else {
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
           self?.fcmToken = token
+          UserDefaults.standard.set(token, forKey: "FCMToken")
           Dito.notificationReceived(userInfo: userInfo, token: token)
         }
       }

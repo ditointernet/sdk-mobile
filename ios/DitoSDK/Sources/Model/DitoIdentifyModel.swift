@@ -14,6 +14,7 @@ struct DitoIdentifyModel: Codable {
 
   init(from decoder: Decoder) throws {
     let values = try decoder.container(keyedBy: CodingKeys.self)
+
     reference = try values.decodeIfPresent(String.self, forKey: .reference)
       .unwrappedValue
     signedRequest = try values.decodeIfPresent(

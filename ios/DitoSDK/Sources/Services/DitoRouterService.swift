@@ -50,9 +50,9 @@ enum DitoRouterService {
     case .register(let reference, _):
       return "users/\(reference)/mobile-tokens/"
     case .unregister(let reference, _):
-      return "users/\(reference)/mobile-tokens/disable"
+      return "users/\(reference)/mobile-tokens/disable/"
     case .open(let notificationId, _):
-      return "notifications/\(notificationId)/open"
+      return "notifications/\(notificationId)/open/"
     }
   }
 

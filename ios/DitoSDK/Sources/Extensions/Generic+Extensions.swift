@@ -33,7 +33,7 @@ extension UserDefaults {
           return decodedData
 
         } catch {
-          print("Unable to Decode Note (\(error))")
+          DitoLogger.error("Unable to Decode Note (\(error))")
         }
       }
       return nil
@@ -53,7 +53,7 @@ extension UserDefaults {
           )
           UserDefaults.standard.synchronize()
         } catch {
-          print("Unable to Encode Note (\(error))")
+          DitoLogger.error("Unable to Encode Note (\(error))")
         }
       }
     }
@@ -89,7 +89,7 @@ extension UserDefaults {
           return decodedData
 
         } catch {
-          print("Unable to Decode Note (\(error))")
+          DitoLogger.error("Unable to Decode Note (\(error))")
         }
       }
       return nil
@@ -111,7 +111,7 @@ extension UserDefaults {
           )
           UserDefaults.standard.synchronize()
         } catch {
-          print("Unable to Encode Note (\(error))")
+          DitoLogger.error("Unable to Encode Note (\(error))")
         }
       }
     }
@@ -120,12 +120,21 @@ extension UserDefaults {
 
 extension Bundle {
 
-  var apiKey: String {
-    return object(forInfoDictionaryKey: "ApiKey") as? String ?? ""
+  var appKey: String {
+    return object(forInfoDictionaryKey: "AppKey") as? String ?? ""
   }
 
-  var apiSecret: String {
-    return object(forInfoDictionaryKey: "ApiSecret") as? String ?? ""
+  var appSecret: String {
+    return object(forInfoDictionaryKey: "AppSecret") as? String ?? ""
+  }
+
+  var appSecretDecoded: String {
+    guard let encodedSecret = object(forInfoDictionaryKey: "AppSecret") as? String,
+          let data = Data(base64Encoded: encodedSecret),
+          let decodedSecret = String(data: data, encoding: .utf8) else {
+      return ""
+    }
+    return decodedSecret
   }
 }
 

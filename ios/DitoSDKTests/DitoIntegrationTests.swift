@@ -6,12 +6,12 @@ class DitoIntegrationTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
     }
 
     func testCompleteFlow_IdentifyThenTrack() {
@@ -33,11 +33,15 @@ class DitoIntegrationTests: XCTestCase {
             expectIdentify.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
         wait(for: [expectIdentify], timeout: timeout)
 
-        let event = DitoEvent(action: "integration_test_action")
-        Dito.track(event: event)
+        Dito.track(action: "integration_test_action", data: nil)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             expectTrack.fulfill()
@@ -68,7 +72,12 @@ class DitoIntegrationTests: XCTestCase {
             expectIdentify.fulfill()
         }
 
-        Dito.identify(id: id, data: user)
+        Dito.identify(
+            id: id,
+            name: user.name,
+            email: user.email,
+            customData: nil
+        )
         wait(for: [expectIdentify], timeout: timeout)
 
         Dito.registerDevice(token: token)

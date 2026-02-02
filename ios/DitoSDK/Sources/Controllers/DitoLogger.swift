@@ -15,6 +15,8 @@ enum DitoLogger: String {
   case information = "INFORMATION"
   case debug = "DEBUG"
   case trace = "TRACE"
+
+  static var isDebugEnabled: Bool = false
 }
 
 extension DitoLogger {
@@ -22,7 +24,7 @@ extension DitoLogger {
 
   /**
    Private log method that will print message using other variables to indicate the timestamp, file name, line, column and the function that cause the message
-  
+
    - Parameters:
       - items: The sequence of objects to be printed
       - separator: Used to concatenate the string objects **items**
@@ -65,7 +67,7 @@ extension DitoLogger {
 
 /// Overrides Swift.print(_:, separator:, terminator:) function to only print when app is in DEBUG environment
 func print(_ items: Any..., separator: String = " ", terminator: String = "\n") {
-  if ProcessInfo.processInfo.arguments.contains("EnabledDebug") {
+  if ProcessInfo.processInfo.arguments.contains("EnabledDebug") || DitoLogger.isDebugEnabled {
     Swift.print(
       items.map { "\($0)" }.joined(separator: separator),
       terminator: terminator

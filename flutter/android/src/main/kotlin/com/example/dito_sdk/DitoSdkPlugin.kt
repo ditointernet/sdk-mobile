@@ -67,7 +67,10 @@ class DitoSdkPlugin :
             val jsonData = org.json.JSONObject(data)
             val notificationId = jsonData.optString("notification", "")
             val reference = jsonData.optString("reference", "")
-            return NotificationData(notificationId, reference)
+            val logId = jsonData.optString("log_id", "")
+            val notificationName = jsonData.optString("notification_name", "")
+            val userId = jsonData.optString("user_id", "")
+            return NotificationData(notificationId, reference, logId, notificationName, userId)
         }
 
         @JvmStatic
@@ -79,14 +82,20 @@ class DitoSdkPlugin :
         private fun sendNotificationRead(data: NotificationData) {
             val userInfo = mapOf(
                 "notification" to data.notificationId,
-                "reference" to data.reference
+                "reference" to data.reference,
+                "log_id" to data.logId,
+                "notification_name" to data.notificationName,
+                "user_id" to data.userId
             )
             Dito.notificationRead(userInfo)
         }
 
         private data class NotificationData(
             val notificationId: String,
-            val reference: String
+            val reference: String,
+            val logId: String,
+            val notificationName: String,
+            val userId: String
         )
 
         /**
@@ -150,7 +159,7 @@ class DitoSdkPlugin :
                     }
 
                     try {
-                        Dito.init(ctx, null)
+                        Dito.init(ctx, apiKey, apiSecret, null)
                         result.success(null)
                     } catch (e: RuntimeException) {
                         if (e.message?.contains("API_KEY e API_SECRET no AndroidManifest") == true) {

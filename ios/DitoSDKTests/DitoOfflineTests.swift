@@ -5,12 +5,12 @@ class DitoOfflineTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        setupTestEnvironment()
     }
 
     override func tearDown() {
+        teardownTestEnvironment()
         super.tearDown()
-        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
-        DitoIdentifyDataManager.shared.identitySaveCallback = nil
     }
 
     func testDitoIdentifyOffline_InitiateIdentify_SavesStamp() {
@@ -62,7 +62,7 @@ class DitoOfflineTests: XCTestCase {
         let testId = "test_id_123"
         let testReference = "ref_123"
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -101,7 +101,7 @@ class DitoOfflineTests: XCTestCase {
     func testDitoTrackOffline_Track_SavesWhenNoIdentify() {
         let trackOffline = DitoTrackOffline()
         let eventRequest = DitoEventRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             event: DitoEvent(action: "test_action")
         )
@@ -124,7 +124,7 @@ class DitoOfflineTests: XCTestCase {
         let testReference = "ref_123"
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )
@@ -143,7 +143,7 @@ class DitoOfflineTests: XCTestCase {
     func testDitoNotificationOffline_NotificationRegister_SavesOffline() {
         let notificationOffline = DitoNotificationOffline()
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             token: "fcm_token_123"
         )
@@ -163,7 +163,7 @@ class DitoOfflineTests: XCTestCase {
     func testDitoNotificationOffline_NotificationUnregister_SavesOffline() {
         let notificationOffline = DitoNotificationOffline()
         let tokenRequest = DitoTokenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             token: "fcm_token_123"
         )
@@ -183,7 +183,7 @@ class DitoOfflineTests: XCTestCase {
     func testDitoNotificationOffline_NotificationRead_SavesOffline() {
         let notificationOffline = DitoNotificationOffline()
         let notificationRequest = DitoNotificationOpenRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             data: DitoDataNotification(identifier: "id_123", reference: "ref_123")
         )
@@ -206,7 +206,7 @@ class DitoOfflineTests: XCTestCase {
         let testReference = "ref_123"
 
         let signupRequest = DitoSignupRequest(
-            platformApiKey: "test_key",
+            platformAppKey: "test_key",
             sha1Signature: "test_signature",
             userData: nil
         )

@@ -14,6 +14,10 @@ class DitoTrack {
   }
 
   func track(data: DitoEvent) {
+    #if DEBUG
+    DitoLogger.information("📊 [TRACK] action=\(data.action)")
+    #endif
+
     if trackOffline.checkIdentifyState() {
       trackOffline.setTrackCompletion {
         self.completeTracking(data: data)
@@ -38,14 +42,24 @@ class DitoTrack {
 
   private func createEventRequest(from event: DitoEvent) -> DitoEventRequest {
     DitoEventRequest(
-      platformApiKey: Dito.apiKey,
+      platformAppKey: Dito.appKey,
       sha1Signature: Dito.signature,
       event: event
     )
   }
 
   private func getValidReference() -> String? {
-    guard let reference = trackOffline.reference, !reference.isEmpty else {
+    let reference = trackOffline.reference
+
+    #if DEBUG
+    if let ref = reference, !ref.isEmpty {
+      DitoLogger.debug("✓ [TRACK] Identificador encontrado: \(ref)")
+    } else {
+      DitoLogger.warning("⚠️ [TRACK] Identificador não encontrado ou vazio")
+    }
+    #endif
+
+    guard let reference = reference, !reference.isEmpty else {
       return nil
     }
     return reference
@@ -53,7 +67,7 @@ class DitoTrack {
 
   private func handleTrackingWithoutReference(eventRequest: DitoEventRequest) {
     trackOffline.track(event: eventRequest)
-    DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
+    DitoLogger.warning("⚠️ [TRACK] Usuário não identificado - salvando evento offline")
   }
 
   private func performTracking(reference: String, eventRequest: DitoEventRequest) {
@@ -73,6 +87,6 @@ class DitoTrack {
   }
 
   private func handleTrackingSuccess() {
-    DitoLogger.information("Track - Evento enviado")
+    DitoLogger.information("✅ [TRACK] Sucesso")
   }
 }

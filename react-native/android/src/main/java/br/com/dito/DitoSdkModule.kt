@@ -2,11 +2,13 @@ package br.com.dito
 
 import android.content.Context
 import br.com.dito.ditosdk.Dito
+import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
-import com.facebook.react.bridge.Promise
+import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
+import com.facebook.react.bridge.ReadableType
 import com.google.firebase.messaging.RemoteMessage
 
 class DitoSdkModule(reactContext: ReactApplicationContext) :
@@ -58,7 +60,10 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
 
         private data class NotificationData(
             val notificationId: String,
-            val reference: String
+            val reference: String,
+            val logId: String,
+            val notificationName: String,
+            val userId: String
         )
 
         private fun extractNotificationData(data: String): NotificationData? {
@@ -66,8 +71,11 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 val jsonData = org.json.JSONObject(data)
                 val notificationId = jsonData.optString("notification", "")
                 val reference = jsonData.optString("reference", "")
+                val logId = jsonData.optString("log_id", "")
+                val notificationName = jsonData.optString("notification_name", "")
+                val userId = jsonData.optString("user_id", "")
                 if (notificationId.isNotEmpty() && reference.isNotEmpty()) {
-                    NotificationData(notificationId, reference)
+                    NotificationData(notificationId, reference, logId, notificationName, userId)
                 } else {
                     null
                 }
@@ -80,7 +88,10 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
         private fun sendNotificationRead(data: NotificationData) {
             val userInfo = mapOf(
                 "notification" to data.notificationId,
-                "reference" to data.reference
+                "reference" to data.reference,
+                "log_id" to data.logId,
+                "notification_name" to data.notificationName,
+                "user_id" to data.userId
             )
             Dito.notificationRead(userInfo)
         }
@@ -130,7 +141,7 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
             }
 
             try {
-                Dito.init(context, null)
+                Dito.init(context, apiKey, apiSecret, null)
                 promise.resolve(null)
             } catch (e: RuntimeException) {
                 if (e.message?.contains("API_KEY e API_SECRET no AndroidManifest") == true) {
@@ -174,20 +185,7 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 return
             }
 
-            val customDataMap = customData?.let { map ->
-                val result = mutableMapOf<String, Any>()
-                val iterator = map.keySetIterator()
-                while (iterator.hasNextKey()) {
-                    val key = iterator.nextKey()
-                    when (val value = map.getDynamic(key)) {
-                        is String -> result[key] = value
-                        is Number -> result[key] = value
-                        is Boolean -> result[key] = value
-                        else -> result[key] = value.toString()
-                    }
-                }
-                result
-            }
+            val customDataMap = readableMapToMap(customData)
 
             Dito.identify(
                 id = id,
@@ -217,20 +215,7 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 return
             }
 
-            val dataMap = data?.let { map ->
-                val result = mutableMapOf<String, Any>()
-                val iterator = map.keySetIterator()
-                while (iterator.hasNextKey()) {
-                    val key = iterator.nextKey()
-                    when (val value = map.getDynamic(key)) {
-                        is String -> result[key] = value
-                        is Number -> result[key] = value
-                        is Boolean -> result[key] = value
-                        else -> result[key] = value.toString()
-                    }
-                }
-                result
-            }
+            val dataMap = readableMapToMap(data)
 
             Dito.track(
                 action = action,
@@ -290,5 +275,63 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 e
             )
         }
+    }
+
+    private fun readableMapToMap(map: ReadableMap?): Map<String, Any>? {
+        if (map == null) {
+            return null
+        }
+        val result = mutableMapOf<String, Any>()
+        val iterator = map.keySetIterator()
+        while (iterator.hasNextKey()) {
+            val key = iterator.nextKey()
+            when (map.getType(key)) {
+                ReadableType.Null -> Unit
+                ReadableType.Boolean -> result[key] = map.getBoolean(key)
+                ReadableType.Number -> result[key] = map.getDouble(key)
+                ReadableType.String -> result[key] = map.getString(key) ?: ""
+                ReadableType.Map -> {
+                    val nested = readableMapToMap(map.getMap(key))
+                    if (nested != null) {
+                        result[key] = nested
+                    }
+                }
+                ReadableType.Array -> {
+                    val list = readableArrayToList(map.getArray(key))
+                    if (list != null) {
+                        result[key] = list
+                    }
+                }
+            }
+        }
+        return result
+    }
+
+    private fun readableArrayToList(array: ReadableArray?): List<Any>? {
+        if (array == null) {
+            return null
+        }
+        val result = mutableListOf<Any>()
+        for (index in 0 until array.size()) {
+            when (array.getType(index)) {
+                ReadableType.Null -> Unit
+                ReadableType.Boolean -> result.add(array.getBoolean(index))
+                ReadableType.Number -> result.add(array.getDouble(index))
+                ReadableType.String -> result.add(array.getString(index) ?: "")
+                ReadableType.Map -> {
+                    val nested = readableMapToMap(array.getMap(index))
+                    if (nested != null) {
+                        result.add(nested)
+                    }
+                }
+                ReadableType.Array -> {
+                    val list = readableArrayToList(array.getArray(index))
+                    if (list != null) {
+                        result.add(list)
+                    }
+                }
+            }
+        }
+        return result
     }
 }

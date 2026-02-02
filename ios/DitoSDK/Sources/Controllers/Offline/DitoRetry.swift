@@ -66,6 +66,10 @@ class DitoRetry {
     }
 
     if !identify.send {
+      #if DEBUG
+      DitoLogger.debug("🔄 [RETRY] Reenviando identify offline para id=\(id)")
+      #endif
+
       return await withCheckedContinuation { continuation in
         self.serviceIdentify.signup(
           network: "portal",
@@ -103,6 +107,12 @@ class DitoRetry {
   private func checkTrack() async {
     let tracks = self.trackOffline.getTrack
 
+    #if DEBUG
+    if !tracks.isEmpty {
+      DitoLogger.debug("🔄 [RETRY] Verificando \(tracks.count) evento(s) offline para reenvio")
+    }
+    #endif
+
     for track in tracks {
       guard let eventJSON = track.event else { continue }
       let trackId = track.objectID
@@ -119,32 +129,9 @@ class DitoRetry {
         continue
       }
 
-      var decodedEvent: DitoEvent? = nil
-      if let base64Data = Data(base64Encoded: eventRequest.event) {
-        do {
-          decodedEvent = try JSONDecoder().decode(
-            DitoEvent.self,
-            from: base64Data
-          )
-        } catch {
-          DitoLogger.error(
-            "Falha ao decodificar DitoEvent do base64: \(error.localizedDescription)"
-          )
-        }
-      } else {
-        if let rawData = eventRequest.event.data(using: .utf8) {
-          do {
-            decodedEvent = try JSONDecoder().decode(
-              DitoEvent.self,
-              from: rawData
-            )
-          } catch {
-            DitoLogger.warning(
-              "Campo 'event' não está em base64 ou JSON válido para DitoEvent"
-            )
-          }
-        }
-      }
+      #if DEBUG
+      DitoLogger.debug("🔄 [RETRY] Reenviando evento: \(eventRequest.event.action) (tentativa \(currentRetry + 1))")
+      #endif
 
       if let reference = self.trackOffline.reference, !reference.isEmpty {
         await sendEventAsync(
@@ -210,6 +197,12 @@ class DitoRetry {
   private func checkNotification() async {
     let notifications = self.notificationReadOffline.getNotificationRead
 
+    #if DEBUG
+    if !notifications.isEmpty {
+      DitoLogger.debug("🔄 [RETRY] Verificando \(notifications.count) notificação(ões) read offline para reenvio")
+    }
+    #endif
+
     for notification in notifications {
       let notifID = notification.objectID
       let jsonData = notification.json
@@ -223,12 +216,18 @@ class DitoRetry {
         continue
       }
 
+      let notificationId = notificationRequest.data.notification
+
+      #if DEBUG
+      DitoLogger.debug("🔄 [RETRY] Reenviando notification read: \(notificationId) (tentativa \(notifRetry + 1))")
+      #endif
+
       if let reference = self.notificationReadOffline.reference,
-        !reference.isEmpty, !notificationRequest.data.identifier.isEmpty
+        !reference.isEmpty, !notificationId.isEmpty
       {
         await withCheckedContinuation { continuation in
           self.serviceNotification.read(
-            notificationId: notificationRequest.data.identifier,
+            notificationId: notificationId,
             data: notificationRequest
           ) { [weak self] (register, error) in
 
@@ -274,8 +273,12 @@ class DitoRetry {
         return
       }
 
+      #if DEBUG
+      DitoLogger.debug("🔄 [RETRY] Reenviando register token offline (tentativa \(notificationRegister.retry + 1))")
+      #endif
+
       let tokenRequest = DitoTokenRequest(
-        platformApiKey: registerRequest.platformApiKey,
+        platformAppKey: registerRequest.platformAppKey,
         sha1Signature: registerRequest.sha1Signature,
         token: registerRequest.token
       )
@@ -326,8 +329,12 @@ class DitoRetry {
         return
       }
 
+      #if DEBUG
+      DitoLogger.debug("🔄 [RETRY] Reenviando unregister token offline (tentativa \(notificationRegister.retry + 1))")
+      #endif
+
       let tokenRequest = DitoTokenRequest(
-        platformApiKey: registerRequest.platformApiKey,
+        platformAppKey: registerRequest.platformAppKey,
         sha1Signature: registerRequest.sha1Signature,
         token: registerRequest.token
       )

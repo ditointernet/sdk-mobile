@@ -7,7 +7,7 @@ import com.google.gson.annotations.SerializedName
 
 internal data class SigunpRequest(
         @SerializedName("platform_api_key")
-        val platformApiKey: String,
+        val platformAppKey: String,
 
         @SerializedName("sha1_signature")
         val sha1Signature: String,
@@ -22,7 +22,7 @@ internal data class SigunpRequest(
 
 internal data class EventRequest(
         @SerializedName("platform_api_key")
-        val platformApiKey: String,
+        val platformAppKey: String,
 
         @SerializedName("sha1_signature")
         val sha1Signature: String,
@@ -42,7 +42,7 @@ internal data class EventRequest(
 
 internal data class TokenRequest(
         @SerializedName("platform_api_key")
-        val platformApiKey: String,
+        val platformAppKey: String,
 
         @SerializedName("sha1_signature")
         val sha1Signature: String,
@@ -62,7 +62,7 @@ internal data class TokenRequest(
 
 internal data class NotificationOpenRequest(
         @SerializedName("platform_api_key")
-        val platformApiKey: String,
+        val platformAppKey: String,
 
         @SerializedName("sha1_signature")
         val sha1Signature: String,
