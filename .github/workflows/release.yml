@@ -85,6 +85,13 @@ jobs:
         with:
           xcode-version: latest-stable
 
+      - name: Generate Xcode project and workspace
+        run: |
+          brew install xcodegen
+          cd ios
+          xcodegen generate
+          pod install
+
       - name: Build iOS SDK
         run: |
           cd ios
