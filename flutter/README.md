@@ -47,7 +47,14 @@ flutter pub get
 
 ### 3. Configure as plataformas nativas
 
-Siga as instruções de configuração para [iOS](../ios/README.md) e [Android](../android/README.md).
+O plugin já configura o Firebase Messaging no iOS em tempo de execução, sem necessidade
+de alterar o `AppDelegate`. Ainda assim, algumas configurações continuam obrigatórias:
+
+- Adicionar o arquivo `GoogleService-Info.plist` no app iOS
+- Habilitar Push Notifications e Background Modes (Remote notifications) no Xcode
+- Configurar APNs no Firebase (chave ou certificados)
+
+Para Android, siga as instruções em [Android](../android/README.md).
 
 ## ⚙️ Configuração Inicial
 
@@ -303,19 +310,18 @@ Future<void> unregisterDevice() async {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
-### Configuração Básica
+### iOS (Flutter)
 
-1. Configure o Firebase no seu projeto Flutter
-2. Instale o plugin `firebase_messaging`:
+O plugin cuida da configuração nativa do Firebase Messaging no iOS. Para que o fluxo funcione, o app precisa:
 
-```yaml
-dependencies:
-  firebase_messaging: ^14.0.0
-```
+1. Adicionar `GoogleService-Info.plist` no target iOS
+2. Habilitar Push Notifications e Background Modes (Remote notifications)
+3. Configurar APNs no Firebase
 
-3. Configure o tratamento de notificações:
+Se você usa `firebase_messaging` no Dart para tratar mensagens, mantenha a inicialização do Firebase no `main()`:
 
 ```dart
+import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -325,12 +331,22 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
-
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
   runApp(MyApp());
 }
 ```
+
+### Configuração Básica (Flutter)
+
+1. Configure o Firebase no seu projeto Flutter
+2. Instale o plugin `firebase_messaging`:
+
+```yaml
+dependencies:
+  firebase_messaging: ^14.0.0
+```
+
+3. Configure o tratamento de notificações no Dart (se aplicavel ao seu app)
 
 ## ⚠️ Tratamento de Erros
 
@@ -397,6 +413,15 @@ await DitoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 await DitoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 await DitoSdk.track(action: 'purchase', data: {'product': 'item123'});
 ```
+
+### Evento "receive-ios-notification" nao dispara em background
+
+**Checklist**:
+1. `GoogleService-Info.plist` no target iOS
+2. Push Notifications e Background Modes (Remote notifications) habilitados
+3. APNs configurado no Firebase
+4. App aberto ao menos uma vez para registrar o token
+5. Notificacao enviada com `channel=DITO` no payload
 
 ## 💡 Exemplos Completos
 

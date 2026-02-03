@@ -1,6 +1,8 @@
+import DitoSDK
+import FirebaseCore
+import FirebaseMessaging
 import Flutter
 import UIKit
-import DitoSDK
 import UserNotifications
 
 public class DitoSdkPlugin: NSObject, FlutterPlugin {
@@ -8,34 +10,22 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     let channel = FlutterMethodChannel(name: "br.com.dito/dito_sdk", binaryMessenger: registrar.messenger())
     let instance = DitoSdkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
+    registrar.addApplicationDelegate(instance)
+    if FirebaseApp.app() == nil {
+      FirebaseApp.configure()
+    }
+    DitoNotificationDelegate.shared.configurePush(application: UIApplication.shared)
   }
 
-  /**
-   * Handles a push notification request and processes it if it belongs to Dito channel.
-   *
-   * This method should be called from your UNUserNotificationCenterDelegate methods.
-   * It verifies if the notification belongs to the Dito channel (channel == "Dito") and processes it accordingly.
-   *
-   * - Parameters:
-   *   - request: The UNNotificationRequest received from the notification center
-   *   - fcmToken: The FCM token for the device (optional, but recommended for notificationReceived)
-   * - Returns: true if the notification was processed by Dito SDK, false otherwise
-   */
-  @objc public static func didReceiveNotificationRequest(
-    _ request: UNNotificationRequest,
-    fcmToken: String?
-  ) -> Bool {
-    let userInfo = request.content.userInfo
-    guard isDitoChannel(userInfo) else {
-      return false
+  private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
+    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String {
+      return ch
     }
-    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
-    return true
+    return userInfo["channel"] as? String
   }
 
   private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    let channel = userInfo["channel"] as? String
-    return channel == "Dito"
+    channelFromUserInfo(userInfo) == "DITO"
   }
 
   private static func processNotificationReceived(userInfo: [AnyHashable: Any], fcmToken: String?) {
@@ -43,33 +33,45 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     Dito.notificationReceived(userInfo: userInfo, token: token)
   }
 
-  /**
-   * Handles a notification click/interaction and processes it if it belongs to Dito channel.
-   *
-   * This method should be called from your UNUserNotificationCenterDelegate's didReceive method.
-   * It verifies if the notification belongs to the Dito channel and processes the click accordingly.
-   *
-   * - Parameters:
-   *   - userInfo: The userInfo dictionary from the notification
-   *   - callback: Optional callback executed with deeplink if available
-   * - Returns: true if the notification was processed by Dito SDK, false otherwise
-   */
+  @objc public static func didReceiveNotificationRequest(
+    _ request: UNNotificationRequest,
+    fcmToken: String?
+  ) -> Bool {
+    let userInfo = request.content.userInfo
+    guard isDitoChannel(userInfo) else { return false }
+    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
+    return true
+  }
+
+  @objc public static func didReceiveRemoteNotification(
+    userInfo: [AnyHashable: Any],
+    fcmToken: String?
+  ) -> Bool {
+    guard isDitoChannel(userInfo) else { return false }
+    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
+    return true
+  }
+
   @objc public static func didReceiveNotificationClick(
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard isDitoChannel(userInfo) else {
-      return false
-    }
-    processNotificationClick(userInfo: userInfo, callback: callback)
+    guard isDitoChannel(userInfo) else { return false }
+    Dito.notificationClick(userInfo: userInfo, callback: callback)
     return true
   }
 
-  private static func processNotificationClick(
-    userInfo: [AnyHashable: Any],
-    callback: ((String) -> Void)?
-  ) {
-    Dito.notificationClick(userInfo: userInfo, callback: callback)
+  public func application(
+    _ application: UIApplication,
+    didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+    fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+  ) -> Bool {
+    DitoNotificationDelegate.shared.application(
+      application,
+      didReceiveRemoteNotification: userInfo,
+      fetchCompletionHandler: completionHandler
+    )
+    return false
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {

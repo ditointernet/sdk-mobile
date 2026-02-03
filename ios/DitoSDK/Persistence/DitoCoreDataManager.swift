@@ -8,7 +8,7 @@ class DitoCoreDataManager {
   private let model: String = "DitoDataModel"
   private let persistentContainerQueue = DispatchQueue(label: "br.com.dito.coredata.container")
   private var storedPersistentContainer: NSPersistentContainer?
-  private(set) var persistentContainer: NSPersistentContainer? {
+  var persistentContainer: NSPersistentContainer? {
     return persistentContainerQueue.sync {
       if let container = storedPersistentContainer {
         return container

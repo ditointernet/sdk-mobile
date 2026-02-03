@@ -219,3 +219,5 @@ coverage/
 **/*/google-services.json
 serviceAccountKey.json
 send_test_notification
+flutter/sample_application/ios/Runner/GoogleService-Info.plist
+.gitignore

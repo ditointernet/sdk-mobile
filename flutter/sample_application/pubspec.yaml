@@ -1,0 +1,31 @@
+name: sample_application
+description: "A new Flutter project."
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.8
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  dito_sdk:
+    path: ../
+
+  cupertino_icons: ^1.0.8
+  flutter_dotenv: ^5.1.0
+  firebase_core: ^4.4.0
+  firebase_messaging: ^16.0.0
+  crypto: ^3.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+flutter:
+
+  uses-material-design: true
+  assets:
+      - .env.development.local
