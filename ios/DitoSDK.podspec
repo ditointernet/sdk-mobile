@@ -1,7 +1,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'DitoSDK'
-  s.version          = '3.0.0'
+  s.version          = '3.0.1'
   s.summary          = 'SDK iOS para rastrear eventos, identificar usuários e sincronizar dados com o Dito CRM'
   s.homepage         = 'https://github.com/ditointernet/sdk-mobile'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }

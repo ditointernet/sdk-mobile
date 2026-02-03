@@ -27,7 +27,7 @@ class DitoServiceManager {
 
       logRequest(urlRequest)
 
-      let task = try session.dataTask(with: urlRequest) {
+      let task = session.dataTask(with: urlRequest) {
         (data, response, error) in
         DispatchQueue.main.async {
 
