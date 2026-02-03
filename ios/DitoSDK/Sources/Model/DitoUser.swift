@@ -37,12 +37,12 @@ public struct DitoUser: Codable, Sendable {
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(name, forKey: .name)
-    try container.encode(gender, forKey: .gender)
-    try container.encode(email, forKey: .email)
-    try container.encode(birthday, forKey: .birthday)
-    try container.encode(location, forKey: .location)
-    try container.encode(createdAt, forKey: .createdAt)
-    try container.encode(data, forKey: .data)
+    try container.encodeIfPresent(name, forKey: .name)
+    try container.encodeIfPresent(gender, forKey: .gender)
+    try container.encodeIfPresent(email, forKey: .email)
+    try container.encodeIfPresent(birthday, forKey: .birthday)
+    try container.encodeIfPresent(location, forKey: .location)
+    try container.encodeIfPresent(createdAt, forKey: .createdAt)
+    try container.encodeIfPresent(data, forKey: .data)
   }
 }

@@ -12,6 +12,16 @@ class DitoSdk {
     return DitoSdkPlatform.instance.getPlatformVersion();
   }
 
+  Future<void> setDebugMode({required bool enabled}) async {
+    try {
+      await DitoSdkPlatform.instance.setDebugMode(enabled: enabled);
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
   /// Initializes the Dito SDK with the provided API credentials.
   ///
   /// This method must be called before using any other SDK methods.
@@ -36,16 +46,16 @@ class DitoSdk {
   /// }
   /// ```
   Future<void> initialize({
-    required String apiKey,
-    required String apiSecret,
+    required String appKey,
+    required String appSecret,
   }) async {
-    validateApiKey(apiKey);
-    validateApiSecret(apiSecret);
+    validateAppKey(appKey);
+    validateAppSecret(appSecret);
 
     try {
       await DitoSdkPlatform.instance.initialize(
-        apiKey: apiKey,
-        apiSecret: apiSecret,
+        appKey: appKey,
+        appSecret: appSecret
       );
       _isInitialized = true;
     } on PlatformException catch (e) {

@@ -27,9 +27,9 @@ public struct DitoEvent: Codable, Sendable {
 
   public func encode(to encoder: Encoder) throws {
     var container = encoder.container(keyedBy: CodingKeys.self)
-    try container.encode(action, forKey: .action)
-    try container.encode(revenue, forKey: .revenue)
-    try container.encode(createdAt, forKey: .createdAt)
-    try container.encode(data, forKey: .data)
+    try container.encodeIfPresent(action, forKey: .action)
+    try container.encodeIfPresent(revenue, forKey: .revenue)
+    try container.encodeIfPresent(createdAt, forKey: .createdAt)
+    try container.encodeIfPresent(data, forKey: .data)
   }
 }

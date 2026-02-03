@@ -1,20 +1,19 @@
 import 'error_handler.dart';
-import 'package:flutter/services.dart';
 
-void validateApiKey(String? apiKey) {
-  if (apiKey == null || apiKey.isEmpty) {
+void validateAppKey(String? appKey) {
+  if (appKey == null || appKey.isEmpty) {
     throw createError(
       DitoError.invalidParameters,
-      'apiKey is required and cannot be empty',
+      'appKey is required and cannot be empty',
     );
   }
 }
 
-void validateApiSecret(String? apiSecret) {
-  if (apiSecret == null || apiSecret.isEmpty) {
+void validateAppSecret(String? appSecret) {
+  if (appSecret == null || appSecret.isEmpty) {
     throw createError(
       DitoError.invalidParameters,
-      'apiSecret is required and cannot be empty',
+      'appSecret is required and cannot be empty',
     );
   }
 }

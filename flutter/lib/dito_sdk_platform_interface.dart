@@ -27,9 +27,12 @@ abstract class DitoSdkPlatform extends PlatformInterface {
     throw UnimplementedError('platformVersion() has not been implemented.');
   }
 
+  Future<void> setDebugMode({required bool enabled}) {
+    throw UnimplementedError('setDebugMode() has not been implemented.');
+  }
+
   Future<void> initialize({
-    required String apiKey,
-    required String apiSecret,
+    required String appKey, required String appSecret,
   }) {
     throw UnimplementedError('initialize() has not been implemented.');
   }

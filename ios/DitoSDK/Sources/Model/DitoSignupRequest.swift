@@ -18,7 +18,7 @@ struct DitoSignupRequest: Codable {
     var container = encoder.container(keyedBy: CodingKeys.self)
     try container.encode(platformAppKey, forKey: .platformAppKey)
     try container.encode(sha1Signature, forKey: .sha1Signature)
-    try container.encode(userData, forKey: .userData)
+    try container.encodeIfPresent(userData, forKey: .userData)
     try container.encode(encoding, forKey: .encoding)
   }
 }

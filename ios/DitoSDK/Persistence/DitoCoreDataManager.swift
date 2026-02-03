@@ -6,9 +6,18 @@ class DitoCoreDataManager {
   nonisolated(unsafe) static let shared = DitoCoreDataManager()
 
   private let model: String = "DitoDataModel"
-  private(set) lazy var persistentContainer: NSPersistentContainer? = {
-    return createPersistentContainer()
-  }()
+  private let persistentContainerQueue = DispatchQueue(label: "br.com.dito.coredata.container")
+  private var storedPersistentContainer: NSPersistentContainer?
+  private(set) var persistentContainer: NSPersistentContainer? {
+    return persistentContainerQueue.sync {
+      if let container = storedPersistentContainer {
+        return container
+      }
+      let container = createPersistentContainer()
+      storedPersistentContainer = container
+      return container
+    }
+  }
 
   var viewContext: NSManagedObjectContext? {
     return persistentContainer?.viewContext
@@ -36,15 +45,36 @@ class DitoCoreDataManager {
       managedObjectModel: managedObjectModel
     )
 
-    let description = container.persistentStoreDescriptions.first
-    description?.setOption(
-      true as NSNumber,
-      forKey: NSPersistentHistoryTrackingKey
-    )
-    description?.setOption(
-      true as NSNumber,
-      forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
-    )
+    if let storeURL = FileManager.default
+      .urls(for: .applicationSupportDirectory, in: .userDomainMask)
+      .first?
+      .appendingPathComponent("\(self.model).sqlite")
+    {
+      try? FileManager.default.createDirectory(
+        at: storeURL.deletingLastPathComponent(),
+        withIntermediateDirectories: true
+      )
+      let description = NSPersistentStoreDescription(url: storeURL)
+      description.setOption(
+        true as NSNumber,
+        forKey: NSPersistentHistoryTrackingKey
+      )
+      description.setOption(
+        true as NSNumber,
+        forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
+      )
+      container.persistentStoreDescriptions = [description]
+    } else {
+      let description = container.persistentStoreDescriptions.first
+      description?.setOption(
+        true as NSNumber,
+        forKey: NSPersistentHistoryTrackingKey
+      )
+      description?.setOption(
+        true as NSNumber,
+        forKey: NSPersistentStoreRemoteChangeNotificationPostOptionKey
+      )
+    }
 
     var loadError: Error?
     let semaphore = DispatchSemaphore(value: 0)

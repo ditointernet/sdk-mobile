@@ -40,6 +40,18 @@ class MockDitoSdkPlatform
   Future<void> registerDeviceToken(String token) {
     throw UnimplementedError('registerDeviceToken() has not been implemented.');
   }
+
+  @override
+  Future<void> unregisterDeviceToken(String token) {
+    throw UnimplementedError(
+      'unregisterDeviceToken() has not been implemented.',
+    );
+  }
+
+  @override
+  Future<void> setDebugMode({required bool enabled}) {
+    throw UnimplementedError('setDebugMode() has not been implemented.');
+  }
 }
 
 void main() {

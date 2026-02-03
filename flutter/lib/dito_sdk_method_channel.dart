@@ -17,16 +17,29 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   }
 
   @override
+  Future<void> setDebugMode({required bool enabled}) async {
+    try {
+      await methodChannel.invokeMethod<void>('setDebugMode', {
+        'enabled': enabled,
+      });
+    } on PlatformException catch (e) {
+      throw e;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
   Future<void> initialize({
-    required String apiKey,
-    required String apiSecret,
+    required String appKey,
+    required String appSecret,
   }) async {
     try {
       await methodChannel.invokeMethod<void>(
         'initialize',
         {
-          'apiKey': apiKey,
-          'apiSecret': apiSecret,
+        'appKey': appKey,
+        'appSecret': appSecret,
         },
       );
     } on PlatformException catch (e) {

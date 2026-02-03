@@ -24,9 +24,11 @@ internal fun customDataSerializer(): JsonSerializer<Map<String, Any>> {
 internal fun identifySerializer(): JsonSerializer<Identify> {
     return JsonSerializer { src, typeOfSrc, _ ->
         val gson = Gson()
-        val data = gson.toJson(src.data?.params)
         val identify = gson.toJsonTree(src, typeOfSrc).asJsonObject
-        identify.addProperty("data", data)
+        val data = src.data?.params
+        if (data != null) {
+            identify.addProperty("data", gson.toJson(data))
+        }
         identify
     }
 }
@@ -35,9 +37,11 @@ internal fun identifySerializer(): JsonSerializer<Identify> {
 internal fun eventSerializer(): JsonSerializer<Event> {
     return JsonSerializer { src, typeOfSrc, _ ->
         val gson = Gson()
-        val data = gson.toJson(src.data?.params)
         val event = gson.toJsonTree(src, typeOfSrc).asJsonObject
-        event.addProperty("data", data)
+        val data = src.data?.params
+        if (data != null) {
+            event.addProperty("data", gson.toJson(data))
+        }
         event
     }
 }

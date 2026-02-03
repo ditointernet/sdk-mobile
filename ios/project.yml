@@ -41,7 +41,7 @@ targets:
           - "${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/FirebaseAnalytics.framework"
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.samplesdk
+        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.example.samplesdk
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UIBackgroundModes: remote-notification
 

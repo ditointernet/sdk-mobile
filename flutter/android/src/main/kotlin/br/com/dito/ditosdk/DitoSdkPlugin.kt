@@ -1,31 +1,22 @@
-package com.example.dito_sdk
+package br.com.dito.ditosdk
 
 import android.content.Context
+import br.com.dito.ditosdk.Dito
+import com.google.firebase.messaging.RemoteMessage
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
-import br.com.dito.ditosdk.Dito
-import com.google.firebase.messaging.RemoteMessage
 
 class DitoSdkPlugin :
     FlutterPlugin,
     MethodCallHandler {
     private lateinit var channel: MethodChannel
     private var context: Context? = null
+    private var debugEnabled: Boolean = false
 
     companion object {
-        /**
-         * Handles a push notification and processes it if it belongs to Dito channel.
-         *
-         * This method should be called from your Firebase Messaging Service's onMessageReceived method.
-         * It verifies if the notification belongs to the Dito channel (channel == "Dito") and processes it accordingly.
-         *
-         * @param context The application context
-         * @param message The RemoteMessage received from Firebase
-         * @return true if the notification was processed by Dito SDK, false otherwise
-         */
         @JvmStatic
         fun handleNotification(context: Context, message: RemoteMessage): Boolean {
             if (!isDitoChannel(message)) {
@@ -98,16 +89,6 @@ class DitoSdkPlugin :
             val userId: String
         )
 
-        /**
-         * Handles a notification click/interaction and processes it if it belongs to Dito channel.
-         *
-         * This method should be called when a notification is clicked.
-         * It verifies if the notification belongs to the Dito channel and processes the click accordingly.
-         *
-         * @param context The application context
-         * @param userInfo Map containing notification data (should contain "notification", "reference", and "deeplink" keys)
-         * @return true if the notification was processed by Dito SDK, false otherwise
-         */
         @JvmStatic
         fun handleNotificationClick(context: Context, userInfo: Map<String, String>): Boolean {
             val channel = userInfo["channel"]
@@ -134,14 +115,28 @@ class DitoSdkPlugin :
             "getPlatformVersion" -> {
                 result.success("Android ${android.os.Build.VERSION.RELEASE}")
             }
+            "setDebugMode" -> {
+                val enabled = call.argument<Boolean>("enabled")
+                if (enabled == null) {
+                    result.error(
+                        "INVALID_PARAMETERS",
+                        "enabled is required and cannot be null",
+                        null
+                    )
+                    return
+                }
+                debugEnabled = enabled
+                Dito.options = Options().apply { debug = enabled }
+                result.success(null)
+            }
             "initialize" -> {
-                val apiKey = call.argument<String>("apiKey")
-                val apiSecret = call.argument<String>("apiSecret")
+                val appKey = call.argument<String>("appKey")
+                val appSecret = call.argument<String>("appSecret")
 
-                if (apiKey.isNullOrEmpty() || apiSecret.isNullOrEmpty()) {
+                if (appKey.isNullOrEmpty() || appSecret.isNullOrEmpty()) {
                     result.error(
                         "INVALID_CREDENTIALS",
-                        "apiKey and apiSecret are required and cannot be empty",
+                        "appKey and appSecret are required and cannot be empty",
                         null
                     )
                     return
@@ -159,7 +154,8 @@ class DitoSdkPlugin :
                     }
 
                     try {
-                        Dito.init(ctx, apiKey, apiSecret, null)
+                        val options = Options().apply { debug = debugEnabled }
+                        Dito.init(ctx, appKey, appSecret, options)
                         result.success(null)
                     } catch (e: RuntimeException) {
                         if (e.message?.contains("API_KEY e API_SECRET no AndroidManifest") == true) {

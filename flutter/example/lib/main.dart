@@ -1,12 +1,18 @@
+import 'dart:async';
+
+import 'package:dito_sdk/dito_sdk.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:dito_sdk/dito_sdk.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'env_loader.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await EnvLoader.load();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const MyApp());
 }
 
@@ -19,9 +25,11 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _ditoSdk = DitoSdk();
+  final _scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
   String _status = 'Not initialized';
   bool _isInitialized = false;
   String _platformVersion = 'Unknown';
+  final bool _debugModeEnabled = true;
 
   final _apiKeyController = TextEditingController();
   final _apiSecretController = TextEditingController();
@@ -36,15 +44,21 @@ class _MyAppState extends State<MyApp> {
   final _userCountryController = TextEditingController();
   final _eventNameController = TextEditingController();
   final _tokenController = TextEditingController();
+  StreamSubscription<String>? _tokenRefreshSubscription;
 
   @override
   void initState() {
     super.initState();
     _loadEnvValues();
     _initPlatformState();
+    _loadFcmToken();
   }
 
   void _loadEnvValues() {
+    final identifyId = EnvLoader.getOrEmpty('IDENTIFY_ID');
+    final identifyName = EnvLoader.getOrEmpty('IDENTIFY_NAME');
+    final identifyEmail = EnvLoader.getOrEmpty('IDENTIFY_EMAIL');
+
     setState(() {
       _apiKeyController.text = EnvLoader.getOrEmpty('API_KEY');
       _apiSecretController.text = EnvLoader.getOrEmpty('API_SECRET');
@@ -57,6 +71,16 @@ class _MyAppState extends State<MyApp> {
       _userStateController.text = EnvLoader.getOrEmpty('USER_STATE');
       _userZipController.text = EnvLoader.getOrEmpty('USER_ZIP');
       _userCountryController.text = EnvLoader.getOrEmpty('USER_COUNTRY');
+
+      if (_userIdController.text.isEmpty && identifyId.isNotEmpty) {
+        _userIdController.text = identifyId;
+      }
+      if (_userNameController.text.isEmpty && identifyName.isNotEmpty) {
+        _userNameController.text = identifyName;
+      }
+      if (_userEmailController.text.isEmpty && identifyEmail.isNotEmpty) {
+        _userEmailController.text = identifyEmail;
+      }
     });
   }
 
@@ -77,6 +101,22 @@ class _MyAppState extends State<MyApp> {
     }
   }
 
+  Future<void> _loadFcmToken() async {
+    try {
+      await FirebaseMessaging.instance.requestPermission();
+      final token = await FirebaseMessaging.instance.getToken();
+      if (token != null && token.isNotEmpty) {
+        _tokenController.text = token;
+      }
+      _tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
+          .listen((newToken) {
+            if (newToken.isNotEmpty) {
+              _tokenController.text = newToken;
+            }
+          });
+    } on Exception {}
+  }
+
   bool _validateEmail(String email) {
     if (email.isEmpty) return false;
     final emailRegex = RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$');
@@ -85,16 +125,20 @@ class _MyAppState extends State<MyApp> {
 
   Future<void> _initialize() async {
     try {
+      _log('initialize start');
+      await _ditoSdk.setDebugMode(enabled: _debugModeEnabled);
       await _ditoSdk.initialize(
-        apiKey: _apiKeyController.text.trim(),
-        apiSecret: _apiSecretController.text.trim(),
+        appKey: _apiKeyController.text.trim(),
+        appSecret: _apiSecretController.text.trim(),
       );
       setState(() {
         _status = 'Initialized successfully';
         _isInitialized = true;
       });
+      _log('initialize success');
       _showSnackBar('SDK initialized successfully');
     } on PlatformException catch (e) {
+      _log('initialize error: ${e.code} ${e.message}');
       setState(() {
         _status = 'Initialization failed: ${e.message}';
         _isInitialized = false;
@@ -123,6 +167,7 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
+      _log('identify start: $userId');
       final customData = <String, dynamic>{};
       if (_userPhoneController.text.trim().isNotEmpty) {
         customData['phone'] = _userPhoneController.text.trim();
@@ -149,8 +194,10 @@ class _MyAppState extends State<MyApp> {
         email: email.isEmpty ? null : email,
         customData: customData.isEmpty ? null : customData,
       );
+      _log('identify success: $userId');
       _showSnackBar('User identified successfully');
     } on PlatformException catch (e) {
+      _log('identify error: ${e.code} ${e.message}');
       _showSnackBar('Error: ${e.message}', isError: true);
     }
   }
@@ -168,6 +215,7 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
+      _log('track start: $eventName');
       await _ditoSdk.track(
         action: eventName,
         data: {
@@ -175,8 +223,10 @@ class _MyAppState extends State<MyApp> {
           'platform': _platformVersion,
         },
       );
+      _log('track success: $eventName');
       _showSnackBar('Event tracked successfully');
     } on PlatformException catch (e) {
+      _log('track error: ${e.code} ${e.message}');
       _showSnackBar('Error: ${e.message}', isError: true);
     }
   }
@@ -194,9 +244,12 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
+      _log('register token start');
       await _ditoSdk.registerDeviceToken(token);
+      _log('register token success');
       _showSnackBar('Device token registered successfully');
     } on PlatformException catch (e) {
+      _log('register token error: ${e.code} ${e.message}');
       _showSnackBar('Error: ${e.message}', isError: true);
     }
   }
@@ -214,15 +267,22 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
+      _log('unregister token start');
       await _ditoSdk.unregisterDeviceToken(token);
+      _log('unregister token success');
       _showSnackBar('Device token unregistered successfully');
     } on PlatformException catch (e) {
+      _log('unregister token error: ${e.code} ${e.message}');
       _showSnackBar('Error: ${e.message}', isError: true);
     }
   }
 
+  void _log(String message) {
+    debugPrint('[DitoSample] $message');
+  }
+
   void _showSnackBar(String message, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
+    _scaffoldMessengerKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(message),
         backgroundColor: isError ? Colors.red : Colors.green,
@@ -235,6 +295,7 @@ class _MyAppState extends State<MyApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Dito SDK Example',
+      scaffoldMessengerKey: _scaffoldMessengerKey,
       theme: ThemeData(
         primarySwatch: Colors.blue,
         useMaterial3: true,
@@ -516,6 +577,7 @@ class _MyAppState extends State<MyApp> {
 
   @override
   void dispose() {
+    _tokenRefreshSubscription?.cancel();
     _apiKeyController.dispose();
     _apiSecretController.dispose();
     _userIdController.dispose();

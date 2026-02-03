@@ -14,7 +14,15 @@ PlatformException mapNativeError(dynamic error) {
       code: error.code,
       message: _enhanceErrorMessage(error.code, error.message ?? ''),
       details: error.details,
-      stackTrace: error.stackTrace,
+      stacktrace: error.stacktrace,
+    );
+  }
+
+  if (error is MissingPluginException) {
+    return PlatformException(
+      code: DitoError.initializationFailed,
+      message:
+          'Missing plugin implementation. Rebuild the app so native changes are compiled (flutter clean, flutter pub get, reinstall).',
     );
   }
 

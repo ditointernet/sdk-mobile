@@ -13,10 +13,12 @@ public class Dito {
   }
 
   init() {
-    Dito.appKey = Bundle.main.appKey
-    let data = Bundle.main.appSecret.data(using: .utf8) ?? Data()
-    Dito.appSecret = data.base64EncodedString()
-    Dito.signature = Bundle.main.appSecret.sha1
+    if Dito.appKey.isEmpty && Dito.appSecret.isEmpty && Dito.signature.isEmpty {
+      Dito.appKey = Bundle.main.appKey
+      let data = Bundle.main.appSecret.data(using: .utf8) ?? Data()
+      Dito.appSecret = data.base64EncodedString()
+      Dito.signature = Bundle.main.appSecret.sha1
+    }
   }
 
   public func configure() {
@@ -37,11 +39,12 @@ public class Dito {
   }
 
   public static func configure(appKey: String, appSecret: String) {
+    let shared = Dito.shared
     Dito.appKey = appKey
     let data = appSecret.data(using: .utf8) ?? Data()
     Dito.appSecret = data.base64EncodedString()
     Dito.signature = appSecret.sha1
-    Dito.shared.configure()
+    shared.configure()
   }
 
   nonisolated public static func sha1(for email: String) -> String {

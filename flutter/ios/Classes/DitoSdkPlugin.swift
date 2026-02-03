@@ -65,11 +65,6 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     return true
   }
 
-  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    let channel = userInfo["channel"] as? String
-    return channel == "Dito"
-  }
-
   private static func processNotificationClick(
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)?
@@ -81,28 +76,40 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "getPlatformVersion":
       result("iOS " + UIDevice.current.systemVersion)
+    case "setDebugMode":
+      guard let args = call.arguments as? [String: Any],
+            let enabled = args["enabled"] as? Bool else {
+        result(FlutterError(
+          code: "INVALID_PARAMETERS",
+          message: "enabled is required and cannot be null",
+          details: nil
+        ))
+        return
+      }
+      Dito.enableDebugMode(enabled)
+      result(nil)
     case "initialize":
       guard let args = call.arguments as? [String: Any],
-            let apiKey = args["apiKey"] as? String,
-            let apiSecret = args["apiSecret"] as? String else {
+            let appKey = args["appKey"] as? String,
+            let appSecret = args["appSecret"] as? String else {
         result(FlutterError(
           code: "INVALID_CREDENTIALS",
-          message: "apiKey and apiSecret are required and cannot be empty",
+          message: "appKey and appSecret are required and cannot be empty",
           details: nil
         ))
         return
       }
 
-      if apiKey.isEmpty || apiSecret.isEmpty {
+      if appKey.isEmpty || appSecret.isEmpty {
         result(FlutterError(
           code: "INVALID_CREDENTIALS",
-          message: "apiKey and apiSecret are required and cannot be empty",
+          message: "appKey and appSecret are required and cannot be empty",
           details: nil
         ))
         return
       }
 
-      Dito.configure(appKey: apiKey, appSecret: apiSecret)
+      Dito.configure(appKey: appKey, appSecret: appSecret)
       result(nil)
     case "identify":
       guard let args = call.arguments as? [String: Any],
