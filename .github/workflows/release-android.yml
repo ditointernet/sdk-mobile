@@ -41,32 +41,6 @@ jobs:
             echo "changelog=false" >> $GITHUB_OUTPUT
           fi
 
-  build-android:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.project == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up JDK
-        uses: actions/setup-java@v3
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x android/gradlew
-
-      - name: Build Android SDK
-        working-directory: android
-        run: ./gradlew :dito-sdk:assembleRelease
-
-      - name: Upload Android artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-build
-          path: android/dito-sdk/build/outputs
-
   extract-changelog:
     needs: detect-changes
     runs-on: ubuntu-latest
@@ -123,7 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   publish:
-    needs: [detect-changes, build-android, extract-changelog, create-release]
+    needs: [detect-changes, extract-changelog, create-release]
     if: |
       always() &&
       needs.detect-changes.outputs.project == 'true' &&
@@ -132,10 +106,14 @@ jobs:
     steps:
       - uses: actions/checkout@v3
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
+      - name: Set up JDK
+        uses: actions/setup-java@v3
         with:
-          node-version: '18'
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
 
       - name: Publish Android
         env:
