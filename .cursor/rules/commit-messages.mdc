@@ -1,0 +1,33 @@
+---
+description: Padrão de mensagens de commit (Conventional Commits) e commits de release
+alwaysApply: true
+---
+
+# Mensagens de commit (Conventional Commits)
+
+Sempre que sugerir/criar uma mensagem de commit neste repositório, use **Conventional Commits**:
+
+`<type>[optional scope]: <descrição>`
+
+- Tipos permitidos: `feat`, `fix`, `perf`, `refactor`, `test`, `build`, `ci`, `chore`, `docs`, `style`, `revert`
+- `scope` é opcional e deve ser curto e específico (ex.: `flutter`, `ios`, `android`, `react-native`, `ci`)
+- Descrição no imperativo, sem ponto final
+- Para breaking change: usar `!` após type/scope e/ou `BREAKING CHANGE:` no corpo
+
+## Commits de release (obrigatório)
+
+Quando o commit for de release, usar exatamente:
+
+- `chore(release): android X.Y.Z`
+- `chore(release): ios X.Y.Z`
+- `chore(release): flutter X.Y.Z`
+- `chore(release): react-native X.Y.Z`
+
+## Exemplos
+
+- ✅ `feat(flutter): adicionar identify com customData`
+- ✅ `fix(ios): corrigir inicialização do SDK em background`
+- ✅ `chore(release): flutter 3.0.2`
+- ❌ `Update stuff`
+- ❌ `Release 3.0.2`
+

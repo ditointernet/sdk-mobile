@@ -1,0 +1,23 @@
+{
+  "branches": ["main"],
+  "tagFormat": "react-native-v${version}",
+  "plugins": [
+    [
+      "@semantic-release/exec",
+      {
+        "analyzeCommitsCmd": "bash ./scripts/semantic-release/analyze.sh react-native react-native-",
+        "generateNotesCmd": "bash ./scripts/semantic-release/notes.sh react-native react-native-",
+        "prepareCmd": "bash ./scripts/semantic-release/bump-version.sh react-native ${nextRelease.version}"
+      }
+    ],
+    ["@semantic-release/changelog", { "changelogFile": "react-native/CHANGELOG.md" }],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["react-native/CHANGELOG.md", "react-native/package.json"],
+        "message": "chore(release): react-native ${nextRelease.version}\n\n${nextRelease.notes}"
+      }
+    ]
+  ]
+}
+

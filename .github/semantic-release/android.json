@@ -1,0 +1,23 @@
+{
+  "branches": ["main"],
+  "tagFormat": "android-v${version}",
+  "plugins": [
+    [
+      "@semantic-release/exec",
+      {
+        "analyzeCommitsCmd": "bash ./scripts/semantic-release/analyze.sh android android-",
+        "generateNotesCmd": "bash ./scripts/semantic-release/notes.sh android android-",
+        "prepareCmd": "bash ./scripts/semantic-release/bump-version.sh android ${nextRelease.version}"
+      }
+    ],
+    ["@semantic-release/changelog", { "changelogFile": "android/CHANGELOG.md" }],
+    [
+      "@semantic-release/git",
+      {
+        "assets": ["android/CHANGELOG.md"],
+        "message": "chore(release): android ${nextRelease.version}\n\n${nextRelease.notes}"
+      }
+    ]
+  ]
+}
+

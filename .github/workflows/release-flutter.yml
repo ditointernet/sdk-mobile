@@ -3,50 +3,55 @@ name: Release Flutter
 on:
   workflow_dispatch:
   push:
-    branches: [main]
-    paths:
-      - 'flutter/**'
-      - 'CHANGELOG.md'
-      - '.github/workflows/release-flutter.yml'
+    tags:
+      - 'flutter-v*'
+
+permissions:
+  contents: write
 
 jobs:
-  detect-changes:
+  validate:
     runs-on: ubuntu-latest
     outputs:
-      project: ${{ steps.changes.outputs.project }}
-      changelog: ${{ steps.changes.outputs.changelog }}
+      version: ${{ steps.meta.outputs.version }}
+      should_publish: ${{ steps.meta.outputs.should_publish }}
+      changelog: ${{ steps.meta.outputs.changelog }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Detect changes
-        id: changes
+      - name: Derive version and release notes
+        id: meta
         run: |
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "project=true" >> $GITHUB_OUTPUT
-            echo "changelog=true" >> $GITHUB_OUTPUT
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#flutter-v}"
+          SHA="$(git rev-list -n 1 "$TAG")"
+          SUBJECT="$(git show -s --format=%s "$SHA")"
+
+          if [[ "$SUBJECT" != "chore(release): flutter "* ]]; then
+            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "should_publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          CHANGED=$(./scripts/detect-changes.sh)
-          if echo "$CHANGED" | grep -q "^flutter$"; then
-            echo "project=true" >> $GITHUB_OUTPUT
-          else
-            echo "project=false" >> $GITHUB_OUTPUT
-          fi
-          if echo "$CHANGED" | grep -q "^changelog$"; then
-            echo "changelog=true" >> $GITHUB_OUTPUT
-          else
-            echo "changelog=false" >> $GITHUB_OUTPUT
-          fi
+          CHANGELOG_OUTPUT="$(./scripts/extract-changelog.sh flutter/CHANGELOG.md)"
+          CHANGELOG="$(echo "$CHANGELOG_OUTPUT" | tail -n +2)"
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "should_publish=true" >> "$GITHUB_OUTPUT"
+          {
+            echo 'changelog<<EOF'
+            echo "$CHANGELOG"
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
 
   build-flutter:
-    needs: detect-changes
-    if: needs.detect-changes.outputs.project == 'true'
+    needs: validate
+    if: needs.validate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -81,75 +86,29 @@ jobs:
           name: flutter-build
           path: flutter/build
 
-  extract-changelog:
-    needs: detect-changes
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.extract.outputs.version }}
-      changelog: ${{ steps.extract.outputs.changelog }}
-    steps:
-      - uses: actions/checkout@v3
-
-      - name: Extract changelog
-        id: extract
-        run: |
-          CHANGELOG_OUTPUT=$(./scripts/extract-changelog.sh)
-          VERSION=$(echo "$CHANGELOG_OUTPUT" | head -n 1)
-          CHANGELOG=$(echo "$CHANGELOG_OUTPUT" | tail -n +2)
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          {
-            echo 'changelog<<EOF'
-            echo "$CHANGELOG"
-            echo EOF
-          } >> $GITHUB_OUTPUT
-
   create-release:
-    needs: [detect-changes, extract-changelog]
-    if: needs.detect-changes.outputs.changelog == 'true'
+    needs: validate
+    if: needs.validate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-        with:
-          fetch-depth: 0
-
-      - name: Check if release tag exists
-        id: tag-check
-        run: |
-          TAG="v${{ needs.extract-changelog.outputs.version }}"
-          git fetch --tags origin 2>/dev/null || true
-          if git rev-parse "$TAG" >/dev/null 2>&1 || git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Create GitHub Release
-        if: steps.tag-check.outputs.exists != 'true'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: v${{ needs.extract-changelog.outputs.version }}
-          name: Release v${{ needs.extract-changelog.outputs.version }}
-          body: |
-            ${{ needs.extract-changelog.outputs.changelog }}
-          draft: false
-          prerelease: false
+      - name: Create GitHub Release (if needed)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Flutter ${{ needs.validate.outputs.version }}" \
+            --notes "${{ needs.validate.outputs.changelog }}"
 
   publish:
-    needs: [detect-changes, build-flutter, extract-changelog, create-release]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.project == 'true' &&
-      (needs.create-release.result == 'success' || needs.create-release.result == 'skipped')
+    needs: [validate, build-flutter, create-release]
+    if: needs.validate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v3
-        with:
-          node-version: '18'
+      - uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -162,5 +121,5 @@ jobs:
           PUB_CREDENTIALS: ${{ secrets.PUB_CREDENTIALS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          VERSION_NAME: ${{ needs.extract-changelog.outputs.version }}
+          VERSION_NAME: ${{ needs.validate.outputs.version }}
         run: ./scripts/publish-all.sh flutter

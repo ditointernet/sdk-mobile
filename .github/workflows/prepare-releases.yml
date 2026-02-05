@@ -1,0 +1,96 @@
+name: Prepare Releases
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  prepare:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Ensure baseline tags exist
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          android_version="$(sed -nE 's/^version[[:space:]]*=[[:space:]]*System\\.getenv\\(\"VERSION_NAME\"\\)[[:space:]]*\\?:[[:space:]]*\"([^\"]+)\".*/\\1/p' android/dito-sdk/build.gradle.kts | head -n 1)"
+          ios_version="$(sed -nE "s/.*s\\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\\1/p" ios/DitoSDK.podspec | head -n 1)"
+          flutter_version="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\\1/p' flutter/pubspec.yaml | head -n 1)"
+          rn_version="$(node -e "const j=require('./react-native/package.json');process.stdout.write(j.version)")"
+
+          ensure_tag() {
+            local prefix="$1"
+            local version="$2"
+            if git tag --list "${prefix}v*" | grep -q .; then
+              return 0
+            fi
+            local tag="${prefix}v${version}"
+            git tag -a "$tag" -m "chore: baseline ${tag}"
+            git push origin "$tag"
+          }
+
+          ensure_tag "android-" "$android_version"
+          ensure_tag "ios-" "$ios_version"
+          ensure_tag "flutter-" "$flutter_version"
+          ensure_tag "react-native-" "$rn_version"
+
+      - name: Run semantic-release (android)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx -y \
+            -p semantic-release \
+            -p @semantic-release/changelog \
+            -p @semantic-release/exec \
+            -p @semantic-release/git \
+            semantic-release --config .github/semantic-release/android.json
+
+      - name: Run semantic-release (ios)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx -y \
+            -p semantic-release \
+            -p @semantic-release/changelog \
+            -p @semantic-release/exec \
+            -p @semantic-release/git \
+            semantic-release --config .github/semantic-release/ios.json
+
+      - name: Run semantic-release (flutter)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx -y \
+            -p semantic-release \
+            -p @semantic-release/changelog \
+            -p @semantic-release/exec \
+            -p @semantic-release/git \
+            semantic-release --config .github/semantic-release/flutter.json
+
+      - name: Run semantic-release (react-native)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          npx -y \
+            -p semantic-release \
+            -p @semantic-release/changelog \
+            -p @semantic-release/exec \
+            -p @semantic-release/git \
+            semantic-release --config .github/semantic-release/react-native.json
+

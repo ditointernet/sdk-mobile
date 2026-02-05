@@ -5,6 +5,24 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [3.0.1] - 2026-02-04
+
+### Alterado
+
+#### Android SDK
+- Preparação da publicação do AAR no Maven Central (`br.com.dito:ditosdk`) com `sources` e `javadoc` via `maven-publish`
+- Versão controlada por `VERSION_NAME` (pipeline de release)
+
+#### iOS SDK
+- Atualização do CocoaPods spec para `DitoSDK` `3.0.1`
+
+#### Flutter Plugin
+- Versão do plugin atualizada para `3.0.1`
+- Padronização das assinaturas públicas com as plataformas nativas (ex.: `identify`, `track`, `registerDeviceToken`)
+
+#### React Native Plugin
+- Padronização das assinaturas públicas com as plataformas nativas (ex.: `identify`, `track`, `registerDeviceToken`)
+
 ## [1.0.0] - 2024-01-XX
 
 ### Adicionado
@@ -59,5 +77,6 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 - SDKs nativas iOS e Android
 - Estrutura base para plugins Flutter e React Native
 
-[1.0.0]: https://github.com/ditointernet/dito_sdk_flutter/releases/tag/v1.0.0
-[0.0.1]: https://github.com/ditointernet/dito_sdk_flutter/releases/tag/v0.0.1
+[3.0.1]: https://github.com/ditointernet/sdk-mobile/releases/tag/v3.0.1
+[1.0.0]: https://github.com/ditointernet/sdk-mobile/releases/tag/v1.0.0
+[0.0.1]: https://github.com/ditointernet/sdk-mobile/releases/tag/v0.0.1
