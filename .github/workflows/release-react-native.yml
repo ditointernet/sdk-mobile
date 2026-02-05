@@ -99,6 +99,8 @@ jobs:
     if: needs.validate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+
       - name: Create GitHub Release (if needed)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
