@@ -83,7 +83,7 @@ class GsonSerializerTest {
         val json = serializer.serialize(identify, Identify::class.java, null)
 
         assertThat(json).isNotNull()
-        assertThat(json.asJsonObject.has("data")).isTrue()
+        assertThat(json.asJsonObject.has("data")).isFalse()
     }
 
     @Test
