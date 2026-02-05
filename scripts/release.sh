@@ -23,7 +23,11 @@ ensure_tag() {
   if git tag --list "${prefix}v*" | grep -Eq "^${prefix}v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"; then
     return 0
   fi
-  git tag -a "${prefix}v${version}" -m "chore: baseline ${prefix}v${version}"
+  target_ref="HEAD"
+  if git rev-parse -q --verify "v${version}" >/dev/null 2>&1; then
+    target_ref="v${version}"
+  fi
+  git tag -a "${prefix}v${version}" "$target_ref" -m "chore: baseline ${prefix}v${version}"
 }
 
 ensure_tag "android-" "$android_version"

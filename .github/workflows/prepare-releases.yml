@@ -59,8 +59,12 @@ jobs:
               return 0
             fi
             local tag="${prefix}v${version}"
+            local target_ref="HEAD"
+            if git rev-parse -q --verify "v${version}" >/dev/null 2>&1; then
+              target_ref="v${version}"
+            fi
             git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              tag -a "$tag" -m "chore: baseline ${tag}"
+              tag -a "$tag" "$target_ref" -m "chore: baseline ${tag}"
             git push origin "$tag"
           }
 
