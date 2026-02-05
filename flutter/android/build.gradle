@@ -35,7 +35,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17
+        jvmTarget = "17"
     }
 
     sourceSets {
@@ -48,7 +48,7 @@ android {
     }
 
     dependencies {
-        implementation("br.com.dito:ditosdk:1.0.0")
+        implementation("br.com.dito:ditosdk:3.1.1")
         implementation("com.google.firebase:firebase-messaging:23.4.0")
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")

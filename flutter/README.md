@@ -47,6 +47,45 @@ flutter pub get
 
 ### 3. Configure as plataformas nativas
 
+#### Android
+
+Para tracking de notificações em background, é necessário adicionar as credenciais no `AndroidManifest.xml` do seu app:
+
+```xml
+<application>
+    <meta-data
+        android:name="br.com.dito.API_KEY"
+        android:value="${DITO_API_KEY}" />
+    <meta-data
+        android:name="br.com.dito.API_SECRET"
+        android:value="${DITO_API_SECRET}" />
+</application>
+```
+
+E configurar no `build.gradle.kts` do módulo `app`:
+
+```kotlin
+android {
+    defaultConfig {
+        // ... outras configurações
+
+        val ditoApiKey = System.getenv("DITO_API_KEY")
+            ?: (localProperties.getProperty("DITO_API_KEY") ?: "")
+        val ditoApiSecret = System.getenv("DITO_API_SECRET")
+            ?: (localProperties.getProperty("DITO_API_SECRET") ?: "")
+
+        manifestPlaceholders["DITO_API_KEY"] = ditoApiKey
+        manifestPlaceholders["DITO_API_SECRET"] = ditoApiSecret
+    }
+}
+```
+
+**Por quê?** Quando uma notificação chega em background, o SDK nativo Android precisa das credenciais para fazer tracking do evento `"receive-android-notification"` mesmo que o app não tenha sido inicializado explicitamente.
+
+Para mais detalhes, consulte [Android](../android/README.md).
+
+#### iOS
+
 O plugin já configura o Firebase Messaging no iOS em tempo de execução, sem necessidade
 de alterar o `AppDelegate`. Ainda assim, algumas configurações continuam obrigatórias:
 
@@ -54,7 +93,20 @@ de alterar o `AppDelegate`. Ainda assim, algumas configurações continuam obrig
 - Habilitar Push Notifications e Background Modes (Remote notifications) no Xcode
 - Configurar APNs no Firebase (chave ou certificados)
 
-Para Android, siga as instruções em [Android](../android/README.md).
+**Configuração Opcional - Credenciais no Info.plist**
+
+Para tracking de notificações em background (similar ao Android), você pode adicionar as credenciais no `Info.plist` do seu app iOS:
+
+```xml
+<key>AppKey</key>
+<string>sua-api-key</string>
+<key>AppSecret</key>
+<string>seu-api-secret</string>
+```
+
+**Por quê?** Se uma notificação chegar em background antes do app ter sido inicializado explicitamente, o SDK nativo iOS poderá carregar as credenciais do `Info.plist` para fazer tracking do evento `"receive-ios-notification"`.
+
+**Nota:** Se você inicializar o SDK com `DitoSdk.initialize()` no `main()`, as credenciais passadas via código terão prioridade sobre as do `Info.plist`.
 
 ## ⚙️ Configuração Inicial
 
@@ -457,12 +509,42 @@ await DitoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 await DitoSdk.track(action: 'purchase', data: {'product': 'item123'});
 ```
 
-### Evento "receive-ios-notification" nao dispara em background
+### Evento "receive-android-notification" não dispara em background
+
+**Causa**: SDK não consegue se inicializar automaticamente em background sem credenciais.
+
+**Solução**: Configure as credenciais no `AndroidManifest.xml`:
+
+```xml
+<application>
+    <meta-data
+        android:name="br.com.dito.API_KEY"
+        android:value="${DITO_API_KEY}" />
+    <meta-data
+        android:name="br.com.dito.API_SECRET"
+        android:value="${DITO_API_SECRET}" />
+</application>
+```
+
+Veja a seção [Configure as plataformas nativas - Android](#3-configure-as-plataformas-nativas) para detalhes completos.
+
+### Evento "receive-ios-notification" não dispara em background
 
 **Checklist**:
 1. `GoogleService-Info.plist` no target iOS
 2. Push Notifications e Background Modes (Remote notifications) habilitados
 3. APNs configurado no Firebase
+
+**Se o problema persistir**: Adicione as credenciais no `Info.plist` para permitir tracking em background mesmo quando o app não foi inicializado explicitamente:
+
+```xml
+<key>AppKey</key>
+<string>sua-api-key</string>
+<key>AppSecret</key>
+<string>seu-api-secret</string>
+```
+
+Veja a seção [Configure as plataformas nativas - iOS](#3-configure-as-plataformas-nativas) para mais detalhes.
 4. App aberto ao menos uma vez para registrar o token
 5. Notificacao enviada com `channel=DITO` no payload
 
