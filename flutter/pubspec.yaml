@@ -1,6 +1,6 @@
 name: dito_sdk
 description: Plugin Flutter para integração com o CRM Dito, fornecendo APIs unificadas para iOS e Android
-version: 3.0.1
+version: 3.1.0
 homepage: https://github.com/ditointernet/dito_sdk_flutter
 
 environment:

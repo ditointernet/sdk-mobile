@@ -1,3 +1,18 @@
+### Funcionalidades
+
+- feat(docs): Update README and configuration for background notification tracking in Android and iOS (fac2d56)
+- feat(android): Enhance Firebase Messaging integration and update dependencies (08f6411)
+
+### Correções
+
+- fix(dependencies): downgrade flutter_lints version in pubspec.yaml files (b12c4e6)
+
+### Outros
+
+- chore(pubspec): update SDK constraints in pubspec.yaml files (4467436)
+- chore(pubspec): remove pubspec.lock and add resolution directive (4155703)
+- refactor(workflows): update example directory references in CI configurations (5fef648)
+
 # Changelog
 
 Todas as mudanças notáveis neste plugin serão documentadas neste arquivo.
