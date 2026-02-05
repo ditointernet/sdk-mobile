@@ -27,27 +27,46 @@ Com o Dito Android SDK você pode:
 
 ### Via Gradle
 
-#### 1. Adicione o repositório no `build.gradle.kts` (nível do projeto)
+#### 1. Adicione o repositório no `settings.gradle.kts` (nível do projeto)
 
 ```kotlin
-allprojects {
+dependencyResolutionManagement {
     repositories {
+        google()
+        mavenCentral()
         maven {
-            url = uri("https://github.com/ditointernet/dito_sdk_flutter/android/dito-sdk")
+            url = uri("https://maven.pkg.github.com/ditointernet/sdk-mobile")
+            credentials {
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR") ?: ""
+                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN") ?: ""
+            }
         }
     }
 }
 ```
 
-#### 2. Adicione a dependência no `build.gradle.kts` do módulo do app
+#### 2. Configure as credenciais do GitHub Packages
+
+Você pode configurar via `gradle.properties`:
+
+`~/.gradle/gradle.properties`
+
+```
+gpr.user=ditointernet
+gpr.key=GITHUB_TOKEN_COM_READ_PACKAGES
+```
+
+Ou via variáveis de ambiente `GITHUB_ACTOR` e `GITHUB_TOKEN`.
+
+#### 3. Adicione a dependência no `build.gradle.kts` do módulo do app
 
 ```kotlin
 dependencies {
-    implementation("br.com.dito:ditosdk:1.0.0")
+    implementation("io.github.ditointernet:ditosdk:1.0.0")
 }
 ```
 
-#### 3. Sincronize o projeto
+#### 4. Sincronize o projeto
 
 ```bash
 ./gradlew build
@@ -503,9 +522,13 @@ Dito.track(action = "purchase", data = mapOf("product" to "item123"))
 
 ### Problemas de Build
 
-**Erro**: "Could not find br.com.dito:ditosdk:1.0.0"
+**Erro**: "Could not find io.github.ditointernet:ditosdk:1.0.0"
 
-**Solução**: Verifique se o repositório está configurado corretamente no `build.gradle.kts`.
+**Solução**:
+
+- Verifique se o repositório `https://maven.pkg.github.com/ditointernet/sdk-mobile` está configurado no `settings.gradle.kts`
+- Verifique se `gpr.user` e `gpr.key` (ou `GITHUB_ACTOR` e `GITHUB_TOKEN`) estão definidos
+- Verifique se o token tem permissão `read:packages`
 
 ### Problemas de Notificações
 

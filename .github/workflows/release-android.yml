@@ -119,10 +119,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          MAVEN_CENTRAL: ${{ secrets.MAVEN_CENTRAL }}
-          SIGNING_KEY: ${{ secrets.MAVEN_SIGNING_KEY }}
-          SIGNING_PASSWORD: ${{ secrets.MAVEN_SIGNING_PASSWORD }}
-          PUBLISH_TARGET: central
-          CENTRAL_NAMESPACE: br.com.dito
+          PUBLISH_TARGET: github
           VERSION_NAME: ${{ needs.extract-changelog.outputs.version }}
         run: ./scripts/publish-all.sh android
