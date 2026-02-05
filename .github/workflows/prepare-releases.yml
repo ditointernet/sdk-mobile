@@ -63,7 +63,7 @@ jobs:
             -p @semantic-release/changelog \
             -p @semantic-release/exec \
             -p @semantic-release/git \
-            semantic-release --extends .github/semantic-release/android.release.config.cjs
+            semantic-release --extends ./.github/semantic-release/android.release.config.cjs
 
       - name: Run semantic-release (ios)
         env:
@@ -78,7 +78,7 @@ jobs:
             -p @semantic-release/changelog \
             -p @semantic-release/exec \
             -p @semantic-release/git \
-            semantic-release --extends .github/semantic-release/ios.release.config.cjs
+            semantic-release --extends ./.github/semantic-release/ios.release.config.cjs
 
       - name: Run semantic-release (flutter)
         env:
@@ -93,7 +93,7 @@ jobs:
             -p @semantic-release/changelog \
             -p @semantic-release/exec \
             -p @semantic-release/git \
-            semantic-release --extends .github/semantic-release/flutter.release.config.cjs
+            semantic-release --extends ./.github/semantic-release/flutter.release.config.cjs
 
       - name: Run semantic-release (react-native)
         env:
@@ -108,5 +108,5 @@ jobs:
             -p @semantic-release/changelog \
             -p @semantic-release/exec \
             -p @semantic-release/git \
-            semantic-release --extends .github/semantic-release/react-native.release.config.cjs
+            semantic-release --extends ./.github/semantic-release/react-native.release.config.cjs
 
