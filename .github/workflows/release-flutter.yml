@@ -42,6 +42,23 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "📦 Version: $VERSION"
 
+      - name: Validate version matches tag
+        run: |
+          TAG_VERSION="${{ steps.version.outputs.version }}"
+          PUBSPEC_VERSION=$(sed -nE 's/^version:[[:space:]]+([^[:space:]]+).*/\1/p' flutter/pubspec.yaml | head -n 1)
+
+          if [ "$TAG_VERSION" != "$PUBSPEC_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "   Tag version: $TAG_VERSION"
+            echo "   pubspec.yaml version: $PUBSPEC_VERSION"
+            echo ""
+            echo "The version in flutter/pubspec.yaml must match the tag version."
+            echo "This usually means semantic-release didn't run correctly or the tag was created manually."
+            exit 1
+          fi
+
+          echo "✅ Version validated: $TAG_VERSION"
+
       - name: Extract changelog
         id: changelog
         run: |
@@ -86,7 +103,26 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
           VERSION_NAME: ${{ steps.version.outputs.version }}
-        run: ./scripts/publish-all.sh flutter
+        run: |
+          echo "📦 Publishing Flutter SDK version: $VERSION_NAME"
+          echo "🏷️  Tag: ${{ steps.version.outputs.tag }}"
+          echo "📄 pubspec.yaml version: $(sed -nE 's/^version:[[:space:]]+([^[:space:]]+).*/\1/p' flutter/pubspec.yaml | head -n 1)"
+          echo ""
+          ./scripts/publish-all.sh flutter
+
+      - name: Verify publication
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "⏳ Waiting for pub.dev to index version $VERSION..."
+          sleep 30
+
+          echo "🔍 Checking if version $VERSION was published to pub.dev..."
+          if curl -f -s "https://pub.dev/packages/dito_sdk/versions/$VERSION" > /dev/null 2>&1; then
+            echo "✅ Version $VERSION successfully published to pub.dev"
+            echo "🔗 https://pub.dev/packages/dito_sdk/versions/$VERSION"
+          else
+            echo "⚠️  Version not yet visible on pub.dev (may take a few minutes to index)"
+          fi
 
       - name: Create GitHub Release
         env:
