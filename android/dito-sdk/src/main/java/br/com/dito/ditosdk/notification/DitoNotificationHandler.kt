@@ -40,19 +40,23 @@ class DitoNotificationHandler(private val context: Context) {
         val userId = remoteMessage.data["user_id"] ?: ""
 
         if (notificationId.isNotEmpty() && reference.isNotEmpty()) {
-            if (!Dito.isInitialized()) {
-                Dito.init(context, null)
+            try {
+                if (!Dito.isInitialized()) {
+                    Dito.init(context, null)
+                }
+
+                val notificationData = NotificationReadData(
+                    notificationId,
+                    reference,
+                    logId,
+                    notificationName,
+                    userId
+                )
+
+                Dito.processNotificationReceived(notificationData)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to process notification received: ${e.message}")
             }
-
-            val notificationData = NotificationReadData(
-                notificationId,
-                reference,
-                logId,
-                notificationName,
-                userId
-            )
-
-            Dito.processNotificationReceived(notificationData)
         }
 
         NotificationDisplayHelper.showNotification(
@@ -70,10 +74,14 @@ class DitoNotificationHandler(private val context: Context) {
     @RequiresApi(Build.VERSION_CODES.O)
     fun handleNewToken(token: String) {
         Log.d(TAG, "New FCM token received")
-        if (!Dito.isInitialized()) {
-            Dito.init(context, null)
+        try {
+            if (!Dito.isInitialized()) {
+                Dito.init(context, null)
+            }
+            Dito.registerDevice(token)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to register device token: ${e.message}")
         }
-        Dito.registerDevice(token)
     }
 
     private fun getApplicationName(): String {
