@@ -17,6 +17,9 @@ class DitoSdkPlugin :
     private var debugEnabled: Boolean = false
 
     companion object {
+        @Volatile
+        private var ditoInitialized: Boolean = false
+
         @JvmStatic
         fun handleNotification(context: Context, message: RemoteMessage): Boolean {
             if (!isDitoChannel(message)) {
@@ -30,13 +33,18 @@ class DitoSdkPlugin :
         @JvmStatic
         private fun isDitoChannel(message: RemoteMessage): Boolean {
             val channel = message.data["channel"]
-            return channel == "Dito"
+            return channel == "DITO" || channel == "Dito"
         }
 
         @JvmStatic
         private fun ensureDitoInitialized(context: Context) {
-            if (!Dito.isInitialized()) {
-                Dito.init(context, null)
+            if (!ditoInitialized) {
+                try {
+                    Dito.init(context, null)
+                    ditoInitialized = true
+                } catch (e: RuntimeException) {
+                    android.util.Log.w("DitoSdkPlugin", "Dito SDK not initialized: ${e.message}")
+                }
             }
         }
 
@@ -156,6 +164,7 @@ class DitoSdkPlugin :
                     try {
                         val options = Options().apply { debug = debugEnabled }
                         Dito.init(ctx, appKey, appSecret, options)
+                        ditoInitialized = true
                         result.success(null)
                     } catch (e: RuntimeException) {
                         if (e.message?.contains("API_KEY e API_SECRET no AndroidManifest") == true) {

@@ -2,13 +2,6 @@ allprojects {
     repositories {
         google()
         mavenCentral()
-        maven {
-            url = uri("https://maven.pkg.github.com/ditointernet/sdk-mobile")
-            credentials {
-                username = (findProperty("gpr.user") ?: System.getenv("GITHUB_ACTOR"))?.toString() ?: ""
-                password = (findProperty("gpr.key") ?: System.getenv("GITHUB_TOKEN"))?.toString() ?: ""
-            }
-        }
     }
 }
 

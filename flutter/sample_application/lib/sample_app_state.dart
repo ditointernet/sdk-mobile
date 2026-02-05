@@ -3,7 +3,6 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:dito_sdk/dito_sdk.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -83,11 +82,15 @@ class SampleAppState {
 
   Future<void> loadFcmToken() async {
     try {
-      await FirebaseMessaging.instance.requestPermission();
+      if (defaultTargetPlatform == TargetPlatform.iOS) {
+        await FirebaseMessaging.instance.requestPermission();
+      }
       final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
         tokenController.text = token;
         _setState(() => fcmDebugStatus = 'Ready (FCM token obtained)');
+      } else {
+        _setState(() => fcmDebugStatus = 'Waiting for FCM token');
       }
       tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
           .listen((newToken) {
@@ -104,58 +107,14 @@ class SampleAppState {
     }
   }
 
-  Future<void> initFcmDebug() async {
-    _setState(() => fcmDebugStatus = 'Checking...');
-    try {
-      if (Firebase.apps.isEmpty) {
-        _setState(() => fcmDebugStatus = 'Error: Firebase not initialized');
-        return;
-      }
-      final supported = await FirebaseMessaging.instance.isSupported();
-      if (!supported) {
-        _setState(() => fcmDebugStatus = 'Push not supported on this device');
-        return;
-      }
-      await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-        alert: true,
-        badge: true,
-        sound: true,
-      );
-      final settings = await FirebaseMessaging.instance.requestPermission();
-      if (kDebugMode) {
-        debugPrint('[PushDebug] requestPermission: ${settings.authorizationStatus}');
-      }
-      final token = await FirebaseMessaging.instance.getToken();
-      if (token != null && token.isNotEmpty) {
-        _setState(() => fcmDebugStatus = 'Ready (FCM token obtained)');
-      } else {
-        _setState(
-          () => fcmDebugStatus =
-              'Waiting for token (APNs may not have returned yet - check Xcode console for [PushDebug])',
-        );
-      }
-    } on Exception catch (e, st) {
-      if (kDebugMode) debugPrint('[PushDebug] initFcmDebug error: $e\n$st');
-      _setState(() => fcmDebugStatus = 'Error: $e');
-    }
-  }
-
   void setupFcmMessageListeners(void Function() onPushReceived) {
     FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (kDebugMode) {
-        debugPrint('[PushDebug] Push reached app (foreground): messageId=${message.messageId}');
+        debugPrint(
+          '[PushDebug] Push reached Dart (foreground): messageId=${message.messageId} dataKeys=${message.data.keys.toList()}',
+        );
       }
       onPushReceived();
-    });
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      if (kDebugMode) {
-        debugPrint('[PushDebug] Push reached app (opened from notification): messageId=${message.messageId}');
-      }
-    });
-    FirebaseMessaging.instance.getInitialMessage().then((RemoteMessage? message) {
-      if (message != null && kDebugMode) {
-        debugPrint('[PushDebug] Push reached app (launched from notification): messageId=${message.messageId}');
-      }
     });
   }
 

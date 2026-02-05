@@ -1,6 +1,7 @@
 name: sample_application
 description: "A new Flutter project."
 version: 1.0.0+1
+publish_to: none
 
 environment:
   sdk: ^3.10.8

@@ -310,6 +310,49 @@ Future<void> unregisterDevice() async {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### Android (Flutter) com `firebase_messaging`
+
+No Android, o sistema executa apenas **um** `FirebaseMessagingService` por app. Se o seu app usa `firebase_messaging`, você deve criar um service delegador que:
+
+- Delega notificações `channel=DITO` para o SDK nativo Dito
+- Encaminha as demais notificações para o FlutterFire
+
+No seu app Android, crie:
+
+```kotlin
+package com.seu.app
+
+import br.com.dito.ditosdk.DitoMessagingServiceHelper
+import com.google.firebase.messaging.RemoteMessage
+import io.flutter.plugins.firebase.messaging.FlutterFirebaseMessagingService
+
+class CustomMessagingService : FlutterFirebaseMessagingService() {
+    override fun onMessageReceived(remoteMessage: RemoteMessage) {
+        val handled = DitoMessagingServiceHelper.handleMessage(applicationContext, remoteMessage)
+        if (!handled) {
+            super.onMessageReceived(remoteMessage)
+        }
+    }
+
+    override fun onNewToken(token: String) {
+        super.onNewToken(token)
+        DitoMessagingServiceHelper.handleNewToken(applicationContext, token)
+    }
+}
+```
+
+E registre no `AndroidManifest.xml` do app:
+
+```xml
+<service
+    android:name=".CustomMessagingService"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
+```
+
 ### iOS (Flutter)
 
 O plugin cuida da configuração nativa do Firebase Messaging no iOS. Para que o fluxo funcione, o app precisa:

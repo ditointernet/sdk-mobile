@@ -41,7 +41,6 @@ class _DitoSampleScreenState extends State<DitoSampleScreen> {
     _state.loadEnvValues();
     _state.initPlatformVersion();
     _state.loadFcmToken();
-    _state.initFcmDebug();
     _state.setupFcmMessageListeners(() {
       if (mounted) {
         setState(() => _state.fcmPushReceivedCount += 1);

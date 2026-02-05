@@ -1,7 +1,6 @@
 import 'package:dito_sdk/dito_sdk.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -13,26 +12,12 @@ import 'firebase_options.dart';
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-
-final ditoSdk = DitoSdk();
-  await ditoSdk.setDebugMode(enabled: true);
-  await ditoSdk.initialize(
-    appKey: EnvLoader.getOrEmpty('API_KEY').trim(),
-    appSecret: EnvLoader.getOrEmpty('API_SECRET').trim(),
-  );
-
-  if (kDebugMode) {
-    debugPrint(
-      '[PushDebug] Push reached app (background): messageId=${message.messageId}',
-    );
-  }
 }
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
   await EnvLoader.load();
 
   final ditoSdk = DitoSdk();
