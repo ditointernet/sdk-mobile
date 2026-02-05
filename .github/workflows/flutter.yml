@@ -52,6 +52,12 @@ jobs:
         flutter-version: '3.24.0'
         channel: 'stable'
 
+    - name: Configure Flutter
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: |
+        flutter config --no-analytics
+        flutter config --no-cli-animations
+
     - name: Install dependencies
       if: steps.check-changes.outputs.has_changes == 'true'
       run: |
