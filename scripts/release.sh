@@ -33,12 +33,11 @@ ensure_tag "react-native-" "$rn_version"
 
 run_semantic_release() {
   local config="$1"
-  npx -y \
-    -p semantic-release \
-    -p @semantic-release/changelog \
-    -p @semantic-release/exec \
-    -p @semantic-release/git \
-    semantic-release --extends "$config"
+  if [ ! -d "node_modules" ]; then
+    echo "Error: dependencies not installed. Run: npm ci" >&2
+    exit 1
+  fi
+  npx semantic-release --extends "./$config"
 }
 
 case "$target" in

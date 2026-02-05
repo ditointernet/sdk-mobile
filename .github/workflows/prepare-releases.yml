@@ -20,6 +20,9 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Install release tooling
+        run: npm ci --no-audit --no-fund
+
       - name: Ensure baseline tags exist
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -58,12 +61,7 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          npx -y \
-            -p semantic-release \
-            -p @semantic-release/changelog \
-            -p @semantic-release/exec \
-            -p @semantic-release/git \
-            semantic-release --extends ./.github/semantic-release/android.release.config.cjs
+          npx semantic-release --extends ./.github/semantic-release/android.release.config.cjs
 
       - name: Run semantic-release (ios)
         env:
@@ -73,12 +71,7 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          npx -y \
-            -p semantic-release \
-            -p @semantic-release/changelog \
-            -p @semantic-release/exec \
-            -p @semantic-release/git \
-            semantic-release --extends ./.github/semantic-release/ios.release.config.cjs
+          npx semantic-release --extends ./.github/semantic-release/ios.release.config.cjs
 
       - name: Run semantic-release (flutter)
         env:
@@ -88,12 +81,7 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          npx -y \
-            -p semantic-release \
-            -p @semantic-release/changelog \
-            -p @semantic-release/exec \
-            -p @semantic-release/git \
-            semantic-release --extends ./.github/semantic-release/flutter.release.config.cjs
+          npx semantic-release --extends ./.github/semantic-release/flutter.release.config.cjs
 
       - name: Run semantic-release (react-native)
         env:
@@ -103,10 +91,5 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          npx -y \
-            -p semantic-release \
-            -p @semantic-release/changelog \
-            -p @semantic-release/exec \
-            -p @semantic-release/git \
-            semantic-release --extends ./.github/semantic-release/react-native.release.config.cjs
+          npx semantic-release --extends ./.github/semantic-release/react-native.release.config.cjs
 
