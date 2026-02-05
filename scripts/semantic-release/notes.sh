@@ -9,7 +9,7 @@ if [ -z "$project_dir" ] || [ -z "$tag_prefix" ]; then
   exit 0
 fi
 
-last_tag="$(git tag --list "${tag_prefix}v*" --sort=-v:refname | head -n 1 || true)"
+last_tag="$(git tag --merged HEAD --list "${tag_prefix}v*" --sort=-v:refname | head -n 1 || true)"
 if [ -z "$last_tag" ]; then
   exit 0
 fi

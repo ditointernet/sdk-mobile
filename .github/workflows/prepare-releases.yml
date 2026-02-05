@@ -57,7 +57,7 @@ jobs:
               echo "Invalid version for ${prefix}: '${version}'" >&2
               exit 1
             fi
-            if git tag --list "${prefix}v*" | grep -Eq "^${prefix}v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"; then
+            if git tag --merged HEAD --list "${prefix}v*" | grep -Eq "^${prefix}v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"; then
               return 0
             fi
             local tag="${prefix}v${version}"
@@ -84,9 +84,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          BEFORE_TAG="$(git tag --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
+          BEFORE_TAG="$(git tag --merged HEAD --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/android.release.config.cjs
-          AFTER_TAG="$(git tag --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
+          AFTER_TAG="$(git tag --merged HEAD --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
           if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
             for _ in $(seq 1 20); do
               if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
@@ -106,9 +106,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          BEFORE_TAG="$(git tag --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
+          BEFORE_TAG="$(git tag --merged HEAD --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/ios.release.config.cjs
-          AFTER_TAG="$(git tag --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
+          AFTER_TAG="$(git tag --merged HEAD --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
           if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
             for _ in $(seq 1 20); do
               if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
@@ -128,9 +128,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          BEFORE_TAG="$(git tag --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
+          BEFORE_TAG="$(git tag --merged HEAD --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/flutter.release.config.cjs
-          AFTER_TAG="$(git tag --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
+          AFTER_TAG="$(git tag --merged HEAD --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
           if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
             for _ in $(seq 1 20); do
               if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
@@ -150,9 +150,9 @@ jobs:
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
-          BEFORE_TAG="$(git tag --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
+          BEFORE_TAG="$(git tag --merged HEAD --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/react-native.release.config.cjs
-          AFTER_TAG="$(git tag --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
+          AFTER_TAG="$(git tag --merged HEAD --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
           if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
             for _ in $(seq 1 20); do
               if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then

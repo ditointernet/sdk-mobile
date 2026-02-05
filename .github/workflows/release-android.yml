@@ -92,6 +92,8 @@ jobs:
 
       - name: Build Android SDK
         working-directory: android
+        env:
+          VERSION_NAME: ${{ needs.validate.outputs.version }}
         run: ./gradlew :dito-sdk:build
 
   publish:
