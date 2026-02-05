@@ -1,5 +1,10 @@
 ### Outros
 
+- chore(dependencies): update pubspec.lock with version downgrades and updated checksums (b0327de)
+- chore(flutter): Add .pubignore and update pubspec files (c78643e)
+
+### Outros
+
 - chore(flutter): Exclude sample application from analysis (633e8fe)
 
 ### Outros
