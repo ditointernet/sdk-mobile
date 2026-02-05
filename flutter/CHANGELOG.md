@@ -1,5 +1,9 @@
 ### Outros
 
+- chore(flutter): Exclude sample application from analysis (633e8fe)
+
+### Outros
+
 - refactor(flutter): Simplify error handling in DitoSdk methods (fe7db44)
 
 ### Funcionalidades
