@@ -17,6 +17,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: prepare-releases-main
@@ -71,40 +72,88 @@ jobs:
       - name: Run semantic-release (android)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
+          BEFORE_TAG="$(git tag --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/android.release.config.cjs
+          AFTER_TAG="$(git tag --list 'android-v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
+            for _ in $(seq 1 20); do
+              if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 3
+            done
+            gh workflow run release-android.yml --ref "$AFTER_TAG"
+          fi
 
       - name: Run semantic-release (ios)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
+          BEFORE_TAG="$(git tag --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/ios.release.config.cjs
+          AFTER_TAG="$(git tag --list 'ios-v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
+            for _ in $(seq 1 20); do
+              if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 3
+            done
+            gh workflow run release-ios.yml --ref "$AFTER_TAG"
+          fi
 
       - name: Run semantic-release (flutter)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
+          BEFORE_TAG="$(git tag --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/flutter.release.config.cjs
+          AFTER_TAG="$(git tag --list 'flutter-v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
+            for _ in $(seq 1 20); do
+              if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 3
+            done
+            gh workflow run release-flutter.yml --ref "$AFTER_TAG"
+          fi
 
       - name: Run semantic-release (react-native)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
           GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
           GIT_COMMITTER_NAME: github-actions[bot]
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: |
+          BEFORE_TAG="$(git tag --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
           npx semantic-release --extends ./.github/semantic-release/react-native.release.config.cjs
+          AFTER_TAG="$(git tag --list 'react-native-v*' --sort=-v:refname | head -n 1 || true)"
+          if [ -n "$AFTER_TAG" ] && [ "$AFTER_TAG" != "$BEFORE_TAG" ]; then
+            for _ in $(seq 1 20); do
+              if git ls-remote --exit-code --tags origin "refs/tags/${AFTER_TAG}" >/dev/null 2>&1; then
+                break
+              fi
+              sleep 3
+            done
+            gh workflow run release-react-native.yml --ref "$AFTER_TAG"
+          fi
 
