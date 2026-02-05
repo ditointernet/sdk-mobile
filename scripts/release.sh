@@ -38,7 +38,7 @@ run_semantic_release() {
     -p @semantic-release/changelog \
     -p @semantic-release/exec \
     -p @semantic-release/git \
-    semantic-release --config "$config"
+    semantic-release --extends "$config"
 }
 
 case "$target" in
