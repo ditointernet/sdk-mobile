@@ -6,7 +6,7 @@ plugins {
     id("signing")
 }
 
-group = "io.github.ditointernet"
+group = "br.com.dito"
 version = System.getenv("VERSION_NAME") ?: "3.0.1"
 
 android {
@@ -86,7 +86,7 @@ afterEvaluate {
             create<MavenPublication>("release") {
                 from(components["release"])
 
-                groupId = "io.github.ditointernet"
+                groupId = "br.com.dito"
                 artifactId = "ditosdk"
                 version = project.version.toString()
                 pom {
@@ -116,12 +116,24 @@ afterEvaluate {
         }
 
         repositories {
-            maven {
-                name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/ditointernet/sdk-mobile")
-                credentials {
-                    username = System.getenv("GITHUB_ACTOR") ?: ""
-                    password = System.getenv("GITHUB_TOKEN") ?: ""
+            val publishTarget = System.getenv("PUBLISH_TARGET") ?: "github"
+            if (publishTarget == "central") {
+                maven {
+                    name = "MavenCentral"
+                    url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+                    credentials {
+                        username = System.getenv("SONATYPE_USERNAME") ?: ""
+                        password = System.getenv("SONATYPE_PASSWORD") ?: ""
+                    }
+                }
+            } else {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri("https://maven.pkg.github.com/ditointernet/sdk-mobile")
+                    credentials {
+                        username = System.getenv("GITHUB_ACTOR") ?: ""
+                        password = System.getenv("GITHUB_TOKEN") ?: ""
+                    }
                 }
             }
         }

@@ -61,19 +61,48 @@ if [ "$PUBLISH_ANDROID" = true ]; then
     echo "🤖 Publishing Android SDK to Maven..."
     cd android
     export VERSION_NAME="${VERSION_NAME:-3.0.1}"
-    export PUBLISH_TARGET="${PUBLISH_TARGET:-github}"
-
-    export GITHUB_TOKEN="${GITHUB_TOKEN:-}"
-    export GITHUB_ACTOR="${GITHUB_ACTOR:-}"
-    if [ -z "$GITHUB_TOKEN" ] || [ -z "$GITHUB_ACTOR" ]; then
-        echo "Error: GITHUB_TOKEN and GITHUB_ACTOR must be set" >&2
-        FAILED_PROJECTS+=("android")
-        cd ..
+    export PUBLISH_TARGET="${PUBLISH_TARGET:-central}"
+    if [ "$PUBLISH_TARGET" = "central" ]; then
+        if [ -z "$SONATYPE_USERNAME" ] || [ -z "$SONATYPE_PASSWORD" ]; then
+            if [ -n "$MAVEN_CENTRAL" ]; then
+                SONATYPE_USERNAME=$(printf "%s" "$MAVEN_CENTRAL" | sed -n 's/.*<username>\(.*\)<\/username>.*/\1/p' | head -n 1)
+                SONATYPE_PASSWORD=$(printf "%s" "$MAVEN_CENTRAL" | sed -n 's/.*<password>\(.*\)<\/password>.*/\1/p' | head -n 1)
+                export SONATYPE_USERNAME
+                export SONATYPE_PASSWORD
+            fi
+        fi
+        if [ -z "$SONATYPE_USERNAME" ] || [ -z "$SONATYPE_PASSWORD" ] || [ -z "$SIGNING_KEY" ] || [ -z "$SIGNING_PASSWORD" ]; then
+            echo "Error: SONATYPE_USERNAME, SONATYPE_PASSWORD, SIGNING_KEY, SIGNING_PASSWORD must be set" >&2
+            FAILED_PROJECTS+=("android")
+            cd ..
+        else
+            if ./gradlew :dito-sdk:publish --exclude-task test --exclude-task check --exclude-task lint; then
+                CENTRAL_NAMESPACE="${CENTRAL_NAMESPACE:-br.com.dito}"
+                CENTRAL_BEARER=$(printf "%s" "${SONATYPE_USERNAME}:${SONATYPE_PASSWORD}" | base64 | tr -d '\n')
+                if curl --fail -sS -X POST \
+                    -H "Authorization: Bearer ${CENTRAL_BEARER}" \
+                    "https://ossrh-staging-api.central.sonatype.com/manual/upload/defaultRepository/${CENTRAL_NAMESPACE}?publishing_type=automatic"; then
+                    SUCCESSFUL_PROJECTS+=("android")
+                    echo "✅ Android SDK published successfully"
+                    echo "📦 Published: br.com.dito:ditosdk:${VERSION_NAME}"
+                    echo "🔗 Repository: https://central.sonatype.com"
+                else
+                    FAILED_PROJECTS+=("android")
+                    echo "❌ Failed to upload deployment to Central Portal"
+                fi
+            else
+                FAILED_PROJECTS+=("android")
+                echo "❌ Failed to publish Android SDK"
+            fi
+            cd ..
+        fi
     else
+        export GITHUB_TOKEN="${GITHUB_TOKEN:-}"
+        export GITHUB_ACTOR="${GITHUB_ACTOR:-}"
         if ./gradlew :dito-sdk:publish --exclude-task test --exclude-task check --exclude-task lint; then
             SUCCESSFUL_PROJECTS+=("android")
             echo "✅ Android SDK published successfully"
-            echo "📦 Published: io.github.ditointernet:ditosdk:${VERSION_NAME}"
+            echo "📦 Published: br.com.dito:ditosdk:${VERSION_NAME}"
             echo "🔗 Repository: https://github.com/ditointernet/sdk-mobile/packages"
         else
             FAILED_PROJECTS+=("android")
