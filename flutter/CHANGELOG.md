@@ -1,3 +1,7 @@
+### Outros
+
+- refactor(flutter): Simplify error handling in DitoSdk methods (fe7db44)
+
 ### Funcionalidades
 
 - feat(docs): Update README and configuration for background notification tracking in Android and iOS (fac2d56)
