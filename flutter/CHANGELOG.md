@@ -1,3 +1,7 @@
+### Outros
+
+- chore(flutter): update .pubignore and CHANGELOG (e173f66)
+
 ## [3.1.3] - 2025-02-05
 
 ### Correções
