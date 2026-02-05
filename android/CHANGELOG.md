@@ -1,3 +1,7 @@
+### Correções
+
+- fix(tests): update GsonSerializerTest to assert absence of "data" field in serialized output (c60aac4)
+
 ## [3.1.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.0.1...android-v3.1.0) (2026-02-05)
 
 ### Melhorias
