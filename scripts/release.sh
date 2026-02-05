@@ -43,22 +43,22 @@ run_semantic_release() {
 
 case "$target" in
   android)
-    run_semantic_release ".github/semantic-release/android.json"
+    run_semantic_release ".github/semantic-release/android.release.config.cjs"
     ;;
   ios)
-    run_semantic_release ".github/semantic-release/ios.json"
+    run_semantic_release ".github/semantic-release/ios.release.config.cjs"
     ;;
   flutter)
-    run_semantic_release ".github/semantic-release/flutter.json"
+    run_semantic_release ".github/semantic-release/flutter.release.config.cjs"
     ;;
   react-native)
-    run_semantic_release ".github/semantic-release/react-native.json"
+    run_semantic_release ".github/semantic-release/react-native.release.config.cjs"
     ;;
   all)
-    run_semantic_release ".github/semantic-release/android.json"
-    run_semantic_release ".github/semantic-release/ios.json"
-    run_semantic_release ".github/semantic-release/flutter.json"
-    run_semantic_release ".github/semantic-release/react-native.json"
+    run_semantic_release ".github/semantic-release/android.release.config.cjs"
+    run_semantic_release ".github/semantic-release/ios.release.config.cjs"
+    run_semantic_release ".github/semantic-release/flutter.release.config.cjs"
+    run_semantic_release ".github/semantic-release/react-native.release.config.cjs"
     ;;
   *)
     echo "Usage: $0 [android|ios|flutter|react-native|all]" >&2

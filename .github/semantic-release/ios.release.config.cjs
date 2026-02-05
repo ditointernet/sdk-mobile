@@ -1,0 +1,23 @@
+module.exports = {
+  branches: ['main'],
+  tagFormat: 'ios-v${version}',
+  plugins: [
+    [
+      '@semantic-release/exec',
+      {
+        analyzeCommitsCmd: 'bash ./scripts/semantic-release/analyze.sh ios ios-',
+        generateNotesCmd: 'bash ./scripts/semantic-release/notes.sh ios ios-',
+        prepareCmd: 'bash ./scripts/semantic-release/bump-version.sh ios ${nextRelease.version}',
+      },
+    ],
+    ['@semantic-release/changelog', { changelogFile: 'ios/CHANGELOG.md' }],
+    [
+      '@semantic-release/git',
+      {
+        assets: ['ios/CHANGELOG.md', 'ios/DitoSDK.podspec'],
+        message: 'chore(release): ios ${nextRelease.version}\n\n${nextRelease.notes}',
+      },
+    ],
+  ],
+};
+
