@@ -8,7 +8,7 @@ environment:
   flutter: '>=3.3.0'
 
 workspace:
-  - example
+  - sample_application
 
 dependencies:
   flutter:

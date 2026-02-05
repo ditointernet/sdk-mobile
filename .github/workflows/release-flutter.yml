@@ -76,7 +76,7 @@ jobs:
 
       - name: Build example
         run: |
-          cd flutter/example
+          cd flutter/sample_application
           flutter build apk --debug
           flutter build ios --debug --no-codesign
 
