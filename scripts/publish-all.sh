@@ -119,8 +119,17 @@ if [ "$PUBLISH_FLUTTER" = true ]; then
         FAILED_PROJECTS+=("flutter")
     else
         cd flutter
+
+        # Setup pub.dev credentials
+        mkdir -p "$HOME/.config/dart"
+        echo "$PUB_CREDENTIALS" > "$HOME/.config/dart/pub-credentials.json"
+
+        # Run dry-run and capture output
+        set +e
         DRY_RUN_OUTPUT=$(flutter pub publish --dry-run 2>&1)
         DRY_RUN_EXIT=$?
+        set -e
+
         echo "$DRY_RUN_OUTPUT"
 
         if echo "$DRY_RUN_OUTPUT" | grep -q "Package validation found the following error"; then
