@@ -25,7 +25,7 @@ ensure_tag() {
   fi
   target_ref="HEAD"
   if git rev-parse -q --verify "v${version}" >/dev/null 2>&1; then
-    target_ref="v${version}"
+    target_ref="$(git rev-list -n 1 "v${version}")"
   fi
   git tag -a "${prefix}v${version}" "$target_ref" -m "chore: baseline ${prefix}v${version}"
 }
