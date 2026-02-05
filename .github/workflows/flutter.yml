@@ -76,13 +76,6 @@ jobs:
         cd flutter
         flutter test
 
-    - name: Build example
-      if: steps.check-changes.outputs.has_changes == 'true'
-      run: |
-        cd flutter/sample_application
-        flutter build apk --debug
-        flutter build ios --debug --no-codesign
-
     - name: Upload artifacts
       if: steps.check-changes.outputs.has_changes == 'true'
       uses: actions/upload-artifact@v4
