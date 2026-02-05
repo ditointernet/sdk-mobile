@@ -15,8 +15,8 @@ class DitoSdk {
   Future<void> setDebugMode({required bool enabled}) async {
     try {
       await DitoSdkPlatform.instance.setDebugMode(enabled: enabled);
-    } on PlatformException {
-      rethrow;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -59,10 +59,6 @@ class DitoSdk {
       );
       _isInitialized = true;
     } on PlatformException catch (e) {
-      if (e.code == DitoError.initializationFailed ||
-          e.code == DitoError.invalidCredentials) {
-        rethrow;
-      }
       throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
@@ -114,8 +110,8 @@ class DitoSdk {
         email: email,
         customData: customData,
       );
-    } on PlatformException {
-      rethrow;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -157,8 +153,8 @@ class DitoSdk {
         action: action,
         data: data,
       );
-    } on PlatformException {
-      rethrow;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -188,8 +184,8 @@ class DitoSdk {
   Future<void> _performRegisterDeviceToken(String token) async {
     try {
       await DitoSdkPlatform.instance.registerDeviceToken(token);
-    } on PlatformException {
-      rethrow;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -215,8 +211,8 @@ class DitoSdk {
   Future<void> _performUnregisterDeviceToken(String token) async {
     try {
       await DitoSdkPlatform.instance.unregisterDeviceToken(token);
-    } on PlatformException {
-      rethrow;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
     } catch (e) {
       throw mapNativeError(e);
     }

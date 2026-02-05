@@ -6,7 +6,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   MethodChannelDitoSdk platform = MethodChannelDitoSdk();
-  const MethodChannel channel = MethodChannel('dito_sdk');
+  const MethodChannel channel = MethodChannel('br.com.dito/dito_sdk');
 
   setUp(() {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(

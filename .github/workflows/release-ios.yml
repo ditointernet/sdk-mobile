@@ -14,54 +14,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-      should_publish: ${{ steps.meta.outputs.should_publish }}
-      changelog: ${{ steps.meta.outputs.changelog }}
+  release:
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-tags: true
           fetch-depth: 0
 
-      - name: Derive version and release notes
-        id: meta
+      - name: Extract version from tag
+        id: version
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            echo "🏷️  Using tag from push event: $TAG"
+          else
+            TAG=$(git tag -l "ios-v*" | sort -V | tail -n 1)
+            if [ -z "$TAG" ]; then
+              echo "❌ No ios-v* tags found"
+              exit 1
+            fi
+            echo "🏷️  Using latest iOS tag: $TAG"
+          fi
+
           VERSION="${TAG#ios-v}"
-          SHA="$(git rev-list -n 1 "$TAG")"
-          SUBJECT="$(git show -s --format=%s "$SHA")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "📦 Version: $VERSION"
 
-          if ! printf "%s" "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$SUBJECT" != "chore(release): ios "* ]]; then
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
+      - name: Extract changelog
+        id: changelog
+        run: |
           CHANGELOG_OUTPUT="$(./scripts/extract-changelog.sh ios/CHANGELOG.md)"
           CHANGELOG="$(echo "$CHANGELOG_OUTPUT" | tail -n +2)"
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "should_publish=true" >> "$GITHUB_OUTPUT"
           {
             echo 'changelog<<EOF'
             echo "$CHANGELOG"
             echo EOF
           } >> "$GITHUB_OUTPUT"
-
-  build-ios:
-    needs: validate
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Setup Xcode
         uses: maxim-lobanov/setup-xcode@v1
@@ -80,38 +70,6 @@ jobs:
           cd ios
           xcodebuild -workspace DitoSDK.xcworkspace -scheme DitoSDK -configuration Release clean build
 
-      - name: Upload iOS artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: ios-build
-          path: ios/build
-
-  create-release:
-    needs: validate
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create GitHub Release (if needed)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            exit 0
-          fi
-          gh release create "$TAG" \
-            --title "iOS ${{ needs.validate.outputs.version }}" \
-            --notes "${{ needs.validate.outputs.changelog }}"
-
-  publish:
-    needs: [validate, build-ios, create-release]
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
@@ -122,5 +80,18 @@ jobs:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          VERSION_NAME: ${{ needs.validate.outputs.version }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
         run: ./scripts/publish-all.sh ios
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "✅ Release already exists, skipping"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "iOS ${{ steps.version.outputs.version }}" \
+            --notes "${{ steps.changelog.outputs.changelog }}"

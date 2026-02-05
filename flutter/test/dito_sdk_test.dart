@@ -14,7 +14,7 @@ class MockDitoSdkPlatform
   Future<String?> getPlatformVersion() => Future.value('42');
 
   @override
-  Future<void> initialize({required String apiKey, required String apiSecret}) {
+  Future<void> initialize({required String appKey, required String appSecret}) {
     throw UnimplementedError('initialize() has not been implemented.');
   }
 
@@ -59,6 +59,10 @@ void main() {
 
   final DitoSdkPlatform initialPlatform = DitoSdkPlatform.instance;
 
+  setUp(() {
+    DitoSdkPlatform.instance = MethodChannelDitoSdk();
+  });
+
   test('$MethodChannelDitoSdk is the default instance', () {
     expect(initialPlatform, isInstanceOf<MethodChannelDitoSdk>());
   });
@@ -96,8 +100,8 @@ void main() {
       final ditoSdk = DitoSdk();
 
       await ditoSdk.initialize(
-        apiKey: 'test-api-key',
-        apiSecret: 'test-api-secret',
+        appKey: 'test-api-key',
+        appSecret: 'test-api-secret',
       );
 
       expect(ditoSdk.isInitialized, isTrue);
@@ -120,7 +124,7 @@ void main() {
       final ditoSdk = DitoSdk();
 
       expect(
-        () => ditoSdk.initialize(apiKey: '', apiSecret: 'secret'),
+        () => ditoSdk.initialize(appKey: '', appSecret: 'secret'),
         throwsA(isA<PlatformException>().having(
           (e) => e.code,
           'code',
@@ -133,7 +137,7 @@ void main() {
       final ditoSdk = DitoSdk();
 
       expect(
-        () => ditoSdk.initialize(apiKey: 'key', apiSecret: ''),
+        () => ditoSdk.initialize(appKey: 'key', appSecret: ''),
         throwsA(isA<PlatformException>().having(
           (e) => e.code,
           'code',
@@ -170,8 +174,8 @@ void main() {
 
       final ditoSdk = DitoSdk();
       await ditoSdk.initialize(
-        apiKey: 'test-api-key',
-        apiSecret: 'test-api-secret',
+        appKey: 'test-api-key',
+        appSecret: 'test-api-secret',
       );
 
       await ditoSdk.identify(
@@ -212,8 +216,8 @@ void main() {
 
       final ditoSdk = DitoSdk();
       await ditoSdk.initialize(
-        apiKey: 'test-api-key',
-        apiSecret: 'test-api-secret',
+        appKey: 'test-api-key',
+        appSecret: 'test-api-secret',
       );
 
       await ditoSdk.track(
@@ -252,8 +256,8 @@ void main() {
 
       final ditoSdk = DitoSdk();
       await ditoSdk.initialize(
-        apiKey: 'test-api-key',
-        apiSecret: 'test-api-secret',
+        appKey: 'test-api-key',
+        appSecret: 'test-api-secret',
       );
 
       await ditoSdk.registerDeviceToken('test-device-token');
@@ -291,8 +295,8 @@ void main() {
 
       try {
         await ditoSdk.initialize(
-          apiKey: 'test-api-key',
-          apiSecret: 'test-api-secret',
+          appKey: 'test-api-key',
+          appSecret: 'test-api-secret',
         );
         fail('Should have thrown PlatformException');
       } on PlatformException catch (e) {
@@ -319,8 +323,8 @@ void main() {
 
       final ditoSdk = DitoSdk();
       await ditoSdk.initialize(
-        apiKey: 'test-api-key',
-        apiSecret: 'test-api-secret',
+        appKey: 'test-api-key',
+        appSecret: 'test-api-secret',
       );
 
       try {
@@ -349,8 +353,8 @@ void main() {
 
       try {
         await ditoSdk.initialize(
-          apiKey: 'invalid-key',
-          apiSecret: 'invalid-secret',
+          appKey: 'invalid-key',
+          appSecret: 'invalid-secret',
         );
         fail('Should have thrown PlatformException');
       } on PlatformException catch (e) {

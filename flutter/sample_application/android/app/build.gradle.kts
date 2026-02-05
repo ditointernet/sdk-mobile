@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -19,7 +21,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
@@ -27,10 +29,24 @@ android {
         applicationId = "br.com.dito.example.sample_application"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 25
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        val localProperties = Properties()
+        val localPropertiesFile = rootProject.file("local.properties")
+        if (localPropertiesFile.exists()) {
+            localPropertiesFile.inputStream().use { localProperties.load(it) }
+        }
+
+        val ditoApiKey = System.getenv("DITO_API_KEY")
+            ?: (localProperties.getProperty("DITO_API_KEY") ?: "")
+        val ditoApiSecret = System.getenv("DITO_API_SECRET")
+            ?: (localProperties.getProperty("DITO_API_SECRET") ?: "")
+
+        manifestPlaceholders["DITO_API_KEY"] = ditoApiKey
+        manifestPlaceholders["DITO_API_SECRET"] = ditoApiSecret
     }
 
     buildTypes {
@@ -40,6 +56,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+}
+
+dependencies {
+    implementation(platform("com.google.firebase:firebase-bom:33.7.0"))
+    implementation("com.google.firebase:firebase-messaging")
 }
 
 flutter {

@@ -3,6 +3,19 @@
         android:label="sample_application"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <meta-data
+            android:name="br.com.dito.API_KEY"
+            android:value="${DITO_API_KEY}" />
+        <meta-data
+            android:name="br.com.dito.API_SECRET"
+            android:value="${DITO_API_SECRET}" />
+        <service
+            android:name=".CustomMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
         <activity
             android:name=".MainActivity"
             android:exported="true"

@@ -11,8 +11,7 @@ class TokenSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final fcm = state.fcmDebugStatus;
     final isReady = fcm.startsWith('Ready');
-    final isError =
-        fcm.startsWith('Error') || fcm.startsWith('Push not');
+    final isError = fcm.startsWith('Error');
 
     return Card(
       child: Padding(
@@ -53,7 +52,7 @@ class TokenSection extends StatelessWidget {
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Text(
-                        'Push received (foreground): ${state.fcmPushReceivedCount}',
+                        'Push received in Dart (foreground): ${state.fcmPushReceivedCount}',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.green.shade800,
@@ -99,3 +98,4 @@ class TokenSection extends StatelessWidget {
     );
   }
 }
+
