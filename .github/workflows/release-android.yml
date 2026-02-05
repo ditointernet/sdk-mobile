@@ -9,6 +9,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-android-${{ github.ref_name }}
+  cancel-in-progress: false
+
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -69,8 +73,28 @@ jobs:
             --title "Android ${{ needs.validate.outputs.version }}" \
             --notes "${{ needs.validate.outputs.changelog }}"
 
+  build-android:
+    needs: validate
+    if: needs.validate.outputs.should_publish == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x android/gradlew
+
+      - name: Build Android SDK
+        working-directory: android
+        run: ./gradlew :dito-sdk:build
+
   publish:
-    needs: [validate, create-release]
+    needs: [validate, build-android, create-release]
     if: needs.validate.outputs.should_publish == 'true'
     runs-on: ubuntu-latest
     steps:

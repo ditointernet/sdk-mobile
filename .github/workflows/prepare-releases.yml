@@ -3,9 +3,24 @@ name: Prepare Releases
 on:
   push:
     branches: [main]
+    paths:
+      - 'android/**'
+      - 'ios/**'
+      - 'flutter/**'
+      - 'react-native/**'
+      - '.github/semantic-release/**'
+      - '.github/workflows/prepare-releases.yml'
+      - 'commitlint.config.mjs'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'scripts/semantic-release/**'
 
 permissions:
   contents: write
+
+concurrency:
+  group: prepare-releases-main
+  cancel-in-progress: false
 
 jobs:
   prepare:
@@ -18,7 +33,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22.14.0'
 
       - name: Install release tooling
         run: npm ci --no-audit --no-fund
