@@ -29,7 +29,7 @@ jobs:
           SHA="$(git rev-list -n 1 "$TAG")"
           SUBJECT="$(git show -s --format=%s "$SHA")"
 
-          if ! printf "%s" "$VERSION" | grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?$'; then
+          if ! printf "%s" "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
             echo "version=$VERSION" >> "$GITHUB_OUTPUT"
             echo "should_publish=false" >> "$GITHUB_OUTPUT"
             exit 0

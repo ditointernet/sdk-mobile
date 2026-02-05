@@ -16,11 +16,11 @@ rn_version="$(node -e "const j=require('./react-native/package.json');process.st
 ensure_tag() {
   local prefix="$1"
   local version="$2"
-  if ! printf "%s" "$version" | grep -Eq '^[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$'; then
+  if ! printf "%s" "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
     echo "Invalid version for ${prefix}: '${version}'" >&2
     exit 1
   fi
-  if git tag --list "${prefix}v*" | grep -Eq "^${prefix}v[0-9]+\\.[0-9]+\\.[0-9]+([.-][0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$"; then
+  if git tag --list "${prefix}v*" | grep -Eq "^${prefix}v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$"; then
     return 0
   fi
   git tag -a "${prefix}v${version}" -m "chore: baseline ${prefix}v${version}"
