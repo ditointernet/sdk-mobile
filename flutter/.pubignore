@@ -5,3 +5,6 @@ sample_application/
 .idea/
 *.log
 .DS_Store
+.gitignore
+android/.gitignore
+ios/.gitignore

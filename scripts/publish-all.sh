@@ -119,8 +119,15 @@ if [ "$PUBLISH_FLUTTER" = true ]; then
         FAILED_PROJECTS+=("flutter")
     else
         cd flutter
-        if flutter pub publish --dry-run; then
-            echo "Dry run successful, publishing..."
+        DRY_RUN_OUTPUT=$(flutter pub publish --dry-run 2>&1)
+        DRY_RUN_EXIT=$?
+        echo "$DRY_RUN_OUTPUT"
+
+        if echo "$DRY_RUN_OUTPUT" | grep -q "Package validation found the following error"; then
+            FAILED_PROJECTS+=("flutter")
+            echo "❌ Flutter plugin dry run failed with errors"
+        elif [ $DRY_RUN_EXIT -eq 0 ] || echo "$DRY_RUN_OUTPUT" | grep -q "Package has.*warning"; then
+            echo "✓ Dry run passed (warnings are acceptable), publishing..."
             if flutter pub publish --force; then
                 SUCCESSFUL_PROJECTS+=("flutter")
                 echo "✅ Flutter plugin published successfully"

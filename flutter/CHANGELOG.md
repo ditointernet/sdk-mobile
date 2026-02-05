@@ -1,3 +1,16 @@
+## [3.1.3] - 2025-02-05
+
+### Correções
+- Corrigido uso de `rethrow` em tratamento de exceções para seguir melhores práticas do Dart
+- Corrigido uso de `initializing formals` em construtores
+
+### Outros
+- Removida `sample_application` do pacote publicável
+- Adicionado `.pubignore` para exclusão de arquivos desnecessários
+- Removida configuração de workspace do pubspec
+- Excluída `sample_application` da análise de código do SDK
+- Removidos builds de exemplo dos workflows de CI
+
 ### Outros
 
 - chore(dependencies): update pubspec.lock with version downgrades and updated checksums (b0327de)
