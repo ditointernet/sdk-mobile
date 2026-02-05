@@ -14,54 +14,44 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  validate:
+  release:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.meta.outputs.version }}
-      should_publish: ${{ steps.meta.outputs.should_publish }}
-      changelog: ${{ steps.meta.outputs.changelog }}
     steps:
       - uses: actions/checkout@v4
         with:
+          fetch-tags: true
           fetch-depth: 0
 
-      - name: Derive version and release notes
-        id: meta
+      - name: Extract version from tag
+        id: version
         run: |
-          TAG="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            TAG="${GITHUB_REF_NAME}"
+            echo "🏷️  Using tag from push event: $TAG"
+          else
+            TAG=$(git tag -l "flutter-v*" | sort -V | tail -n 1)
+            if [ -z "$TAG" ]; then
+              echo "❌ No flutter-v* tags found"
+              exit 1
+            fi
+            echo "🏷️  Using latest Flutter tag: $TAG"
+          fi
+
           VERSION="${TAG#flutter-v}"
-          SHA="$(git rev-list -n 1 "$TAG")"
-          SUBJECT="$(git show -s --format=%s "$SHA")"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "📦 Version: $VERSION"
 
-          if ! printf "%s" "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [[ "$SUBJECT" != "chore(release): flutter "* ]]; then
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "should_publish=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
+      - name: Extract changelog
+        id: changelog
+        run: |
           CHANGELOG_OUTPUT="$(./scripts/extract-changelog.sh flutter/CHANGELOG.md)"
           CHANGELOG="$(echo "$CHANGELOG_OUTPUT" | tail -n +2)"
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "should_publish=true" >> "$GITHUB_OUTPUT"
           {
             echo 'changelog<<EOF'
             echo "$CHANGELOG"
             echo EOF
           } >> "$GITHUB_OUTPUT"
-
-  build-flutter:
-    needs: validate
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
@@ -90,48 +80,23 @@ jobs:
           flutter build apk --debug
           flutter build ios --debug --no-codesign
 
-      - name: Upload Flutter artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: flutter-build
-          path: flutter/build
-
-  create-release:
-    needs: validate
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Create GitHub Release (if needed)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            exit 0
-          fi
-          gh release create "$TAG" \
-            --title "Flutter ${{ needs.validate.outputs.version }}" \
-            --notes "${{ needs.validate.outputs.changelog }}"
-
-  publish:
-    needs: [validate, build-flutter, create-release]
-    if: needs.validate.outputs.should_publish == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: 'stable'
-
       - name: Publish Flutter
         env:
           PUB_CREDENTIALS: ${{ secrets.PUB_CREDENTIALS }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_ACTOR: ${{ github.actor }}
-          VERSION_NAME: ${{ needs.validate.outputs.version }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
         run: ./scripts/publish-all.sh flutter
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "✅ Release already exists, skipping"
+            exit 0
+          fi
+          gh release create "$TAG" \
+            --title "Flutter ${{ steps.version.outputs.version }}" \
+            --notes "${{ steps.changelog.outputs.changelog }}"
