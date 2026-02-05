@@ -1,7 +1,4 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:dito_sdk/dito_sdk.dart';
-import 'package:dito_sdk/error_handler.dart';
-import 'package:flutter/services.dart';
 
 void main() {
   group('Push Notification Integration', () {

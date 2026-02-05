@@ -22,8 +22,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
       await methodChannel.invokeMethod<void>('setDebugMode', {
         'enabled': enabled,
       });
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -42,8 +42,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
         'appSecret': appSecret,
         },
       );
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -66,8 +66,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
           'customData': customData,
         },
       );
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -86,8 +86,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
           'data': data,
         },
       );
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -102,8 +102,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
           'token': token,
         },
       );
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }
@@ -118,8 +118,8 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
           'token': token,
         },
       );
-    } on PlatformException catch (e) {
-      throw e;
+    } on PlatformException {
+      rethrow;
     } catch (e) {
       throw mapNativeError(e);
     }

@@ -14,11 +14,10 @@ class SampleAppState {
   SampleAppState({
     required void Function(void Function()) setState,
     required GlobalKey<ScaffoldMessengerState> scaffoldKey,
-    required DitoSdk ditoSdk,
+    required this.ditoSdk,
     String? initError,
   })  : _setState = setState,
         _scaffoldKey = scaffoldKey,
-        ditoSdk = ditoSdk,
         status = initError != null
             ? 'Initialization failed: $initError'
             : 'Initialized successfully',
