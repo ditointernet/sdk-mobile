@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "br.com.dito"
-version = System.getenv("VERSION_NAME") ?: "3.0.1"
+version = System.getenv("VERSION_NAME") ?: "3.1.0"
 
 android {
     namespace = "br.com.dito.ditosdk"

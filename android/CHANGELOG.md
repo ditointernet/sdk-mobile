@@ -1,22 +1,29 @@
-### Funcionalidades
+## [3.1.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.0.1...android-v3.1.0) (2026-02-05)
 
-- feat(android):  Add migration guide for transitioning from old Android SDK to new SDK (ba49a4f)
+### Melhorias
 
-### Outros
+- Refatoração do gerenciamento de dados persistentes
+- Melhorias no tratamento de erros de notificações
+- Configuração otimizada para publicação no Maven Central
 
-- chore(release): android 1.0.0 (29c51ae)
-- Enhance DitoNotificationHandler with error handling for notification processing and device token registration (64ce9f8)
-- Update Android SDK publishing configuration to support Maven Central. Change group ID to 'br.com.dito' and adjust build scripts for proper credential handling. Modify publish-all.sh to include error checks for required credentials and streamline the publishing process. Ensure compatibility with both Maven Central and GitHub Packages. (ee72ff0)
-- Update Android SDK publishing process to use GitHub Packages instead of Maven Central. Modify README and build configuration to reflect new repository settings and dependency management. Ensure proper credential handling for GitHub authentication in the publish script. (6b7eeb5)
-- Refactor DitoCoreDataManager to simplify access to the persistent container by removing the private setter, enhancing code clarity. (3e9a968)
+## [3.0.1](https://github.com/ditointernet/sdk-mobile/compare/android-v1.0.0...android-v3.0.1) (2025-01-XX)
 
 ### Funcionalidades
 
-- feat(android):  Add migration guide for transitioning from old Android SDK to new SDK (ba49a4f)
+- feat(android): Add migration guide for transitioning from old Android SDK to new SDK (ba49a4f)
 
 ### Outros
 
 - Enhance DitoNotificationHandler with error handling for notification processing and device token registration (64ce9f8)
-- Update Android SDK publishing configuration to support Maven Central. Change group ID to 'br.com.dito' and adjust build scripts for proper credential handling. Modify publish-all.sh to include error checks for required credentials and streamline the publishing process. Ensure compatibility with both Maven Central and GitHub Packages. (ee72ff0)
-- Update Android SDK publishing process to use GitHub Packages instead of Maven Central. Modify README and build configuration to reflect new repository settings and dependency management. Ensure proper credential handling for GitHub authentication in the publish script. (6b7eeb5)
-- Refactor DitoCoreDataManager to simplify access to the persistent container by removing the private setter, enhancing code clarity. (3e9a968)
+- Update Android SDK publishing configuration to support Maven Central. Change group ID to 'br.com.dito' and adjust build scripts for proper credential handling (ee72ff0)
+- Refactor DitoCoreDataManager to simplify access to the persistent container by removing the private setter (4e42a95)
+
+## [1.0.0](https://github.com/ditointernet/sdk-mobile/releases/tag/android-v1.0.0) (2025-01-XX)
+
+### Funcionalidades
+
+- feat(android): Add migration guide for transitioning from old Android SDK to new SDK (ba49a4f)
+
+### Outros
+
+- Update Android SDK publishing process to use GitHub Packages instead of Maven Central (6b7eeb5)
