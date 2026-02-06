@@ -1,3 +1,7 @@
+### Funcionalidades
+
+- feat(notification): add global callback for notification clicks and deeplinks (8e88d08)
+
 ### Correções
 
 - fix(tests): update GsonSerializerTest to assert absence of "data" field in serialized output (c60aac4)
