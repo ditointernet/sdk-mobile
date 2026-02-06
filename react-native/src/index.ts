@@ -1,4 +1,4 @@
-import { NativeModules } from 'react-native';
+import { NativeEventEmitter, NativeModules } from "react-native";
 import {
   validateApiKey,
   validateApiSecret,
@@ -6,15 +6,35 @@ import {
   validateAction,
   validateToken,
   validateEmail,
-} from './parameter_validator';
-import { createError, mapNativeError, DitoErrorCode } from './error_handler';
+} from "./parameter_validator";
+import { createError, mapNativeError, DitoErrorCode } from "./error_handler";
 
 const { DitoSdkModule } = NativeModules;
 
 if (!DitoSdkModule) {
   throw new Error(
-    'DitoSdkModule native module is not available. Make sure you have properly linked the native module.',
+    "DitoSdkModule native module is not available. Make sure you have properly linked the native module."
   );
+}
+
+export interface DitoNotificationClick {
+  deeplink: string;
+  notificationId: string;
+  reference: string;
+  logId: string;
+  notificationName: string;
+  userId: string;
+}
+
+export function addNotificationClickListener(
+  callback: (click: DitoNotificationClick) => void
+): () => void {
+  const eventEmitter = new NativeEventEmitter(DitoSdkModule);
+  const subscription = eventEmitter.addListener(
+    "DitoNotificationClick",
+    callback
+  );
+  return () => subscription.remove();
 }
 
 class DitoSdk {
@@ -105,10 +125,7 @@ class DitoSdk {
     await this._performIdentify(options);
   }
 
-  private static _validateIdentifyParameters(
-    id: string,
-    email?: string,
-  ): void {
+  private static _validateIdentifyParameters(id: string, email?: string): void {
     validateId(id);
     validateEmail(email);
   }
@@ -124,7 +141,7 @@ class DitoSdk {
         options.id,
         options.name || null,
         options.email || null,
-        options.customData || null,
+        options.customData || null
       );
     } catch (error: any) {
       throw mapNativeError(error);
@@ -199,7 +216,7 @@ class DitoSdk {
   }
 
   private static async _performRegisterDeviceToken(
-    token: string,
+    token: string
   ): Promise<void> {
     try {
       await DitoSdkModule.registerDeviceToken(token);
@@ -233,10 +250,36 @@ class DitoSdk {
   }
 
   private static async _performUnregisterDeviceToken(
-    token: string,
+    token: string
   ): Promise<void> {
     try {
       await DitoSdkModule.unregisterDeviceToken(token);
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  static async getPlatformVersion(): Promise<string> {
+    try {
+      return await DitoSdkModule.getPlatformVersion();
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  static async setDebugMode(enabled: boolean): Promise<void> {
+    try {
+      await DitoSdkModule.setDebugMode(enabled);
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  static async handleNotificationClick(
+    userInfo: Record<string, unknown>
+  ): Promise<boolean> {
+    try {
+      return await DitoSdkModule.handleNotificationClick(userInfo);
     } catch (error: any) {
       throw mapNativeError(error);
     }
@@ -246,11 +289,11 @@ class DitoSdk {
     if (!this._isInitialized) {
       throw createError(
         DitoErrorCode.NOT_INITIALIZED,
-        'DitoSdk must be initialized before calling this method. Call initialize() first.',
+        "DitoSdk must be initialized before calling this method. Call initialize() first."
       );
     }
   }
 }
 
 export default DitoSdk;
-export { DitoErrorCode, type DitoError } from './error_handler';
+export { DitoErrorCode, type DitoError } from "./error_handler";

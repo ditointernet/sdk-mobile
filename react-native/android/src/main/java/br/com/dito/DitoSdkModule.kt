@@ -1,7 +1,10 @@
 package br.com.dito
 
 import android.content.Context
+import android.os.Build
 import br.com.dito.ditosdk.Dito
+import br.com.dito.ditosdk.Options
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -9,6 +12,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
+import com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter
 import com.google.firebase.messaging.RemoteMessage
 
 class DitoSdkModule(reactContext: ReactApplicationContext) :
@@ -18,7 +22,16 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
         return "DitoSdkModule"
     }
 
+    init {
+        Companion.reactContext = reactContext
+    }
+
     companion object {
+        private const val NOTIFICATION_CLICK_EVENT = "DitoNotificationClick"
+
+        @Volatile
+        private var reactContext: ReactApplicationContext? = null
+
         /**
          * Handles a push notification and processes it if it belongs to Dito channel.
          *
@@ -41,7 +54,7 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
 
         private fun isDitoChannel(message: RemoteMessage): Boolean {
             val channel = message.data["channel"]
-            return channel == "Dito"
+            return channel.equals("DITO", ignoreCase = true)
         }
 
         private fun ensureInitialized(context: Context) {
@@ -109,12 +122,33 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
         @JvmStatic
         fun handleNotificationClick(context: Context, userInfo: Map<String, String>): Boolean {
             val channel = userInfo["channel"]
-            if (channel != "Dito") {
-                return false
-            }
+            if (!channel.equals("DITO", ignoreCase = true)) return false
             ensureInitialized(context)
-            Dito.notificationClick(userInfo)
+            val normalizedUserInfo = normalizeClickUserInfo(userInfo)
+            Dito.notificationClick(normalizedUserInfo) { deeplink ->
+                emitNotificationClickEvent(deeplink, normalizedUserInfo)
+            }
             return true
+        }
+
+        private fun normalizeClickUserInfo(userInfo: Map<String, String>): Map<String, String> {
+            val deeplink = userInfo["deeplink"] ?: userInfo["link"] ?: ""
+            return userInfo.toMutableMap().apply {
+                putIfAbsent("deeplink", deeplink)
+            }
+        }
+
+        private fun emitNotificationClickEvent(deeplink: String, userInfo: Map<String, String>) {
+            val ctx = reactContext ?: return
+            val payload = Arguments.createMap().apply {
+                putString("deeplink", deeplink)
+                putString("notificationId", userInfo["notification"] ?: "")
+                putString("reference", userInfo["reference"] ?: "")
+                putString("logId", userInfo["log_id"] ?: "")
+                putString("notificationName", userInfo["notification_name"] ?: "")
+                putString("userId", userInfo["user_id"] ?: "")
+            }
+            ctx.getJSModule(RCTDeviceEventEmitter::class.java).emit(NOTIFICATION_CLICK_EVENT, payload)
         }
     }
 
@@ -275,6 +309,82 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 e
             )
         }
+    }
+
+    @ReactMethod
+    fun getPlatformVersion(promise: Promise) {
+        try {
+            promise.resolve("Android ${Build.VERSION.RELEASE}")
+        } catch (e: Exception) {
+            promise.reject(
+                "NETWORK_ERROR",
+                "Failed to get platform version: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @ReactMethod
+    fun setDebugMode(enabled: Boolean, promise: Promise) {
+        try {
+            val currentOptions = Dito.options
+            if (currentOptions != null) {
+                currentOptions.debug = enabled
+            } else {
+                Dito.options = Options().apply { debug = enabled }
+            }
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject(
+                "NETWORK_ERROR",
+                "Failed to set debug mode: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @ReactMethod
+    fun addListener(eventName: String) {}
+
+    @ReactMethod
+    fun removeListeners(count: Int) {}
+
+    @ReactMethod
+    fun handleNotificationClick(userInfo: ReadableMap, promise: Promise) {
+        try {
+            val ctx: Context? = reactApplicationContext.applicationContext
+            if (ctx == null) {
+                promise.resolve(false)
+                return
+            }
+            val map = readableMapToStringMap(userInfo)
+            promise.resolve(Companion.handleNotificationClick(ctx, map))
+        } catch (e: Exception) {
+            promise.reject(
+                "NETWORK_ERROR",
+                "Failed to handle notification click: ${e.message}",
+                e
+            )
+        }
+    }
+
+    private fun readableMapToStringMap(map: ReadableMap?): Map<String, String> {
+        if (map == null) return emptyMap()
+        val result = mutableMapOf<String, String>()
+        val iterator = map.keySetIterator()
+        while (iterator.hasNextKey()) {
+            val key = iterator.nextKey()
+            val value = when (map.getType(key)) {
+                ReadableType.Null -> ""
+                ReadableType.Boolean -> map.getBoolean(key).toString()
+                ReadableType.Number -> map.getDouble(key).toString()
+                ReadableType.String -> map.getString(key) ?: ""
+                ReadableType.Map -> map.getMap(key)?.toHashMap()?.toString() ?: ""
+                ReadableType.Array -> map.getArray(key)?.toArrayList()?.toString() ?: ""
+            }
+            result[key] = value
+        }
+        return result
     }
 
     private fun readableMapToMap(map: ReadableMap?): Map<String, Any>? {

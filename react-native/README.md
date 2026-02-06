@@ -292,6 +292,85 @@ if (token) {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### 🔗 Click em notificação e deeplink (callback no JavaScript)
+
+O plugin expõe um listener no JavaScript para que o app possa executar navegação, abrir navegador, etc. quando o usuário tocar em uma notificação do canal Dito.
+
+- **Listener**: `addNotificationClickListener((event) => { ... })`
+- **Forwarding manual (JS)**: `DitoSdk.handleNotificationClick(userInfo)`
+
+Fluxo (alto nível):
+
+```mermaid
+sequenceDiagram
+    participant User as Usuário
+    participant OS as SistemaOperacional
+    participant Native as SDKNativo
+    participant Bridge as EventEmitter
+    participant JS as JSApp
+
+    User->>OS: Clica na notificação
+    OS->>Native: Entrega a interação
+    Native->>Bridge: Emite DitoNotificationClick
+    Bridge->>JS: Listener recebe payload
+```
+
+Arquitetura (camadas):
+
+```mermaid
+graph TB
+    subgraph Native[Camada Nativa iOS/Android]
+        FCM[Firebase Cloud Messaging]
+        Handler[Notification Handler]
+        SDK[Dito SDK Nativo]
+    end
+
+    subgraph Bridge[Camada de Ponte]
+        EventEmitter[EventEmitter React Native]
+    end
+
+    subgraph App[Camada da Aplicação]
+        Listener[Listener JavaScript]
+        Navigation[Sistema de Navegação]
+    end
+
+    FCM --> Handler
+    Handler --> SDK
+    SDK -->|Extrai link| EventEmitter
+    EventEmitter --> Listener
+    Listener --> Navigation
+```
+
+Exemplo:
+
+```typescript
+import DitoSdk, { addNotificationClickListener } from '@ditointernet/dito-sdk';
+
+const unsubscribe = addNotificationClickListener((event) => {
+  if (!event.deeplink) return;
+  // Navegação do seu app aqui
+});
+
+// Quando o clique for detectado no JS (ex.: firebase messaging), delegue para o SDK:
+await DitoSdk.handleNotificationClick(message.data);
+```
+
+Exemplo de navegação (React Navigation):
+
+```typescript
+import type { NavigationContainerRef } from '@react-navigation/native';
+
+export function setupDitoNotificationClicks(
+  navigationRef: NavigationContainerRef<any>
+): () => void {
+  return addNotificationClickListener((event) => {
+    if (!event.deeplink) return;
+    const url = new URL(event.deeplink);
+    navigationRef.navigate(url.pathname, Object.fromEntries(url.searchParams));
+  });
+}
+```
+
 ### Configuração Básica
 
 1. Configure o Firebase no seu projeto React Native
@@ -404,7 +483,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 }
 ```
 
-**Importante**: As notificações são processadas apenas se o campo `channel` nos dados da notificação for igual a `"Dito"`. Caso contrário, os métodos retornam `false` e a notificação deve ser processada normalmente pelo app.
+**Importante**: As notificações são processadas apenas se o campo `channel` nos dados da notificação for igual a `"DITO"` (case-insensitive). Caso contrário, os métodos retornam `false` e a notificação deve ser processada normalmente pelo app.
 
 ## 💡 Exemplos Completos
 
@@ -496,7 +575,7 @@ await DitoSdk.initialize({
 
 **Solução**:
 1. Verifique se o método estático está sendo chamado corretamente no código nativo
-2. Confirme que o campo `channel` na notificação é igual a `"Dito"`
+2. Confirme que o campo `channel` na notificação é igual a `"DITO"`
 3. No Android, certifique-se de que o `FirebaseMessagingService` está configurado
 4. No iOS, verifique se o `UNUserNotificationCenterDelegate` está implementado
 

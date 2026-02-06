@@ -1,10 +1,14 @@
 import Foundation
 import React
+import UIKit
 import DitoSDK
 import UserNotifications
 
 @objc(DitoSdkModule)
-class DitoSdkModule: NSObject, RCTBridgeModule {
+class DitoSdkModule: RCTEventEmitter {
+
+  private static var shared: DitoSdkModule?
+  private var hasListeners = false
 
   static func moduleName() -> String! {
     return "DitoSdkModule"
@@ -12,6 +16,47 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
 
   static func requiresMainQueueSetup() -> Bool {
     return false
+  }
+
+  override init() {
+    super.init()
+    DitoSdkModule.shared = self
+  }
+
+  override func supportedEvents() -> [String]! {
+    return ["DitoNotificationClick"]
+  }
+
+  override func startObserving() {
+    hasListeners = true
+  }
+
+  override func stopObserving() {
+    hasListeners = false
+  }
+
+  private func emitNotificationClickEvent(deeplink: String, userInfo: [AnyHashable: Any]) {
+    guard hasListeners else { return }
+    let payload: [String: Any] = [
+      "deeplink": deeplink,
+      "notificationId": userInfo["notification"] as? String ?? "",
+      "reference": userInfo["reference"] as? String ?? "",
+      "logId": userInfo["log_id"] as? String ?? "",
+      "notificationName": userInfo["notification_name"] as? String ?? "",
+      "userId": userInfo["user_id"] as? String ?? "",
+    ]
+    sendEvent(withName: "DitoNotificationClick", body: payload)
+  }
+
+  private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
+    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String {
+      return ch
+    }
+    return userInfo["channel"] as? String
+  }
+
+  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
+    channelFromUserInfo(userInfo)?.uppercased() == "DITO"
   }
 
   /**
@@ -38,8 +83,7 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
 
   private static func isDitoChannel(_ request: UNNotificationRequest) -> Bool {
     let userInfo = request.content.userInfo
-    let channel = userInfo["channel"] as? String
-    return channel == "Dito"
+    return isDitoChannel(userInfo)
   }
 
   private static func processNotificationRequest(_ request: UNNotificationRequest, fcmToken: String?) {
@@ -65,10 +109,12 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard let channel = userInfo["channel"] as? String, channel == "Dito" else {
-      return false
+    guard isDitoChannel(userInfo) else { return false }
+    let wrappedCallback: (String) -> Void = { deeplink in
+      callback?(deeplink)
+      DitoSdkModule.shared?.emitNotificationClickEvent(deeplink: deeplink, userInfo: userInfo)
     }
-    Dito.notificationClick(userInfo: userInfo, callback: callback)
+    Dito.notificationClick(userInfo: userInfo, callback: wrappedCallback)
     return true
   }
 
@@ -153,5 +199,26 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
 
     Dito.unregisterDevice(token: token)
     resolve(nil)
+  }
+
+  @objc
+  func getPlatformVersion(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    resolve("iOS \(UIDevice.current.systemVersion)")
+  }
+
+  @objc
+  func setDebugMode(_ enabled: Bool, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    Dito.enableDebugMode(enabled)
+    resolve(nil)
+  }
+
+  @objc
+  func handleNotificationClick(_ userInfo: [String: Any], resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
+    var converted: [AnyHashable: Any] = [:]
+    for (k, v) in userInfo {
+      converted[k] = v
+    }
+    let handled = DitoSdkModule.didReceiveNotificationClick(userInfo: converted, callback: nil)
+    resolve(handled)
   }
 }

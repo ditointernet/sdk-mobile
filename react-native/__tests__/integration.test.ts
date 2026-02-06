@@ -1,7 +1,5 @@
-import DitoSdk, { DitoErrorCode } from '../src/index';
-
-describe('Push Notification Integration', () => {
-  it('should handle notification with Dito channel', () => {
+describe("Push Notification Integration", () => {
+  it("should handle notification with Dito channel", () => {
     // This is a placeholder test for integration testing
     // In a real scenario, this would test the static methods
     // DitoSdkModule.handleNotification (Android) and
@@ -11,7 +9,7 @@ describe('Push Notification Integration', () => {
     expect(true).toBe(true);
   });
 
-  it('should reject notification without Dito channel', () => {
+  it("should reject notification without Dito channel", () => {
     // This is a placeholder test for integration testing
     // The static methods should return false for non-Dito notifications
 
