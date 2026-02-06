@@ -21,6 +21,7 @@ object Dito {
     const val DITO_DEEP_LINK = "br.com.dito.ditosdk.DITO_DEEP_LINK"
 
     var options: Options? = null
+    var notificationClickListener: ((String) -> Unit)? = null
 
     /**
      *
@@ -30,6 +31,9 @@ object Dito {
     @RequiresApi(Build.VERSION_CODES.O)
     fun init(context: Context?, options: Options?) {
         this.options = options
+        if (options != null) {
+            this.notificationClickListener = options.notificationClickListener
+        }
 
         val appInfo = context?.packageManager?.getApplicationInfo(
             context.packageName,
@@ -52,6 +56,9 @@ object Dito {
         options: Options?
     ) {
         this.options = options
+        if (options != null) {
+            this.notificationClickListener = options.notificationClickListener
+        }
         val resolvedHibridMode = resolveHibridMode(context)
         if (context == null) {
             throw RuntimeException("Context is not available")

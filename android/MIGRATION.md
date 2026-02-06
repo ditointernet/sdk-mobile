@@ -111,6 +111,7 @@ Mudanças relevantes:
 
 - `retry`, `debug`, `iconNotification` continuam existindo.
 - `contentIntent` continua existindo para controlar o que abre ao tocar na notificação.
+- **Novo**: `notificationClickListener` permite receber o deeplink (`link`) ao tocar na notificação, sem precisar criar uma Activity dedicada.
 
 ---
 
@@ -190,6 +191,22 @@ O `DitoMessagingService` do SDK gerencia automaticamente:
 - chamada de `Dito.notificationRead(...)` ao receber push;
 - exibição de notificação;
 - tracking de abertura e deeplink.
+
+Se você vem do `sdk_mobile_android`, remova do seu `AndroidManifest.xml` qualquer referência ao `NotificationOpenedReceiver`. No SDK novo, o tracking de abertura é feito internamente via `NotificationOpenedActivity` e o deeplink pode ser capturado via `Options.notificationClickListener`.
+
+Se você precisa executar navegação/abertura de navegador quando o usuário tocar no push, configure o callback global:
+
+```kotlin
+val options = Options(retry = 5).apply {
+  notificationClickListener = { deeplink ->
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deeplink))
+    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    startActivity(intent)
+  }
+}
+
+Dito.init(this, options)
+```
 
 Guia: `android/example-app/FIREBASE_MESSAGING_SETUP.md`
 

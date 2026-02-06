@@ -1,8 +1,8 @@
-# Guia de Migração - DitoSDK v2.0.0
+# Guia de Migração - DitoSDK 2.0.0+
 
 ## 📌 Visão Geral
 
-Este guia ajudará você a migrar seu projeto para a versão 2.0.0 do DitoSDK, que inclui:
+Este guia ajudará você a migrar seu projeto para a versão 2.0.0 (ou superior) do DitoSDK, que inclui:
 
 - ✅ Suporte completo para iOS 16, 17 e 18
 - ✅ Correções de concorrência do CoreData
@@ -35,6 +35,30 @@ Todas as operações CoreData agora são thread-safe e executadas em background 
 
 Ordem correta de inicialização e obtenção de tokens implementada.
 
+### 4. Clique em notificações e deeplink
+
+O deeplink é extraído do campo `link` do `userInfo` e pode ser tratado via callback em `Dito.notificationClick(userInfo:callback:)`.
+
+### 5. Recebimento de notificações (padronização de API)
+
+Para consistência com Android, o método recomendado para rastrear o recebimento de push passou a ser `notificationReceived(userInfo:token:)`.
+
+**Antes (Deprecated):**
+```swift
+Dito.notificationRead(userInfo: userInfo, token: fcmToken)
+```
+
+**Agora (Recomendado):**
+```swift
+Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
+```
+
+**Compatibilidade (Deprecated):** para facilitar a migração de código antigo, ainda existem overloads marcados como deprecated, por exemplo:
+
+- `Dito.notificationReceived(with:token:)`
+- `Dito.notificationRead(userInfo:token:)` e `Dito.notificationRead(with:token:)`
+- `Dito.notificationClick(with:callback:)`
+
 ---
 
 ## 📋 Checklist de Migração
@@ -43,10 +67,7 @@ Ordem correta de inicialização e obtenção de tokens implementada.
 
 ```ruby
 # Atualize para a versão mais recente
-pod 'DitoSDK', '~> 2.0.0'
-
-# Ou use a branch específica se necessário
-pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_ios.git', :tag => 'v2.0.0'
+pod 'DitoSDK', '~> 3.0.1'
 ```
 
 Execute:
@@ -361,8 +382,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
         let userInfo = notification.request.content.userInfo
 
-        // Registrar leitura no Dito
-        Dito.notificationRead(with: userInfo)
+        // Rastrear recebimento no Dito
+        if let token = fcmToken {
+            Dito.notificationReceived(userInfo: userInfo, token: token)
+        }
 
         // Notificar Firebase
         Messaging.messaging().appDidReceiveMessage(userInfo)
@@ -377,8 +400,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
-        // Registrar leitura no Dito
-        let notification = Dito.notificationRead(with: userInfo)
+        // Rastrear clique no Dito e extrair deeplink
+        let notification = Dito.notificationClick(userInfo: userInfo)
 
         // Processar deeplink se houver
         if !notification.deeplink.isEmpty {
@@ -479,7 +502,7 @@ platform :ios, '16.0'
 target 'SeuApp' do
   use_frameworks!
 
-  pod 'DitoSDK', '~> 2.0.0'
+  pod 'DitoSDK', '~> 3.0.1'
   pod 'Firebase/Messaging'  # Obrigatório
   pod 'Firebase/Analytics'  # Recomendado
 end
@@ -502,12 +525,6 @@ pod 'DitoSDK', '~> 1.1.1'  # Versão anterior
 pod update DitoSDK
 ```
 
-### Opção 2: Branch Específica
-
-```ruby
-pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_ios.git', :tag => 'v1.1.1'
-```
-
 ---
 
 ## 📞 Suporte
@@ -521,7 +538,7 @@ Consulte os documentos:
 
 ### Relatar Problemas
 
-1. **GitHub Issues**: https://github.com/ditointernet/dito_ios/issues
+1. **GitHub Issues**: https://github.com/ditointernet/sdk-mobile/issues
 2. **Incluir:**
    - Versão do iOS
    - Versão do DitoSDK
@@ -532,7 +549,7 @@ Consulte os documentos:
 
 ## ✅ Checklist Final
 
-- [ ] Podfile atualizado para DitoSDK 2.0.0+
+- [ ] Podfile atualizado para DitoSDK 3.0.1+
 - [ ] `pod update DitoSDK` executado
 - [ ] Ordem de inicialização corrigida (Firebase → Messaging → Dito)
 - [ ] APNS token configurado antes de FCM token

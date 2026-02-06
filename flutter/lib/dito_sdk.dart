@@ -1,12 +1,19 @@
+export 'dito_notification_listener.dart';
+
+import 'package:flutter/services.dart';
+
+import 'dito_notification_listener.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 import 'parameter_validator.dart';
-import 'package:flutter/services.dart';
 
 class DitoSdk {
   bool _isInitialized = false;
 
   bool get isInitialized => _isInitialized;
+
+  static Stream<DitoNotificationClick> get onNotificationClick =>
+      DitoNotificationListener.onNotificationClick;
 
   Future<String?> getPlatformVersion() {
     return DitoSdkPlatform.instance.getPlatformVersion();
@@ -211,6 +218,16 @@ class DitoSdk {
   Future<void> _performUnregisterDeviceToken(String token) async {
     try {
       await DitoSdkPlatform.instance.unregisterDeviceToken(token);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) async {
+    try {
+      return await DitoSdkPlatform.instance.handleNotificationClick(userInfo);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {

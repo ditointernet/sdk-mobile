@@ -149,6 +149,8 @@ val result = Dito.notificationClick(notificationInfo) { deeplink ->
 }
 ```
 
+Se você usa o fluxo padrão de exibição de notificações do SDK, também pode configurar um callback global em `Options.notificationClickListener` na inicialização e receber o deeplink automaticamente ao tocar no push.
+
 ## Estratégia de Migração
 
 ### Fase 1: Atualizar Gradualmente (Recomendado)
@@ -203,3 +205,28 @@ Se encontrar problemas durante a migração:
 - ✅ Novos métodos são recomendados para código novo
 - 🔄 Migração pode ser feita gradualmente sem quebrar código existente
 - 📚 Documentação completa disponível em `docs/`
+
+## 🔗 Callbacks de deeplink em notificações (unificado)
+
+Além da padronização de nomenclatura, os SDKs e wrappers oferecem um caminho consistente para capturar o `link` (deeplink) quando o usuário toca em uma notificação do canal Dito.
+
+### Antes vs Depois (por plataforma)
+
+| Plataforma | Antes | Depois |
+|-----------|-------|--------|
+| **Android (nativo)** | App precisava configurar navegação (por exemplo, via `contentIntent`) caso quisesse interceptar o clique | Callback global opcional: `Options.notificationClickListener` (recebe o `link`) |
+| **iOS (nativo)** | Callback no `AppDelegate` via `Dito.notificationClick(userInfo:callback:)` | Mantém o mesmo modelo (sem breaking change) |
+| **Flutter** | Não havia callback exposto ao Dart | Stream `DitoSdk.onNotificationClick` (EventChannel) |
+| **React Native** | Não havia evento exposto ao JavaScript | Listener `addNotificationClickListener` (EventEmitter) |
+
+### Campo do payload
+
+- **Canônico**: `link` (string)
+- **Observação**: nos wrappers (Flutter/React Native), quando você encaminha `userInfo` manualmente (ex.: vindo do Firebase Messaging), o SDK aceita `deeplink` como alias para compatibilidade.
+
+### Referências rápidas
+
+- **Android (callback global)**: `android/README.md` → `notificationClick` → “Callback global (recomendado)”
+- **iOS (callback no AppDelegate)**: `ios/README.md` → `notificationClick`
+- **Flutter (Stream)**: `flutter/README.md` → “Click em notificação e deeplink (callback no Dart)”
+- **React Native (Listener)**: `react-native/README.md` → “Click em notificação e deeplink (callback no JavaScript)”

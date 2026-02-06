@@ -124,4 +124,19 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
       throw mapNativeError(e);
     }
   }
+
+  @override
+  Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) async {
+    try {
+      final handled = await methodChannel.invokeMethod<bool>(
+        'handleNotificationClick',
+        userInfo,
+      );
+      return handled ?? false;
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
 }

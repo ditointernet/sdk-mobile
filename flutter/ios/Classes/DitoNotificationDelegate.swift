@@ -142,7 +142,9 @@ extension DitoNotificationDelegate {
     logPush(context: "Push tap received", userInfo: userInfo)
     notifyFirebase(userInfo: userInfo)
     if isDitoChannel(userInfo) {
-      Dito.notificationClick(userInfo: userInfo, callback: nil)
+      _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
+        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
+      }
     }
     if let orig = originalDelegate, orig.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
       orig.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)

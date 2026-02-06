@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "DitoSDK",
-    platforms: [.iOS(.v14)],
+    platforms: [.iOS(.v16)],
     products: [
         .library(
             name: "DitoSDK",
@@ -22,8 +22,8 @@ let package = Package(
         .testTarget(
             name: "DitoSDKTests",
             dependencies: ["DitoSDK"],
-            path: "Tests",
-            exclude: ["DitoSDK/Info.plist"]
+            path: "DitoSDKTests",
+            exclude: ["Info.plist"]
         ),
     ]
 )

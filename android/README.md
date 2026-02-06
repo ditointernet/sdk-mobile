@@ -18,7 +18,7 @@ Com o Dito Android SDK você pode:
 
 | Requisito        | Versão Mínima |
 | ---------------- | ------------- |
-| Android API      | 24+           |
+| Android API      | 25+           |
 | Kotlin           | 1.9+          |
 | Gradle           | 7.0+          |
 | Firebase Android SDK | 20.0+     |
@@ -62,7 +62,7 @@ Ou via variáveis de ambiente `GITHUB_ACTOR` e `GITHUB_TOKEN`.
 
 ```kotlin
 dependencies {
-    implementation("io.github.ditointernet:ditosdk:1.0.0")
+    implementation("br.com.dito:ditosdk:<VERSAO>")
 }
 ```
 
@@ -405,6 +405,83 @@ val result = Dito.notificationClick(userInfo) { deeplink ->
 - Deve ser chamado quando o usuário clica em uma notificação
 - O callback recebe o deeplink se disponível na notificação
 - Retorna um objeto `NotificationResult` com informações da notificação
+- No payload do push, o campo canônico é `link`. Se você estiver montando `userInfo` manualmente, copie `link` para `deeplink` antes de chamar `notificationClick`.
+
+### Callback global (recomendado)
+
+Se você está usando o fluxo padrão do SDK (notificação exibida pelo próprio SDK), você pode configurar um callback global uma única vez na inicialização:
+
+```kotlin
+val options = Options(retry = 5).apply {
+    notificationClickListener = { deeplink ->
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(deeplink))
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+    }
+}
+
+Dito.init(this, options)
+```
+
+Fluxo (alto nível):
+
+```mermaid
+sequenceDiagram
+    participant User as Usuário
+    participant OS as Android
+    participant SDK as DitoSDK
+    participant App as App
+
+    User->>OS: Clica na notificação
+    OS->>SDK: Abre NotificationOpenedActivity
+    SDK->>SDK: Dito.notificationClick(userInfo)
+    SDK->>App: notificationClickListener(deeplink)
+```
+
+Diagrama de componentes (visão geral):
+
+```mermaid
+graph LR
+    subgraph Firebase
+        FCM[Firebase Cloud Messaging]
+        FCMConfig[google-services.json]
+    end
+
+    subgraph DitoSDK[Dito SDK]
+        DitoCore[Dito Core]
+        NotifHandler[Notification Handler]
+        CallbackManager[Callback Manager]
+    end
+
+    subgraph App[Aplicação do Cliente]
+        Init[Inicialização]
+        Register[Registro de Token]
+        Callback[Implementação de Callback]
+        Nav[Sistema de Navegação]
+    end
+
+    FCMConfig --> FCM
+    FCM --> NotifHandler
+    Init --> DitoCore
+    DitoCore --> Register
+    NotifHandler --> CallbackManager
+    CallbackManager --> Callback
+    Callback --> Nav
+```
+
+Exemplo de navegação com handler de deeplink (opcional):
+
+```kotlin
+val options = Options(retry = 5).apply {
+    notificationClickListener = { deeplink ->
+        val intent = MyDeeplinkHandler.createIntent(this@MyApplication, deeplink)
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        startActivity(intent)
+    }
+}
+
+Dito.init(this, options)
+```
 
 ---
 
@@ -522,7 +599,7 @@ Dito.track(action = "purchase", data = mapOf("product" to "item123"))
 
 ### Problemas de Build
 
-**Erro**: "Could not find io.github.ditointernet:ditosdk:1.0.0"
+**Erro**: "Could not find br.com.dito:ditosdk:<VERSAO>"
 
 **Solução**:
 

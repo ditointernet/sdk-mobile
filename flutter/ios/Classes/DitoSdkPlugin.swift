@@ -5,12 +5,21 @@ import Flutter
 import UIKit
 import UserNotifications
 
-public class DitoSdkPlugin: NSObject, FlutterPlugin {
+public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
+  private static let notificationEventsChannelName = "br.com.dito/notification_events"
+  private static let notificationClickEventType = "notification_click"
+  private static var notificationEventSink: FlutterEventSink?
+
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "br.com.dito/dito_sdk", binaryMessenger: registrar.messenger())
     let instance = DitoSdkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
     registrar.addApplicationDelegate(instance)
+    let eventsChannel = FlutterEventChannel(
+      name: notificationEventsChannelName,
+      binaryMessenger: registrar.messenger()
+    )
+    eventsChannel.setStreamHandler(instance)
     if FirebaseApp.app() == nil {
       FirebaseApp.configure()
     }
@@ -59,6 +68,24 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
     guard isDitoChannel(userInfo) else { return false }
     Dito.notificationClick(userInfo: userInfo, callback: callback)
     return true
+  }
+
+  internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
+    guard let sink = notificationEventSink else { return }
+    let source = (userInfo["data"] as? [String: Any]) ?? userInfo
+
+    var payload: [String: Any] = [:]
+    payload["type"] = notificationClickEventType
+    payload["deeplink"] = deeplink
+    payload["notificationId"] = source["notification"] as? String ?? ""
+    payload["reference"] = source["reference"] as? String ?? ""
+    payload["logId"] = source["log_id"] as? String ?? ""
+    payload["notificationName"] = source["notification_name"] as? String ?? ""
+    payload["userId"] = source["user_id"] as? String ?? ""
+
+    DispatchQueue.main.async {
+      sink(payload)
+    }
   }
 
   public func application(
@@ -215,8 +242,31 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin {
 
       Dito.unregisterDevice(token: token)
       result(nil)
+    case "handleNotificationClick":
+      guard let args = call.arguments as? [String: Any] else {
+        result(false)
+        return
+      }
+      var userInfo: [AnyHashable: Any] = [:]
+      for (k, v) in args {
+        userInfo[k] = v
+      }
+      let handled = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
+        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
+      }
+      result(handled)
     default:
       result(FlutterMethodNotImplemented)
     }
+  }
+
+  public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    DitoSdkPlugin.notificationEventSink = events
+    return nil
+  }
+
+  public func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    DitoSdkPlugin.notificationEventSink = nil
+    return nil
   }
 }

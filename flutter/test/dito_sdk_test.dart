@@ -52,6 +52,12 @@ class MockDitoSdkPlatform
   Future<void> setDebugMode({required bool enabled}) {
     throw UnimplementedError('setDebugMode() has not been implemented.');
   }
+
+  @override
+  Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) {
+    throw UnimplementedError(
+        'handleNotificationClick() has not been implemented.');
+  }
 }
 
 void main() {

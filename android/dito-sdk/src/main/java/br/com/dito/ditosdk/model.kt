@@ -9,6 +9,7 @@ import java.util.Date
 
 data class Options(val retry: Int = 5) {
     var contentIntent: Intent? = null
+    var notificationClickListener: ((String) -> Unit)? = null
 
     @IdRes
     var iconNotification: Int? = null

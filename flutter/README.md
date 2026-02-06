@@ -106,7 +106,7 @@ Para tracking de notificações em background (similar ao Android), você pode a
 
 **Por quê?** Se uma notificação chegar em background antes do app ter sido inicializado explicitamente, o SDK nativo iOS poderá carregar as credenciais do `Info.plist` para fazer tracking do evento `"receive-ios-notification"`.
 
-**Nota:** Se você inicializar o SDK com `DitoSdk.initialize()` no `main()`, as credenciais passadas via código terão prioridade sobre as do `Info.plist`.
+**Nota:** Se você inicializar o SDK com `ditoSdk.initialize(...)` no `main()`, as credenciais passadas via código terão prioridade sobre as do `Info.plist`.
 
 ## ⚙️ Configuração Inicial
 
@@ -119,9 +119,10 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await DitoSdk.initialize(
-      apiKey: "sua-api-key",
-      apiSecret: "seu-api-secret",
+    final ditoSdk = DitoSdk();
+    await ditoSdk.initialize(
+      appKey: "sua-api-key",
+      appSecret: "seu-api-secret",
     );
     print('SDK initialized successfully');
   } catch (e) {
@@ -141,30 +142,31 @@ void main() async {
 **Assinatura**:
 ```dart
 Future<void> initialize({
-  required String apiKey,
-  required String apiSecret,
+  required String appKey,
+  required String appSecret,
 })
 ```
 
 **Parâmetros**:
 | Nome | Tipo | Obrigatório | Descrição |
 |------|------|-------------|-----------|
-| apiKey | String | Sim | Chave API fornecida pela Dito |
-| apiSecret | String | Sim | Segredo API fornecido pela Dito |
+| appKey | String | Sim | Chave API fornecida pela Dito |
+| appSecret | String | Sim | Segredo API fornecido pela Dito |
 
 **Retorno**: `Future<void>`
 
 **Possíveis Erros**:
-- `PlatformException` com código `INVALID_PARAMETERS`: Se `apiKey` ou `apiSecret` forem null ou vazios
+- `PlatformException` com código `INVALID_PARAMETERS`: Se `appKey` ou `appSecret` forem null ou vazios
 - `PlatformException` com código `INITIALIZATION_FAILED`: Se a inicialização falhar
 - `PlatformException` com código `INVALID_CREDENTIALS`: Se as credenciais forem inválidas
 
 **Exemplo**:
 ```dart
 try {
-  await DitoSdk.initialize(
-    apiKey: "sua-api-key",
-    apiSecret: "seu-api-secret",
+  final ditoSdk = DitoSdk();
+  await ditoSdk.initialize(
+    appKey: "sua-api-key",
+    appSecret: "seu-api-secret",
   );
   print('SDK initialized successfully');
 } on PlatformException catch (e) {
@@ -362,6 +364,105 @@ Future<void> unregisterDevice() async {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### 🔗 Click em notificação e deeplink (callback no Dart)
+
+O plugin expõe um stream com os cliques em notificações do canal Dito:
+
+- **Stream**: `DitoSdk.onNotificationClick`
+- **Evento**: `DitoNotificationClick` (contém `deeplink` e metadados)
+
+Fluxo (alto nível):
+
+```mermaid
+sequenceDiagram
+    participant User as Usuário
+    participant OS as SistemaOperacional
+    participant Native as SDKNativo
+    participant Bridge as EventChannel
+    participant Dart as DartApp
+
+    User->>OS: Clica na notificação
+    OS->>Native: Entrega a interação
+    Native->>Bridge: Emite evento com link
+    Bridge->>Dart: Stream entrega DitoNotificationClick
+```
+
+Arquitetura (camadas):
+
+```mermaid
+graph TB
+    subgraph Native[Camada Nativa iOS/Android]
+        FCM[Firebase Cloud Messaging]
+        Handler[Notification Handler]
+        SDK[Dito SDK Nativo]
+    end
+
+    subgraph Bridge[Camada de Ponte]
+        EventChannel[EventChannel Flutter]
+    end
+
+    subgraph App[Camada da Aplicação]
+        Stream[Stream Flutter]
+        Navigation[Sistema de Navegação]
+    end
+
+    FCM --> Handler
+    Handler --> SDK
+    SDK -->|Extrai link| EventChannel
+    EventChannel --> Stream
+    Stream --> Navigation
+```
+
+Exemplo:
+
+```dart
+import 'package:dito_sdk/dito_sdk.dart';
+
+void setupDitoNotificationClicks() {
+  DitoSdk.onNotificationClick.listen((event) {
+    final deeplink = event.deeplink;
+    if (deeplink.isEmpty) return;
+    // Navegação do seu app aqui
+  });
+}
+```
+
+Exemplo de navegação (GoRouter):
+
+```dart
+import 'package:go_router/go_router.dart';
+
+void setupDitoNotificationClicks(GoRouter router) {
+  DitoSdk.onNotificationClick.listen((event) {
+    if (event.deeplink.isEmpty) return;
+    final uri = Uri.parse(event.deeplink);
+    router.push(uri.path, extra: uri.queryParameters);
+  });
+}
+```
+
+#### Android: quando chamar `handleNotificationClick`
+
+No Android, se o clique for detectado no Dart (por exemplo, via `firebase_messaging`), delegue o payload para o SDK para que ele faça tracking e dispare o evento no stream:
+
+```dart
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:dito_sdk/dito_sdk.dart';
+
+final ditoSdk = DitoSdk();
+
+Future<void> setupAndroidClickForwarding() async {
+  FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+    await ditoSdk.handleNotificationClick(message.data);
+  });
+
+  final initial = await FirebaseMessaging.instance.getInitialMessage();
+  if (initial != null) {
+    await ditoSdk.handleNotificationClick(initial.data);
+  }
+}
+```
+
 ### Android (Flutter) com `firebase_messaging`
 
 No Android, o sistema executa apenas **um** `FirebaseMessagingService` por app. Se o seu app usa `firebase_messaging`, você deve criar um service delegador que:
@@ -457,9 +558,10 @@ O SDK Flutter lança `PlatformException` para erros. Todos os erros incluem mens
 
 ```dart
 try {
-  await DitoSdk.initialize(
-    apiKey: apiKey,
-    apiSecret: apiSecret,
+  final ditoSdk = DitoSdk();
+  await ditoSdk.initialize(
+    appKey: apiKey,
+    appSecret: apiSecret,
   );
 } on PlatformException catch (e) {
   switch (e.code) {
@@ -479,13 +581,11 @@ try {
 
 ### Erro: "Dito SDK is not initialized"
 
-**Solução**: Certifique-se de chamar `DitoSdk.initialize()` antes de usar qualquer outro método:
+**Solução**: Certifique-se de chamar `ditoSdk.initialize(...)` antes de usar qualquer outro método:
 
 ```dart
-await DitoSdk.initialize(
-  apiKey: 'your-api-key',
-  apiSecret: 'your-api-secret',
-);
+final ditoSdk = DitoSdk();
+await ditoSdk.initialize(appKey: 'your-api-key', appSecret: 'your-api-secret');
 ```
 
 ### Erro: "Invalid email format"
@@ -495,18 +595,18 @@ await DitoSdk.initialize(
 ### Eventos não aparecem no painel Dito
 
 **Checklist**:
-1. ✅ SDK inicializado (`DitoSdk.initialize()`)
+1. ✅ SDK inicializado (`ditoSdk.initialize(...)`)
 2. ✅ Usuário identificado ANTES de rastrear eventos
 3. ✅ Conexão com internet (ou aguardar sincronização offline)
 
 ```dart
 // ❌ ERRADO - evento antes da identificação
-await DitoSdk.track(action: 'purchase', data: {'product': 'item123'});
-await DitoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
+await ditoSdk.track(action: 'purchase', data: {'product': 'item123'});
+await ditoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 
 // ✅ CORRETO - identifique primeiro
-await DitoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
-await DitoSdk.track(action: 'purchase', data: {'product': 'item123'});
+await ditoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
+await ditoSdk.track(action: 'purchase', data: {'product': 'item123'});
 ```
 
 ### Evento "receive-android-notification" não dispara em background
@@ -556,13 +656,15 @@ Veja a seção [Configure as plataformas nativas - iOS](#3-configure-as-platafor
 import 'package:dito_sdk/dito_sdk.dart';
 import 'package:flutter/material.dart';
 
+final ditoSdk = DitoSdk();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    await DitoSdk.initialize(
-      apiKey: "sua-api-key",
-      apiSecret: "seu-api-secret",
+    await ditoSdk.initialize(
+      appKey: "sua-api-key",
+      appSecret: "seu-api-secret",
     );
   } catch (e) {
     print('Failed to initialize: $e');
@@ -583,7 +685,7 @@ class MyApp extends StatelessWidget {
 class HomePage extends StatelessWidget {
   Future<void> _identifyUser() async {
     try {
-      await DitoSdk.identify(
+      await ditoSdk.identify(
         id: 'user123',
         name: 'João Silva',
         email: 'joao@example.com',
@@ -597,7 +699,7 @@ class HomePage extends StatelessWidget {
 
   Future<void> _trackEvent() async {
     try {
-      await DitoSdk.track(
+      await ditoSdk.track(
         action: 'purchase',
         data: {
           'product_id': 'item123',

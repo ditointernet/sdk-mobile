@@ -1,9 +1,9 @@
 package br.com.dito.ditosdk
 
 import android.content.Context
-import br.com.dito.ditosdk.Dito
 import com.google.firebase.messaging.RemoteMessage
 import io.flutter.embedding.engine.plugins.FlutterPlugin
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
@@ -11,14 +11,22 @@ import io.flutter.plugin.common.MethodChannel.Result
 
 class DitoSdkPlugin :
     FlutterPlugin,
-    MethodCallHandler {
+    MethodCallHandler,
+    EventChannel.StreamHandler {
     private lateinit var channel: MethodChannel
+    private lateinit var notificationEventsChannel: EventChannel
     private var context: Context? = null
     private var debugEnabled: Boolean = false
 
     companion object {
+        private const val NOTIFICATION_EVENTS_CHANNEL = "br.com.dito/notification_events"
+        private const val NOTIFICATION_CLICK_EVENT = "notification_click"
+
         @Volatile
         private var ditoInitialized: Boolean = false
+
+        @Volatile
+        private var notificationEventSink: EventChannel.EventSink? = null
 
         @JvmStatic
         fun handleNotification(context: Context, message: RemoteMessage): Boolean {
@@ -100,18 +108,45 @@ class DitoSdkPlugin :
         @JvmStatic
         fun handleNotificationClick(context: Context, userInfo: Map<String, String>): Boolean {
             val channel = userInfo["channel"]
-            if (channel != "Dito") {
+            if (!channel.equals("DITO", ignoreCase = true)) {
                 return false
             }
             ensureDitoInitialized(context)
-            Dito.notificationClick(userInfo)
+            val normalizedUserInfo = normalizeClickUserInfo(userInfo)
+            Dito.notificationClick(normalizedUserInfo) { deeplink ->
+                emitNotificationClickEvent(deeplink, normalizedUserInfo)
+            }
             return true
+        }
+
+        @JvmStatic
+        private fun normalizeClickUserInfo(userInfo: Map<String, String>): Map<String, String> {
+            val deeplink = userInfo["deeplink"] ?: userInfo["link"] ?: ""
+            return userInfo.toMutableMap().apply {
+                putIfAbsent("deeplink", deeplink)
+            }
+        }
+
+        @JvmStatic
+        private fun emitNotificationClickEvent(deeplink: String, userInfo: Map<String, String>) {
+            val payload: MutableMap<String, Any?> = HashMap()
+            payload["type"] = NOTIFICATION_CLICK_EVENT
+            payload["deeplink"] = deeplink
+            payload["notificationId"] = userInfo["notification"] ?: ""
+            payload["reference"] = userInfo["reference"] ?: ""
+            payload["logId"] = userInfo["log_id"] ?: ""
+            payload["notificationName"] = userInfo["notification_name"] ?: ""
+            payload["userId"] = userInfo["user_id"] ?: ""
+            notificationEventSink?.success(payload)
         }
     }
 
     override fun onAttachedToEngine(flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
         channel = MethodChannel(flutterPluginBinding.binaryMessenger, "br.com.dito/dito_sdk")
         channel.setMethodCallHandler(this)
+        notificationEventsChannel =
+            EventChannel(flutterPluginBinding.binaryMessenger, NOTIFICATION_EVENTS_CHANNEL)
+        notificationEventsChannel.setStreamHandler(this)
         context = flutterPluginBinding.applicationContext
     }
 
@@ -289,14 +324,43 @@ class DitoSdkPlugin :
                     )
                 }
             }
+            "handleNotificationClick" -> {
+                val ctx = context
+                if (ctx == null) {
+                    result.success(false)
+                    return
+                }
+                val args = call.arguments as? Map<*, *>
+                if (args == null) {
+                    result.success(false)
+                    return
+                }
+
+                val userInfo: MutableMap<String, String> = HashMap()
+                for ((key, value) in args) {
+                    if (key == null) continue
+                    userInfo[key.toString()] = value?.toString() ?: ""
+                }
+                result.success(handleNotificationClick(ctx, userInfo))
+            }
             else -> {
                 result.notImplemented()
             }
         }
     }
 
+    override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
+        notificationEventSink = events
+    }
+
+    override fun onCancel(arguments: Any?) {
+        notificationEventSink = null
+    }
+
     override fun onDetachedFromEngine(binding: FlutterPlugin.FlutterPluginBinding) {
         channel.setMethodCallHandler(null)
+        notificationEventsChannel.setStreamHandler(null)
+        notificationEventSink = null
         context = null
     }
 }

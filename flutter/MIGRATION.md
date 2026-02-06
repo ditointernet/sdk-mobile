@@ -330,6 +330,27 @@ void main() async {
 3. **DataPayload removido**: Classes auxiliares de notificação foram removidas
 4. **openNotification removido**: Método para rastrear abertura de notificações foi removido
 
+### 🔗 Click em notificação e deeplink (novo)
+
+A versão nova expõe um stream para cliques em notificações Dito:
+
+- `DitoSdk.onNotificationClick`
+
+No Android, se você detecta o clique no Dart (por exemplo, via `FirebaseMessaging.onMessageOpenedApp`), encaminhe o payload para o SDK para tracking e emissão do evento:
+
+```dart
+final ditoSdk = DitoSdk();
+
+DitoSdk.onNotificationClick.listen((event) {
+  if (event.deeplink.isEmpty) return;
+  // Navegação do seu app aqui
+});
+
+FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+  await ditoSdk.handleNotificationClick(message.data);
+});
+```
+
 ---
 
 ## 📱 Passo 7: Configuração Nativa - Android

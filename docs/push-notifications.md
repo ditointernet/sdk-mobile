@@ -105,27 +105,32 @@ Siga as instruções de [iOS](../ios/README.md) e [Android](../android/README.md
 
 ## 🔔 Interceptação de Notificações
 
-O SDK intercepta automaticamente notificações do canal Dito quando o campo `channel` nos dados da notificação é igual a `"Dito"`.
+O SDK intercepta automaticamente notificações do canal Dito quando o campo `channel` nos dados da notificação é igual a `"DITO"` (case-insensitive).
 
 ### Como Funciona
 
 1. Quando uma notificação é recebida, o SDK verifica o campo `channel`
-2. Se `channel == "Dito"`, o SDK processa a notificação automaticamente
-3. Se `channel != "Dito"`, a notificação é ignorada pelo SDK e deve ser processada normalmente pelo app
+2. Se `channel == "DITO"`, o SDK processa a notificação automaticamente
+3. Se `channel != "DITO"`, a notificação é ignorada pelo SDK e deve ser processada normalmente pelo app
 
 ### Payload Esperado
 
 ```json
 {
-  "channel": "Dito",
+  "channel": "DITO",
   "notification": "notification-id",
   "reference": "user-reference",
-  "deeplink": "https://app.example.com/product/123",
+  "link": "https://app.example.com/product/123",
   "log_id": "log-id",
   "notification_name": "Nome da Notificação",
   "user_id": "user-id"
 }
 ```
+
+**Notas sobre deeplink**:
+
+- O campo canônico no payload é `link` (string).
+- Os wrappers **Flutter** e **React Native** aceitam `deeplink` como alias quando você precisa montar um `userInfo` manualmente (por exemplo, vindo de `firebase_messaging`).
 
 ## 📊 Tracking Automático
 
@@ -148,8 +153,165 @@ Os eventos incluem:
 Quando o usuário clica em uma notificação, o SDK:
 
 1. Registra o clique no CRM Dito
-2. Extrai o deeplink se disponível
-3. Chama o callback fornecido com o deeplink
+2. Extrai o deeplink (`link`) se disponível
+3. Dispara o evento/callback exposto pela plataforma, para que o app faça navegação (ou abra navegador, etc.)
+
+### Fluxo (alto nível)
+
+```mermaid
+sequenceDiagram
+    participant User as Usuário
+    participant OS as Sistema Operacional
+    participant Native as SDK Nativo
+    participant Bridge as Bridge
+    participant App as App
+
+    User->>OS: Clica na notificação
+    OS->>Native: Entrega a interação
+    Native->>Native: Tracking do clique
+    Native->>Native: Extrai link
+    alt iOS_AndroidNativo
+        Native->>App: Callback com link
+    end
+    alt Flutter
+        Native->>Bridge: EventChannel
+        Bridge->>App: Stream emite evento
+    end
+    alt ReactNative
+        Native->>Bridge: EventEmitter
+        Bridge->>App: Listener recebe evento
+    end
+```
+
+### Ciclo de vida (estados)
+
+```mermaid
+stateDiagram-v2
+    [*] --> Recebida
+    Recebida --> Exibida
+    Exibida --> Clicada
+    Exibida --> Descartada
+    Clicada --> Processada
+    Processada --> EventoDisparado
+    EventoDisparado --> [*]
+    Descartada --> [*]
+```
+
+Versão detalhada (com responsabilidades do SDK):
+
+```mermaid
+stateDiagram-v2
+    [*] --> Enviada: Plataforma Dito envia
+    Enviada --> Recebida: FCM entrega ao dispositivo
+    Recebida --> Exibida: Sistema exibe notificação
+    Exibida --> Clicada: Usuário clica
+    Exibida --> Descartada: Usuário descarta
+    Clicada --> Processada: SDK processa clique
+    Processada --> CallbackExecutado: Callback com link
+    CallbackExecutado --> Navegação: App navega
+    Navegação --> [*]
+    Descartada --> [*]
+
+    note right of Recebida
+        SDK rastreia evento
+        receive-*-notification
+    end note
+
+    note right of Processada
+        SDK extrai link
+        e chama callback/evento
+    end note
+```
+
+### Decisão de processamento (payload)
+
+```mermaid
+flowchart TD
+    Start[Notificação recebida] --> CheckChannel{channel == DITO?}
+    CheckChannel -->|Não| Ignore[Ignorar no SDK]
+    CheckChannel -->|Sim| Process[Processar no SDK]
+    Process --> TrackReceive[Tracking de recebimento]
+    TrackReceive --> TrackClick[Tracking de clique]
+    TrackClick --> Emit[Disparar evento/callback]
+    Ignore --> End[Fim]
+    Emit --> End
+```
+
+### Estrutura do payload (diagrama)
+
+```mermaid
+graph LR
+    subgraph Payload[Payload FCM]
+        Channel[channel: DITO]
+        Notification[notification: ID]
+        Reference[reference: User Ref]
+        Deeplink[link: deeplink URL]
+        LogID[log_id: Log ID]
+        NotifName[notification_name: Nome]
+        UserID[user_id: User ID]
+    end
+
+    subgraph Extracted[Dados extraídos]
+        SDK[SDK processa]
+    end
+
+    subgraph Callback[Callback/evento retorna]
+        DeeplinkStr[deeplink: string]
+        NotifObj[notification: object]
+    end
+
+    Channel --> SDK
+    Notification --> SDK
+    Reference --> SDK
+    Deeplink --> SDK
+    LogID --> SDK
+    NotifName --> SDK
+    UserID --> SDK
+
+    SDK --> DeeplinkStr
+    SDK --> NotifObj
+```
+
+### Troubleshooting (fluxo)
+
+```mermaid
+flowchart TD
+    Start[Callback não funciona?] --> Q1{Notificação chega?}
+
+    Q1 -->|Não| CheckFCM[Verificar configuração FCM]
+    Q1 -->|Sim| Q2{SDK processa?}
+
+    Q2 -->|Não| CheckChannel{channel == DITO?}
+    Q2 -->|Sim| Q3{Callback/evento executado?}
+
+    CheckChannel -->|Não| FixPayload[Corrigir payload da notificação]
+    CheckChannel -->|Sim| CheckInit[Verificar inicialização do SDK]
+
+    Q3 -->|Não| Q4{Plataforma?}
+    Q3 -->|Sim| Q5{Link existe?}
+
+    Q4 -->|Android| CheckListener[Verificar notificationClickListener]
+    Q4 -->|iOS| CheckDelegate[Verificar callback no AppDelegate]
+    Q4 -->|Flutter| CheckStream[Verificar Stream listener]
+    Q4 -->|React Native| CheckSubscribe[Verificar subscription do listener]
+
+    Q5 -->|Não| CheckPayloadDeeplink[Verificar campo link no payload]
+    Q5 -->|Sim| Q6{Navegação funciona?}
+
+    Q6 -->|Não| CheckNavigation[Verificar implementação de navegação]
+    Q6 -->|Sim| Success[Tudo funcionando]
+
+    CheckFCM --> End[Fim]
+    FixPayload --> End
+    CheckInit --> End
+    CheckListener --> End
+    CheckDelegate --> End
+    CheckStream --> End
+    CheckSubscribe --> End
+    CheckPayloadDeeplink --> End
+    CheckNavigation --> End
+    Success --> End
+```
 
 ### Exemplo iOS
 
@@ -170,9 +332,44 @@ Dito.notificationClick(userInfo) { deeplink ->
 }
 ```
 
+### Exemplo Flutter
+
+```dart
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:dito_sdk/dito_sdk.dart';
+
+final ditoSdk = DitoSdk();
+
+void setupPushClickHandling() {
+  DitoSdk.onNotificationClick.listen((event) {
+    final deeplink = event.deeplink;
+    if (deeplink.isEmpty) return;
+    // Navegação do seu app aqui
+  });
+
+  FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+    await ditoSdk.handleNotificationClick(message.data);
+  });
+}
+```
+
+### Exemplo React Native
+
+```typescript
+import DitoSdk, { addNotificationClickListener } from '@ditointernet/dito-sdk';
+
+const unsubscribe = addNotificationClickListener((event) => {
+  if (!event.deeplink) return;
+  // Navegação do seu app aqui
+});
+
+// Quando o clique for detectado no JS (ex.: firebase messaging), delegue para o SDK:
+await DitoSdk.handleNotificationClick(message.data);
+```
+
 ## 🔗 Deeplinks e Navegação
 
-O SDK extrai automaticamente o deeplink do payload da notificação e fornece através do callback.
+O SDK extrai automaticamente o `link` do payload da notificação e fornece através do callback/evento.
 
 ### Formato de Deeplink
 
@@ -199,20 +396,20 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 2. ✅ Arquivos de configuração adicionados (`GoogleService-Info.plist` / `google-services.json`)
 3. ✅ Permissões solicitadas
 4. ✅ Token FCM registrado no SDK (`Dito.registerDevice(token)` / `DitoSdk.registerDeviceToken(token)`)
-5. ✅ Campo `channel` igual a `"Dito"` no payload
+5. ✅ Campo `channel` igual a `"DITO"` no payload
 
 ### Notificações não são interceptadas pelo SDK
 
-**Causa**: Campo `channel` não é `"Dito"` ou não está presente.
+**Causa**: Campo `channel` não é `"DITO"` ou não está presente.
 
-**Solução**: Certifique-se de que o payload da notificação inclui `"channel": "Dito"`.
+**Solução**: Certifique-se de que o payload da notificação inclui `"channel": "DITO"`.
 
 ### Deeplinks não funcionam
 
 **Causa**: Deeplink não está no formato correto ou não está sendo processado.
 
 **Solução**:
-1. Verifique se o deeplink está no payload como `"deeplink"`
+1. Verifique se o deeplink está no payload como `"link"`
 2. Implemente o callback corretamente
 3. Configure o tratamento de deeplinks no app
 
@@ -232,10 +429,10 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 
 ```json
 {
-  "channel": "Dito",
+  "channel": "DITO",
   "notification": "notif-123",
   "reference": "user-456",
-  "deeplink": "https://app.example.com/product/789",
+  "link": "https://app.example.com/product/789",
   "log_id": "log-abc",
   "notification_name": "Promoção Especial",
   "user_id": "user-456",
@@ -249,7 +446,7 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 
 ```json
 {
-  "channel": "Dito",
+  "channel": "DITO",
   "notification": "notif-123",
   "reference": "user-456"
 }

@@ -32,13 +32,7 @@ Com o DitoSDK você pode:
 #### 1. Adicione o DitoSDK ao Podfile
 
 ```ruby
-pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios', :tag => 'v2.0.0'
-```
-
-Ou para usar uma branch específica:
-
-```ruby
-pod 'DitoSDK', :git => 'https://github.com/ditointernet/dito_sdk_flutter.git', :subdirectory => 'ios', :branch => 'main'
+pod 'DitoSDK', '~> 3.0.1'
 ```
 
 #### 2. Instale as dependências
@@ -49,16 +43,17 @@ pod install
 
 ### Opção 2: Via Swift Package Manager (SPM)
 
-#### 1. Adicione o repositório no Xcode
+#### 1. Adicione o pacote local no Xcode
 
-1. Abra seu projeto no Xcode
-2. Vá em **File > Add Packages...**
-3. Adicione o repositório: `https://github.com/ditointernet/dito_sdk_flutter.git`
-4. Selecione a branch `main` ou a tag `v2.0.0`
+Atualmente o `Package.swift` fica no diretório `ios/`, então o uso via SPM é recomendado para **desenvolvimento local**.
+
+1. Baixe/clone o repositório `sdk-mobile` (ou adicione como submódulo)
+2. No Xcode, vá em **File > Add Packages...**
+3. Clique em **Add Local...** e selecione a pasta `sdk-mobile/ios`
 
 #### 2. Adicione o pacote ao seu target
 
-Selecione o target do seu app e adicione o pacote `DitoSDK` do diretório `ios/`.
+Selecione o target do seu app e adicione o pacote `DitoSDK`.
 
 ## ⚙️ Configuração Inicial
 
@@ -139,19 +134,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable : Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        let callNotificationRead: (String) -> Void = { token in
-            Dito.notificationRead(userInfo: userInfo, token: token)
+        let callNotificationReceived: (String) -> Void = { token in
+            Dito.notificationReceived(userInfo: userInfo, token: token)
             Messaging.messaging().appDidReceiveMessage(userInfo)
             completionHandler(.newData)
         }
 
         if let token = self.fcmToken {
-            callNotificationRead(token)
+            callNotificationReceived(token)
         } else {
             Messaging.messaging().token { [weak self] token, error in
                 if let token = token {
                     self?.fcmToken = token
-                    callNotificationRead(token)
+                    callNotificationReceived(token)
                 } else {
                     print("FCM token indisponível em background: \(error?.localizedDescription ?? "erro desconhecido")")
                     completionHandler(.noData)
@@ -179,7 +174,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     ) {
         let userInfo = response.notification.request.content.userInfo
         if let token = fcmToken {
-            Dito.notificationRead(userInfo: userInfo, token: token)
+            Dito.notificationReceived(userInfo: userInfo, token: token)
         }
 
         Dito.notificationClick(userInfo: userInfo) { deeplink in
@@ -402,13 +397,13 @@ if let token = fcmToken {
 
 ---
 
-### notificationRead
+### notificationReceived
 
 **Descrição**: Registra que uma notificação foi recebida (antes do clique).
 
 **Assinatura**:
 ```swift
-public static func notificationRead(
+public static func notificationReceived(
     userInfo: [AnyHashable: Any],
     token: String
 )
@@ -432,7 +427,7 @@ func application(
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
 ) {
     if let token = fcmToken {
-        Dito.notificationRead(userInfo: userInfo, token: token)
+        Dito.notificationReceived(userInfo: userInfo, token: token)
     }
     completionHandler(.newData)
 }
@@ -441,6 +436,7 @@ func application(
 **Notas**:
 - Deve ser chamado quando uma notificação é recebida
 - Funciona mesmo quando o app está em background
+- Para compatibilidade, `notificationRead(userInfo:token:)` ainda existe, mas está deprecated
 
 ---
 
@@ -490,6 +486,55 @@ func userNotificationCenter(
 **Notas**:
 - Deve ser chamado quando o usuário clica em uma notificação
 - O callback recebe o deeplink se disponível na notificação
+- O deeplink é extraído do campo `link` do payload
+
+Fluxo (alto nível):
+
+```mermaid
+sequenceDiagram
+    participant User as Usuário
+    participant OS as iOS
+    participant App as AppDelegate
+    participant SDK as DitoSDK
+
+    User->>OS: Clica na notificação
+    OS->>App: didReceive(response)
+    App->>SDK: Dito.notificationClick(userInfo, callback)
+    SDK->>App: callback(link)
+```
+
+Diagrama de componentes (visão geral):
+
+```mermaid
+graph LR
+    subgraph Firebase
+        APNs[APNs]
+        FCM[Firebase Cloud Messaging]
+        FCMConfig[GoogleService-Info.plist]
+    end
+
+    subgraph DitoSDK[Dito SDK]
+        DitoCore[Dito Core]
+        NotifHandler[Notification Handler]
+        CallbackManager[Callback Manager]
+    end
+
+    subgraph App[Aplicação do Cliente]
+        Init[Inicialização]
+        Register[Registro de Token]
+        Callback[Implementação de Callback]
+        Nav[Sistema de Navegação]
+    end
+
+    FCMConfig --> FCM
+    APNs --> FCM
+    FCM --> NotifHandler
+    Init --> DitoCore
+    DitoCore --> Register
+    NotifHandler --> CallbackManager
+    CallbackManager --> Callback
+    Callback --> Nav
+```
 
 ---
 

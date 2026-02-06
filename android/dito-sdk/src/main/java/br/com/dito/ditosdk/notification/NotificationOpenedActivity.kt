@@ -51,7 +51,7 @@ class NotificationOpenedActivity : AppCompatActivity() {
                 "deeplink" to (deepLink ?: "")
             )
 
-            Dito.notificationClick(userInfo)
+            Dito.notificationClick(userInfo, Dito.notificationClickListener ?: Dito.options?.notificationClickListener)
             Log.d(TAG, "✅ Dito.notificationClick() called successfully")
         } else {
             Log.w(TAG, "❌ Cannot call notificationClick: reference=$reference, notificationId=$notificationId")

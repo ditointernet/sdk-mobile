@@ -60,4 +60,9 @@ abstract class DitoSdkPlatform extends PlatformInterface {
   Future<void> unregisterDeviceToken(String token) {
     throw UnimplementedError('unregisterDeviceToken() has not been implemented.');
   }
+
+  Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) {
+    throw UnimplementedError(
+        'handleNotificationClick() has not been implemented.');
+  }
 }

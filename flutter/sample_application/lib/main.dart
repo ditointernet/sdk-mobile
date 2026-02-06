@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dito_sdk/dito_sdk.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -47,6 +49,39 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
+  StreamSubscription<DitoNotificationClick>? _notificationClickSubscription;
+  StreamSubscription<RemoteMessage>? _firebaseMessageOpenedSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _notificationClickSubscription =
+        DitoSdk.onNotificationClick.listen((event) {
+      final deeplink = event.deeplink;
+      if (deeplink.isEmpty) return;
+      _scaffoldKey.currentState?.showSnackBar(
+        SnackBar(content: Text('Deeplink: $deeplink')),
+      );
+    });
+
+    _firebaseMessageOpenedSubscription =
+        FirebaseMessaging.onMessageOpenedApp.listen((message) async {
+      await widget.ditoSdk.handleNotificationClick(message.data);
+    });
+
+    FirebaseMessaging.instance.getInitialMessage().then((message) async {
+      if (message == null) return;
+      await widget.ditoSdk.handleNotificationClick(message.data);
+    });
+  }
+
+  @override
+  void dispose() {
+    _notificationClickSubscription?.cancel();
+    _firebaseMessageOpenedSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
