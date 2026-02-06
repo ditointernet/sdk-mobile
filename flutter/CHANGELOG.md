@@ -1,3 +1,7 @@
+### Funcionalidades
+
+- feat(notification): add global callback for notification clicks and deeplinks (8e88d08)
+
 ### Outros
 
 - chore(flutter): update .pubignore and CHANGELOG (e173f66)
