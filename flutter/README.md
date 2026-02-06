@@ -28,15 +28,7 @@ Com o Dito SDK Flutter Plugin você pode:
 
 ```yaml
 dependencies:
-  dito_sdk:
-    path: ../flutter
-```
-
-Ou se publicado no pub.dev:
-
-```yaml
-dependencies:
-  dito_sdk: ^1.0.0
+  dito_sdk: ^3.1.4
 ```
 
 ### 2. Instale as dependências
