@@ -702,5 +702,5 @@ Se você encontrar problemas durante a migração:
 
 ---
 
-**Última atualização**: 2024-01
+**Última atualização**: 2026-01
 **Versão do documento**: 1.0.0
