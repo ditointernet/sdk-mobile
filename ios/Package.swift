@@ -16,7 +16,7 @@ let package = Package(
         .target(
             name: "DitoSDK",
             dependencies: [],
-            path: "DitoSDK/Sources",
+            path: "DitoSDK",
             exclude: ["DitoSDK/Info.plist"]
         ),
         .testTarget(
