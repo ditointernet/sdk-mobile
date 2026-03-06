@@ -26,8 +26,15 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     DitoNotificationDelegate.shared.configurePush(application: UIApplication.shared)
   }
 
+  private static func toStringKeyed(_ dict: [AnyHashable: Any]) -> [String: Any] {
+    Dictionary(uniqueKeysWithValues: dict.compactMap { key, value -> (String, Any)? in
+      guard let stringKey = key.base as? String else { return nil }
+      return (stringKey, value)
+    })
+  }
+
   private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String {
+    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String {
       return ch
     }
     return userInfo["channel"] as? String
@@ -72,7 +79,8 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
   internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
     guard let sink = notificationEventSink else { return }
-    let source = (userInfo["data"] as? [String: Any]) ?? userInfo
+    let rawData = (userInfo["data"] as? [AnyHashable: Any]) ?? userInfo
+    let source = DitoSdkPlugin.toStringKeyed(rawData)
 
     var payload: [String: Any] = [:]
     payload["type"] = notificationClickEventType
