@@ -4,14 +4,14 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'dito_sdk'
-  s.version          = '0.0.1'
-  s.summary          = 'A new Flutter plugin project.'
+  s.version          = '3.1.3'
+  s.summary          = 'Dito iOS SDK Plugin for Flutter'
   s.description      = <<-DESC
-A new Flutter plugin project.
+Dito iOS SDK Plugin for Flutter
                        DESC
-  s.homepage         = 'http://example.com'
+  s.homepage         = 'https://github.com/ditointernet/sdk-mobile'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'Your Company' => 'email@example.com' }
+  s.author           = { 'Dito Internet' => 'igor.duarte@dito.com.br' }
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'

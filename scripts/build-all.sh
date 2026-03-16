@@ -11,7 +11,7 @@ echo "🚀 Building all platforms..."
 if [ -d "ios" ]; then
     echo "📱 Building iOS SDK..."
     cd ios
-    xcodebuild -workspace DitoSDK.xcworkspace -scheme DitoSDK -configuration Release
+    xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release
     cd ..
 fi
 

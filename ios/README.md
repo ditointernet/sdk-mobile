@@ -43,17 +43,24 @@ pod install
 
 ### Opção 2: Via Swift Package Manager (SPM)
 
-#### 1. Adicione o pacote local no Xcode
+#### 1. Adicione o pacote no Xcode
 
-Atualmente o `Package.swift` fica no diretório `ios/`, então o uso via SPM é recomendado para **desenvolvimento local**.
+1. Abra o Xcode e vá em **File > Add Package Dependencies...**
+2. Cole a URL: `https://github.com/ditointernet/sdk-mobile`
+3. Em **Dependency Rule**, escolha **Up to Next Major Version** e informe `3.1.3`
+4. Confirme em **Add Package**
 
-1. Baixe/clone o repositório `sdk-mobile` (ou adicione como submódulo)
-2. No Xcode, vá em **File > Add Packages...**
-3. Clique em **Add Local...** e selecione a pasta `sdk-mobile/ios`
+#### 2. Selecione o target
 
-#### 2. Adicione o pacote ao seu target
+Marque o target do seu app e finalize em **Add Package**.
 
-Selecione o target do seu app e adicione o pacote `DitoSDK`.
+#### 3. Importe no código
+
+```swift
+import DitoSDK
+```
+
+> Observação: o `Package.swift` agora está na raiz do repositório. Para desenvolvimento local, você pode usar **Add Local...** apontando para `sdk-mobile/ios` se preferir.
 
 ## ⚙️ Configuração Inicial
 
