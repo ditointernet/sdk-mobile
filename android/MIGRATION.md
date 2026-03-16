@@ -35,10 +35,10 @@ dependencies {
 
 ### Depois (SDK novo)
 
-O SDK novo é distribuído via **GitHub Packages** (repositório Maven):
+O SDK novo é distribuído via **Maven Central** (sem necessidade de credenciais):
 
-1. Configure o repositório do GitHub Packages no `settings.gradle.kts` (nível do projeto), conforme `android/README.md`.
-2. Configure credenciais com permissão `read:packages` (via `~/.gradle/gradle.properties` ou variáveis de ambiente).
+1. Garanta o repositório `mavenCentral()` no `settings.gradle.kts` (nível do projeto), conforme `android/README.md`.
+2. Mantenha a dependência do SDK no `build.gradle.kts` do módulo do app.
 
 #### Coordinate da dependência (importante)
 
@@ -61,8 +61,8 @@ implementation("br.com.dito:ditosdk:<VERSAO>")
 
 Se você receber erro do tipo “Could not find …”, valide:
 
-- se o repositório do GitHub Packages está configurado;
-- se o token tem `read:packages`;
+- se `mavenCentral()` está configurado no `settings.gradle.kts`;
+- se a versão informada existe no Maven Central;
 - qual coordinate foi publicado para a versão que você está usando.
 
 ---
@@ -238,7 +238,7 @@ Se “push não aparece”, isso costuma ser o primeiro item a validar.
 ## 8) Checklist final
 
 - [ ] Dependência antiga removida
-- [ ] Repositório GitHub Packages configurado e token com `read:packages`
+- [ ] `mavenCentral()` configurado no projeto
 - [ ] Dependência do SDK novo adicionada
 - [ ] `minSdk` >= 25
 - [ ] `API_KEY` e `API_SECRET` no `AndroidManifest.xml`

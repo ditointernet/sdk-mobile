@@ -9,14 +9,14 @@ let package = Package(
         .library(
             name: "DitoSDK",
             targets: ["DitoSDK"]
-        ),
+        )
     ],
     dependencies: [],
     targets: [
         .target(
             name: "DitoSDK",
             dependencies: [],
-            path: "DitoSDK",
+            path: "ios/DitoSDK",
             exclude: ["Info.plist"],
             resources: [
                 .process("GlobalState.plist"),
@@ -26,8 +26,8 @@ let package = Package(
         .testTarget(
             name: "DitoSDKTests",
             dependencies: ["DitoSDK"],
-            path: "DitoSDKTests",
+            path: "ios/DitoSDKTests",
             exclude: ["Info.plist"]
-        ),
+        )
     ]
 )

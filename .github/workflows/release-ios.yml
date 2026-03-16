@@ -63,12 +63,11 @@ jobs:
           brew install xcodegen
           cd ios
           xcodegen generate --skip-validation
-          pod install
 
       - name: Build iOS SDK
         run: |
           cd ios
-          xcodebuild -workspace DitoSDK.xcworkspace -scheme DitoSDK -configuration Release clean build
+          xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release clean build
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
