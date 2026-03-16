@@ -27,7 +27,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   }
 
   private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String {
+    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String {
       return ch
     }
     return userInfo["channel"] as? String
@@ -72,7 +72,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
   internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
     guard let sink = notificationEventSink else { return }
-    let source = (userInfo["data"] as? [String: Any]) ?? userInfo
+    let source: [AnyHashable: Any] = (userInfo["data"] as? [AnyHashable: Any]) ?? userInfo
 
     var payload: [String: Any] = [:]
     payload["type"] = notificationClickEventType
