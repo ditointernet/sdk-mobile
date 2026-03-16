@@ -1,3 +1,7 @@
+### Outros
+
+- chore: update iOS build configuration and dependencies (#13) (632a4b7)
+
 ### Funcionalidades
 
 - feat(notification): add global callback for notification clicks and deeplinks (8e88d08)
