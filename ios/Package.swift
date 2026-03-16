@@ -1,4 +1,4 @@
-// swift-tools-version:5.3
+// swift-tools-version:5.7
 
 import PackageDescription
 
@@ -16,7 +16,7 @@ let package = Package(
         .target(
             name: "DitoSDK",
             dependencies: [],
-            path: "DitoSDK/Sources",
+            path: "DitoSDK",
             exclude: ["DitoSDK/Info.plist"]
         ),
         .testTarget(
