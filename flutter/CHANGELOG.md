@@ -1,3 +1,7 @@
+### Correções
+
+- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
+
 ### Outros
 
 - Update last updated date in MIGRATION.md (8610b1c)
