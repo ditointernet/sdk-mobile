@@ -165,9 +165,14 @@ class DitoServiceTests: XCTestCase {
             urlRequest.value(forHTTPHeaderField: "Content-Type"),
             "application/json"
         )
-        XCTAssertEqual(
-            urlRequest.value(forHTTPHeaderField: "User-Agent"),
-            "iPhone"
+        let userAgent = urlRequest.value(forHTTPHeaderField: "User-Agent")
+        XCTAssertTrue(
+            userAgent?.contains("Apple iOS") == true,
+            "User-Agent should contain Apple iOS, got: \(userAgent ?? "nil")"
+        )
+        XCTAssertNotNil(
+            userAgent?.range(of: #"\d+\.\d+\.\d+"#, options: .regularExpression),
+            "User-Agent should contain a semantic version, got: \(userAgent ?? "nil")"
         )
     }
 
