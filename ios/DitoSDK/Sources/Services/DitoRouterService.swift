@@ -2,7 +2,7 @@ import Foundation
 
 enum DitoRouterService {
 
-  private static let sdkVersion = "3.1.0"
+  private static let sdkVersion = "3.1.3"
   private static let userAgent = "Dito-SDK Apple iOS/\(sdkVersion)"
 
   case identify(network: String, id: String, data: DitoSignupRequest)
