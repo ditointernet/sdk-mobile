@@ -1,18 +1,17 @@
+## [3.3.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.1.0...android-v3.3.0) (2026-03-24)
+
 ### Funcionalidades
 
 - feat: add User-Agent header with SDK version for Android and iOS (#14) (56b080e)
-
-### Outros
-
-- chore: update iOS build configuration and dependencies (#13) (632a4b7)
-
-### Funcionalidades
-
 - feat(notification): add global callback for notification clicks and deeplinks (8e88d08)
 
 ### Correções
 
 - fix(tests): update GsonSerializerTest to assert absence of "data" field in serialized output (c60aac4)
+
+### Outros
+
+- chore: update iOS build configuration and dependencies (#13) (632a4b7)
 
 ## [3.1.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.0.1...android-v3.1.0) (2026-02-05)
 

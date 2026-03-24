@@ -31,18 +31,16 @@ if [ -n "$tag_prefix" ] && [ -n "$current_tag" ]; then
   previous_tag="$(git describe --tags --abbrev=0 --match "${tag_prefix}v*" "${current_tag}^" 2>/dev/null || true)"
 fi
 
-VERSION_LINE=""
-if [ -f "$CHANGELOG_FILE" ]; then
-  VERSION_LINE="$(grep -m 1 "^## \\[" "$CHANGELOG_FILE" || true)"
-fi
-
 VERSION=""
-if [ -n "$VERSION_LINE" ]; then
-  VERSION="$(printf "%s" "$VERSION_LINE" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | sed -n '1p' || true)"
+if [ -n "$tag_prefix" ] && [ -n "$current_tag" ]; then
+  VERSION="${current_tag#${tag_prefix}v}"
 fi
 
-if [ -z "$VERSION" ] && [ -n "$tag_prefix" ] && [ -n "$current_tag" ]; then
-  VERSION="${current_tag#${tag_prefix}v}"
+if [ -z "$VERSION" ] && [ -f "$CHANGELOG_FILE" ]; then
+  VERSION_LINE="$(grep -m 1 "^## \[" "$CHANGELOG_FILE" || true)"
+  if [ -n "$VERSION_LINE" ]; then
+    VERSION="$(printf "%s" "$VERSION_LINE" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | sed -n '1p' || true)"
+  fi
 fi
 
 if [ -z "$VERSION" ]; then
@@ -52,20 +50,20 @@ fi
 
 echo "$VERSION"
 
-if [ -f "$CHANGELOG_FILE" ] && [ -n "$VERSION_LINE" ]; then
-  awk '
-  /^## \[/ {
+if [ -f "$CHANGELOG_FILE" ]; then
+  SECTION="$(awk -v ver="$VERSION" '
+    /^## \[/ {
       if (found) exit
-      found = 1
-      print
-      next
-  }
-  found {
-      if (/^## \[/) exit
-      print
-  }
-  ' "$CHANGELOG_FILE"
-  exit 0
+      if (index($0, "[" ver "]") > 0) found=1
+      if (found) { print; next }
+    }
+    found { print }
+  ' "$CHANGELOG_FILE")"
+
+  if [ -n "$SECTION" ]; then
+    printf "%s\n" "$SECTION"
+    exit 0
+  fi
 fi
 
 range=""
