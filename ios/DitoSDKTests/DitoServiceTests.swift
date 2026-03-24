@@ -165,10 +165,8 @@ class DitoServiceTests: XCTestCase {
             urlRequest.value(forHTTPHeaderField: "Content-Type"),
             "application/json"
         )
-        XCTAssertEqual(
-            urlRequest.value(forHTTPHeaderField: "User-Agent"),
-            "iPhone"
-        )
+        let userAgent = urlRequest.value(forHTTPHeaderField: "User-Agent")
+        XCTAssertEqual(userAgent, "iphone", "User-Agent should be 'iphone'")
     }
 
     func testDitoRouterService_Timeout_IsSetCorrectly() {

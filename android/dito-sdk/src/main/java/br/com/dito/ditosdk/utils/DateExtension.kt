@@ -6,7 +6,7 @@ import java.util.*
 /**
  * Pattern: yyyy-MM-dd'T'HH:mm:ssZ
  */
-fun Date.formatToISO(): String{
-    val sdf= SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault())
+fun Date.formatToISO(): String {
+    val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
     return sdf.format(this)
 }

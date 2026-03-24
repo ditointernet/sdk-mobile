@@ -7,17 +7,22 @@ plugins {
 }
 
 group = "br.com.dito"
-version = System.getenv("VERSION_NAME") ?: "3.1.0"
+version = System.getenv("VERSION_NAME") ?: "3.1.1"
 
 android {
     namespace = "br.com.dito.ditosdk"
     compileSdk = 35
+
+    buildFeatures {
+        buildConfig = true
+    }
 
     defaultConfig {
         minSdk = 25
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
+        buildConfigField("String", "DITO_SDK_VERSION", "\"${project.version}\"")
     }
 
     buildTypes {

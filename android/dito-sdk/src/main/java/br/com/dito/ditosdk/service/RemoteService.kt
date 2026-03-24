@@ -2,6 +2,7 @@ package br.com.dito.ditosdk.service
 
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.service.utils.gson
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -17,6 +18,17 @@ internal object RemoteService {
     init {
 
         val builder = OkHttpClient.Builder()
+        val userAgentInterceptor = Interceptor { chain ->
+            chain.proceed(
+                chain.request().newBuilder()
+                    .header(
+                        "User-Agent",
+                        "android"
+                    )
+                    .build()
+            )
+        }
+        builder.addInterceptor(userAgentInterceptor)
         val debug = Dito.options?.debug ?: false
         if (debug) {
             val logging = HttpLoggingInterceptor()

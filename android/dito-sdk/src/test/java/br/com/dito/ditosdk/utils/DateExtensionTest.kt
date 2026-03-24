@@ -13,7 +13,7 @@ class DateExtensionTest {
         val date = Date(1609459200000L)
         val formatted = date.formatToISO()
 
-        val expectedFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.getDefault())
+        val expectedFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US)
         val expected = expectedFormat.format(date)
 
         assertThat(formatted).isEqualTo(expected)

@@ -5,9 +5,9 @@ class Util {
   static func toDate(_ date: Date?) -> String? {
 
     guard let date = date else {
-      return Date().formatToDitoDate
+      return Date().formatToISO
     }
-    return date.formatToDitoDate
+    return date.formatToISO
   }
 
   static func toString(from json: Any?) -> String? {

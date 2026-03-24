@@ -1,7 +1,8 @@
 import Foundation
-import UIKit
 
 enum DitoRouterService {
+
+  private static let userAgent = "iphone"
 
   case identify(network: String, id: String, data: DitoSignupRequest)
   case track(reference: String, data: DitoEventRequest)
@@ -74,7 +75,7 @@ enum DitoRouterService {
       "application/json",
       forHTTPHeaderField: "Content-Type"
     )
-    urlRequest.setValue("iPhone", forHTTPHeaderField: "User-Agent")
+    urlRequest.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
 
     let encoder = JSONEncoder()
     encoder.keyEncodingStrategy = .convertToSnakeCase
