@@ -4,6 +4,16 @@
 
 ### Outros
 
+- chore(release): flutter 3.2.2 (9c3d870)
+- chore: update iOS build configuration and dependencies (#13) (632a4b7)
+- chore(release): flutter 3.2.2 (6e88685)
+
+### Correções
+
+- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
+
+### Outros
+
 - chore: update iOS build configuration and dependencies (#13) (632a4b7)
 - chore(release): flutter 3.2.2 (6e88685)
 
