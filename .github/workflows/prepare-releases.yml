@@ -75,6 +75,21 @@ jobs:
           ensure_tag "flutter-" "$flutter_version"
           ensure_tag "react-native-" "$rn_version"
 
+      - name: Clean up orphaned tags
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git fetch --tags --force
+          for prefix in android- ios- flutter- react-native-; do
+            for tag in $(git tag --list "${prefix}v*" | sort -V); do
+              if ! git merge-base --is-ancestor "$tag" HEAD 2>/dev/null; then
+                echo "⚠️  Deleting orphaned tag: $tag"
+                git tag -d "$tag"
+                git push origin --delete "$tag" || true
+              fi
+            done
+          done
+
       - name: Run semantic-release (android)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
