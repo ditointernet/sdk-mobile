@@ -1,3 +1,7 @@
+### Outros
+
+- chore(release): flutter 3.2.3 (81f78d7)
+
 ## [3.3.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.1.0...android-v3.3.0) (2026-03-24)
 
 ### Funcionalidades
