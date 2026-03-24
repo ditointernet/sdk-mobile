@@ -1,3 +1,7 @@
+### Outros
+
+- chore(release): flutter 3.2.3 (81f78d7)
+
 ### Correções
 
 - fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
