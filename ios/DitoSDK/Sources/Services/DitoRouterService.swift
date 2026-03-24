@@ -1,22 +1,8 @@
 import Foundation
 
-private final class DitoSDKBundleToken {}
-
 enum DitoRouterService {
 
-  private static let sdkVersion: String = {
-    // Derive SDK version from the bundle's CFBundleShortVersionString with a safe fallback.
-    if
-      let bundle = Bundle(for: DitoSDKBundleToken.self),
-      let version = bundle.infoDictionary?["CFBundleShortVersionString"] as? String,
-      !version.isEmpty
-    {
-      return version
-    }
-    // Fallback to the current released version if the bundle information is unavailable.
-    return "3.1.3"
-  }()
-  private static let userAgent = "Dito-SDK Apple iOS/\(sdkVersion)"
+  private static let userAgent = "iphone"
 
   case identify(network: String, id: String, data: DitoSignupRequest)
   case track(reference: String, data: DitoEventRequest)

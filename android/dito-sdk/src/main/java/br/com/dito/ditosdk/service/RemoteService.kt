@@ -1,6 +1,5 @@
 package br.com.dito.ditosdk.service
 
-import br.com.dito.ditosdk.BuildConfig
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.service.utils.gson
 import okhttp3.Interceptor
@@ -24,7 +23,7 @@ internal object RemoteService {
                 chain.request().newBuilder()
                     .header(
                         "User-Agent",
-                        "Dito-SDK Android/${BuildConfig.DITO_SDK_VERSION}"
+                        "android"
                     )
                     .build()
             )
