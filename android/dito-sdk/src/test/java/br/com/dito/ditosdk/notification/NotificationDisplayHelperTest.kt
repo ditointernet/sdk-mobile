@@ -1,7 +1,9 @@
 package br.com.dito.ditosdk.notification
 
+import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
@@ -10,8 +12,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
+import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
+@Config(sdk = [Build.VERSION_CODES.O])
 class NotificationDisplayHelperTest {
 
     private lateinit var context: Context
@@ -143,7 +147,8 @@ class NotificationDisplayHelperTest {
         )
         notificationManager.createNotificationChannel(thirdPartyChannel)
 
-        assertThat(shadowManager.notificationChannels.map { it.id }).contains(thirdPartyChannelId)
+        assertThat(shadowManager.notificationChannels.map { (it as NotificationChannel).id })
+            .contains(thirdPartyChannelId)
 
         // Act: NotificationDisplayHelper creates its own channel (simulated as production code does)
         val ditoChannel = android.app.NotificationChannel(
@@ -154,7 +159,7 @@ class NotificationDisplayHelperTest {
         notificationManager.createNotificationChannel(ditoChannel)
 
         // Assert: both channels coexist — dito channel creation did not remove third-party channel
-        val channelsAfter = shadowManager.notificationChannels.map { it.id }
+        val channelsAfter = shadowManager.notificationChannels.map { (it as NotificationChannel).id }
         assertThat(channelsAfter).contains(thirdPartyChannelId)
         assertThat(channelsAfter).contains("dito")
     }
