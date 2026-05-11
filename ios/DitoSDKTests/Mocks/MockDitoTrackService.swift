@@ -1,7 +1,7 @@
 import Foundation
 @testable import DitoSDK
 
-class MockDitoTrackService: DitoServiceManager {
+class MockDitoTrackService: DitoTrackService {
     var eventCalled = false
     var eventReference: String?
     var eventData: DitoEventRequest?

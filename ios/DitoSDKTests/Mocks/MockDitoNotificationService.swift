@@ -1,7 +1,7 @@
 import Foundation
 @testable import DitoSDK
 
-class MockDitoNotificationService: DitoServiceManager {
+class MockDitoNotificationService: DitoNotificationService {
     var registerCalled = false
     var registerReference: String?
     var registerData: DitoTokenRequest?

@@ -53,6 +53,34 @@ struct DitoDataNotification: Codable {
         self.logId = ""
     }
 
+    init(
+        identifier: String,
+        reference: String,
+        notification: String,
+        notificationLogId: String,
+        userId: String,
+        deviceType: String,
+        channel: String,
+        notificationName: String,
+        title: String,
+        message: String,
+        link: String,
+        logId: String
+    ) {
+        self.identifier = identifier
+        self.reference = reference
+        self.notification = notification
+        self.notificationLogId = notificationLogId
+        self.userId = userId
+        self.deviceType = deviceType
+        self.channel = channel
+        self.notificationName = notificationName
+        self.title = title
+        self.message = message
+        self.link = link
+        self.logId = logId
+    }
+
     enum CodingKeys: String, CodingKey {
         case identifier
         case reference

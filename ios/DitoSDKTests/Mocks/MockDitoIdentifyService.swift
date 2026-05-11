@@ -1,7 +1,7 @@
 import Foundation
 @testable import DitoSDK
 
-class MockDitoIdentifyService: DitoServiceManager {
+class MockDitoIdentifyService: DitoIdentifyService {
     var signupCalled = false
     var signupNetwork: String?
     var signupId: String?
