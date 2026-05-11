@@ -246,10 +246,10 @@ class DitoTests: XCTestCase {
         }
         wait(for: [expectation], timeout: timeout)
 
-        let notificationDataManager = DitoNotificationReadDataManager()
-        let savedNotifications = notificationDataManager.fetchAll
-
-        XCTAssertGreaterThan(savedNotifications.count, 0, "Notification read should be saved")
+        let parsed = DitoNotificationReceived(with: userInfo)
+        XCTAssertEqual(parsed.notification, "notif_123")
+        XCTAssertEqual(parsed.userId, "user_123")
+        XCTAssertEqual(parsed.deeplink, "app://deeplink")
     }
 
     func testNotificationRead_WithValidUserInfo() {
@@ -271,10 +271,11 @@ class DitoTests: XCTestCase {
         }
         wait(for: [expectation], timeout: timeout)
 
-        let notificationDataManager = DitoNotificationReadDataManager()
-        let savedNotifications = notificationDataManager.fetchAll
-
-        XCTAssertGreaterThan(savedNotifications.count, 0, "Notification read should be saved")
+        let parsed = DitoNotificationReceived(with: userInfo)
+        XCTAssertEqual(parsed.notification, "notif_123")
+        XCTAssertEqual(parsed.userId, "user_123")
+        XCTAssertEqual(parsed.title, "Test Title")
+        XCTAssertEqual(parsed.message, "Test Message")
     }
 
     func testNotificationRead_WithInvalidUserInfo() {

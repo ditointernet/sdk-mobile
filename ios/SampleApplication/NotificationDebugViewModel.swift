@@ -1,4 +1,5 @@
 import Combine
+import DitoSDK
 import Foundation
 import UIKit
 
@@ -8,6 +9,10 @@ class NotificationDebugViewModel: ObservableObject {
     @Published var selectedJSON: String = "Selecione uma notificação para ver o conteúdo"
     @Published var showToast = false
     @Published var toastMessage = ""
+    @Published var optSound: String = ""
+    @Published var optBadgeEnabled: Bool = true
+    @Published var optSmallIcon: String = ""
+    @Published var optAccentColor: String = ""
 
     var notificationCount: Int {
         notifications.count
@@ -57,6 +62,15 @@ class NotificationDebugViewModel: ObservableObject {
         } else {
             showToastMessage("Token FCM não disponível")
         }
+    }
+
+    func applyNotificationOptions() {
+        let options = DitoNotificationOptions(
+            soundName: optSound.isEmpty ? nil : optSound,
+            badgeEnabled: optBadgeEnabled
+        )
+        Dito.setNotificationOptions(options)
+        showToastMessage("Notification Options aplicadas")
     }
 
     private func showToastMessage(_ message: String) {

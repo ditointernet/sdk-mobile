@@ -1,4 +1,4 @@
-internal import CoreData
+import CoreData
 import CryptoKit
 import XCTest
 

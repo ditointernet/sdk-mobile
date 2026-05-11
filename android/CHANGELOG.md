@@ -2,6 +2,17 @@
 
 - chore(release): flutter 3.2.3 (81f78d7)
 
+## [4.0.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.3.0...android-v4.0.0) (2026-05-06)
+
+### Funcionalidades
+
+- feat(android): adicionar `DitoNotificationOptions` data class para customização de notificações push
+- feat(android): adicionar `Dito.setNotificationOptions(DitoNotificationOptions(...))` como nova API de configuração de notificações
+
+### Depreciações
+
+- deprecated: `Options.iconNotification` — use `DitoNotificationOptions(smallIconResId = ...)` via `Dito.setNotificationOptions(...)` em substituição
+
 ## [3.3.0](https://github.com/ditointernet/sdk-mobile/compare/android-v3.1.0...android-v3.3.0) (2026-03-24)
 
 ### Funcionalidades

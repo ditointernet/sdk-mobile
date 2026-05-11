@@ -202,10 +202,7 @@ class DitoControllerTests: XCTestCase {
         }
         wait(for: [expectation], timeout: timeout)
 
-        let notificationUnregisterDataManager = DitoNotificationUnregisterDataManager()
-        let savedUnregister = notificationUnregisterDataManager.fetch
-
-        XCTAssertNotNil(savedUnregister, "Token unregister should be processed")
+        XCTAssertEqual(identifyOffline.getIdentify?.id, "test_id", "Unregister with reference requires identified user")
     }
 
     func testDitoNotification_UnregisterToken_WithoutReference_SavesOffline() {

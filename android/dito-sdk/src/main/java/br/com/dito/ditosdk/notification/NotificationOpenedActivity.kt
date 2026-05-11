@@ -45,10 +45,12 @@ class NotificationOpenedActivity : AppCompatActivity() {
 
         if (reference != null && notificationId != null) {
             Log.d(TAG, "✅ Calling Dito.notificationClick()")
+            val userId = intent?.getStringExtra(Dito.DITO_USER_ID) ?: ""
             val userInfo = mapOf(
                 "notification" to notificationId,
                 "reference" to reference,
-                "deeplink" to (deepLink ?: "")
+                "deeplink" to (deepLink ?: ""),
+                "user_id" to userId
             )
 
             Dito.notificationClick(userInfo, Dito.notificationClickListener ?: Dito.options?.notificationClickListener)

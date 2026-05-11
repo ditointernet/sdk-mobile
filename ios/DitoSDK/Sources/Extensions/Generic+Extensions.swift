@@ -64,11 +64,11 @@ extension UserDefaults {
       UserDefaults.standard.double(forKey: Keys.savingState)
     }
     set {
-
       if newValue == -1 {
         UserDefaults.standard.removeObject(forKey: Keys.savingState)
+      } else {
+        UserDefaults.standard.set(newValue, forKey: Keys.savingState)
       }
-      UserDefaults.standard.set(newValue, forKey: Keys.savingState)
       UserDefaults.standard.synchronize()
     }
 

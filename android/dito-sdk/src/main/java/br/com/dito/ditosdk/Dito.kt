@@ -2,74 +2,109 @@ package br.com.dito.ditosdk
 
 import android.content.Context
 import android.content.pm.PackageManager
-import android.os.Build
-import androidx.annotation.RequiresApi
-import br.com.dito.ditosdk.service.RemoteService
+import br.com.dito.ditosdk.notification.DitoNotificationOptions
+import br.com.dito.ditosdk.notification.inbox.DitoNotificationInfo
+import br.com.dito.ditosdk.offline.DitoDatabase
+import br.com.dito.ditosdk.service.ActivityMapper
+import br.com.dito.ditosdk.service.MobileIngestClient
+import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
+import br.com.dito.ditosdk.utils.DitoSDKUtils
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
+/**
+ * Ponto de entrada do SDK Dito. Inicialize com [init] antes de chamar métodos de tracking ou notificações.
+ *
+ * **Autenticação:** no manifest (`<application>`), use `meta-data` com `android:name` `br.com.dito.API_KEY` e,
+ * opcionalmente, `br.com.dito.API_SECRET`. Se existirem **ambos** `API_KEY` e `API_SECRET`, o SDK usa o
+ * modelo legado (assinatura SHA1). Se existir **apenas** `API_KEY` (sem `API_SECRET`), usa o modelo X-Api-Key;
+ * o `Bundle-Id` enviado ao backend é o `packageName` do app. `br.com.dito.HIBRID_MODE` é opcional.
+ */
 object Dito {
 
     private lateinit var apiKey: String
-    private lateinit var hibridMode: String
     private lateinit var apiSecret: String
+    private lateinit var hibridMode: String
     private lateinit var tracker: Tracker
+    private lateinit var applicationContext: Context
 
     const val DITO_NOTIFICATION_ID = "br.com.dito.ditosdk.DITO_NOTIFICATION_ID"
     const val DITO_NOTIFICATION_REFERENCE = "br.com.dito.ditosdk.DITO_NOTIFICATION_REFERENCE"
     const val DITO_DEEP_LINK = "br.com.dito.ditosdk.DITO_DEEP_LINK"
+    const val DITO_USER_ID = "br.com.dito.ditosdk.DITO_USER_ID"
 
     var options: Options? = null
     var notificationClickListener: ((String) -> Unit)? = null
+    var notificationReceivedListener: ((Map<String, String>) -> Unit)? = null
+    var notificationOptions: DitoNotificationOptions = DitoNotificationOptions()
+        private set
+
+    fun setNotificationOptions(options: DitoNotificationOptions) {
+        notificationOptions = options
+    }
 
     /**
+     * Inicializa o SDK lendo `br.com.dito.API_KEY`, `br.com.dito.API_SECRET` (opcional) e
+     * `br.com.dito.HIBRID_MODE` do AndroidManifest do app host.
      *
-     * @param context
-     * @param options
+     * @param context Contexto da aplicação Android
+     * @param options Configurações opcionais do SDK (debug, retry, etc.)
      */
-    @RequiresApi(Build.VERSION_CODES.O)
     fun init(context: Context?, options: Options?) {
         this.options = options
-        if (options != null) {
-            this.notificationClickListener = options.notificationClickListener
-        }
-
-        val appInfo = context?.packageManager?.getApplicationInfo(
-            context.packageName,
-            PackageManager.GET_META_DATA
-        )
-
-        appInfo?.metaData?.let {
-            val resolvedApiKey = it.getString("br.com.dito.API_KEY", "")
-            val resolvedApiSecret = it.getString("br.com.dito.API_SECRET", "")
-            val resolvedHibridMode = it.getString("br.com.dito.HIBRID_MODE", "OFF")
-            configureTracker(context, options, resolvedApiKey, resolvedApiSecret, resolvedHibridMode)
+        this.notificationClickListener = options?.notificationClickListener
+        if (context == null) throw RuntimeException("Context is not available")
+        this.applicationContext = context.applicationContext
+        val meta = context.packageManager
+            .getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
+            .metaData
+        val resolvedApiKey = meta?.getString("br.com.dito.API_KEY", "") ?: ""
+        val resolvedApiSecret = meta?.getString("br.com.dito.API_SECRET", "") ?: ""
+        val resolvedHibridMode = meta?.getString("br.com.dito.HIBRID_MODE", "OFF") ?: "OFF"
+        when {
+            resolvedApiKey.isNotEmpty() && resolvedApiSecret.isNotEmpty() ->
+                configureTracker(context, options, resolvedApiKey, resolvedApiSecret, resolvedHibridMode)
+            resolvedApiKey.isNotEmpty() ->
+                configureTrackerXApiKey(context, options, resolvedApiKey, resolvedHibridMode)
+            else ->
+                throw RuntimeException("É preciso configurar API_KEY no AndroidManifest.")
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.O)
-    fun init(
-        context: Context?,
-        apiKey: String,
-        apiSecret: String,
-        options: Options?
-    ) {
+    /**
+     * Inicializa o SDK com credenciais passadas em código (ex.: Flutter/React Native).
+     * Não exige `meta-data` no manifest para as chaves.
+     *
+     * Se [apiSecret] for vazio ou omitido, o SDK usa autenticação X-Api-Key com [apiKey] e
+     * `context.packageName` como bundle. Caso contrário, usa o modelo legado
+     * (`platform_api_key` + `sha1_signature` da secret).
+     *
+     * @param context Contexto da aplicação Android
+     * @param apiKey Chave da plataforma ou, no fluxo novo, valor da X-Api-Key
+     * @param apiSecret Secret do modelo legado; vazio ou omitido ativa o fluxo X-Api-Key
+     * @param options Configurações opcionais do SDK
+     */
+    fun init(context: Context?, apiKey: String, apiSecret: String = "", options: Options? = null) {
         this.options = options
-        if (options != null) {
-            this.notificationClickListener = options.notificationClickListener
+        this.notificationClickListener = options?.notificationClickListener
+        if (context == null) throw RuntimeException("Context is not available")
+        this.applicationContext = context.applicationContext
+        val hibridMode = resolveHibridMode(context)
+        if (apiSecret.isNotEmpty()) {
+            configureTracker(context, options, apiKey, apiSecret, hibridMode)
+        } else {
+            configureTrackerXApiKey(context, options, apiKey, hibridMode)
         }
-        val resolvedHibridMode = resolveHibridMode(context)
-        if (context == null) {
-            throw RuntimeException("Context is not available")
-        }
-        configureTracker(context, options, apiKey, apiSecret, resolvedHibridMode)
     }
 
     private fun resolveHibridMode(context: Context?): String {
         val appInfo = context?.packageManager?.getApplicationInfo(
             context.packageName,
-            PackageManager.GET_META_DATA
+            PackageManager.GET_META_DATA,
         )
         return appInfo?.metaData?.getString("br.com.dito.HIBRID_MODE", "OFF") ?: "OFF"
     }
@@ -79,282 +114,225 @@ object Dito {
         options: Options?,
         apiKey: String,
         apiSecret: String,
-        hibridMode: String
+        hibridMode: String,
     ) {
         this.apiKey = apiKey
         this.apiSecret = apiSecret
         this.hibridMode = hibridMode
-
         if (apiKey.isEmpty() || apiSecret.isEmpty()) {
             throw RuntimeException("É preciso configurar API_KEY e API_SECRET no AndroidManifest.")
         }
+        configureTracker(
+            context,
+            options,
+            MobileIngestClient.withLegacyAuth(apiKey, DitoSDKUtils.SHA1(apiSecret), context.packageName, options?.httpClientBuilder),
+        )
+    }
 
+    private fun configureTrackerXApiKey(context: Context, options: Options?, xApiKey: String, hibridMode: String) {
+        if (xApiKey.isEmpty()) {
+            throw RuntimeException("API_KEY é obrigatório.")
+        }
+        this.apiKey = xApiKey
+        this.apiSecret = ""
+        this.hibridMode = hibridMode
+        configureTracker(
+            context,
+            options,
+            MobileIngestClient.withXApiKey(xApiKey, context.packageName, options?.httpClientBuilder),
+        )
+    }
+
+    private fun configureTracker(context: Context, options: Options?, client: MobileIngestClientInterface) {
+        if (::tracker.isInitialized) tracker.close()
+        val mapper = ActivityMapper(context)
         val trackerOffline = TrackerOffline(context)
-        tracker = Tracker(apiKey, apiSecret, trackerOffline)
-
-        val trackerRetry = TrackerRetry(tracker, trackerOffline, options?.retry ?: 5)
+        tracker = Tracker(trackerOffline, client, mapper, debug = options?.debug == true)
+        val trackerRetry = TrackerRetry(tracker, trackerOffline, client, mapper, options?.retry ?: 5)
         tracker.setTrackerRetry(trackerRetry)
         trackerRetry.uploadEvents()
     }
 
     /**
-     * Identifies a user in Dito CRM with individual parameters
-     * @param id Unique user identifier
-     * @param name User's name (optional)
-     * @param email User's email (optional)
-     * @param customData Additional custom data as map (optional)
+     * Identifica o usuário no CRM Dito com parâmetros individuais.
+     *
+     * @param id Identificador único do usuário
+     * @param name Nome (opcional)
+     * @param email E-mail (opcional)
+     * @param customData Dados customizados adicionais (opcional)
      */
-    fun identify(
-        id: String,
-        name: String? = null,
-        email: String? = null,
-        customData: Map<String, Any>? = null
-    ) {
-        val identifyObject = createIdentifyObject(id, name, email, customData)
-        tracker.identify(identifyObject, RemoteService.loginApi(), null)
-    }
-
-    private fun createIdentifyObject(
-        id: String,
-        name: String?,
-        email: String?,
-        customData: Map<String, Any>?
-    ): Identify {
-        return Identify(id).apply {
-            this.name = name
-            this.email = email
-            this.data = convertCustomData(customData)
-        }
-    }
-
-    private fun convertCustomData(customData: Map<String, Any>?): CustomData? {
-        if (customData == null) return null
-        return CustomData().apply {
-            customData.forEach { (key, value) ->
-                addCustomDataValue(key, value)
-            }
-        }
-    }
-
-    private fun CustomData.addCustomDataValue(key: String, value: Any) {
-        when (value) {
-            is String -> add(key, value)
-            is Int -> add(key, value)
-            is Double -> add(key, value)
-            is Boolean -> add(key, value)
-            else -> params[key] = value
-        }
+    fun identify(id: String, name: String? = null, email: String? = null, customData: Map<String, Any>? = null) {
+        tracker.identify(
+            Identify(id).apply {
+                this.name = name
+                this.email = email
+                this.data = convertCustomData(customData)
+            },
+            null,
+        )
     }
 
     /**
-     * Identifies a user in Dito CRM with Identify object
-     * @param identify Identify object with user data
-     * @param callback Optional callback executed after identification
-     * @deprecated Use identify(id:name:email:customData:) instead for consistency with iOS SDK
+     * Identifica o usuário no CRM Dito com um objeto [Identify].
+     *
+     * @param identify Objeto com dados do usuário
+     * @param callback Callback opcional após a identificação
+     * @deprecated Use [identify] com parâmetros nomeados para alinhar ao SDK iOS
      */
     @Deprecated(
         message = "Use identify(id:name:email:customData:) instead for consistency with iOS SDK",
-        replaceWith = ReplaceWith("identify(id, identify.name, identify.email, identify.data?.toMap())")
+        replaceWith = ReplaceWith("identify(id, identify.name, identify.email, identify.data?.toMap())"),
     )
     fun identify(identify: Identify?, callback: (() -> Unit)?) {
-        identify?.let { tracker.identify(it, RemoteService.loginApi(), callback) }
+        identify?.let { tracker.identify(it, callback) }
     }
 
     /**
-     * Tracks an event in Dito CRM with individual parameters
-     * @param action Event action name
-     * @param data Additional event data as map (optional)
+     * Registra um evento no CRM Dito com nome da ação e dados opcionais.
+     *
+     * @param action Nome da ação do evento
+     * @param data Dados adicionais do evento (opcional)
      */
-    fun track(
-        action: String,
-        data: Map<String, Any>? = null
-    ) {
-        val customData = convertCustomData(data)
-        val event = Event(action).apply {
-            this.data = customData
-        }
-        track(event)
+    fun track(action: String, data: Map<String, Any>? = null) {
+        tracker.event(
+            Event(action).apply { this.data = convertCustomData(data) },
+        )
     }
 
     /**
-     * Tracks an event in Dito CRM with Event object
-     * @param event Event object with event data
-     * @deprecated Use track(action:data:) instead for consistency with iOS SDK
+     * Registra um evento no CRM Dito com um objeto [Event].
+     *
+     * @param event Objeto com dados do evento
+     * @deprecated Use [track] com ação e mapa de dados para alinhar ao SDK iOS
      */
     @Deprecated(
         message = "Use track(action:data:) instead for consistency with iOS SDK",
-        replaceWith = ReplaceWith("track(event.action, event.data?.toMap())")
+        replaceWith = ReplaceWith("track(event.action, event.data?.toMap())"),
     )
     fun track(event: Event?) {
-        event?.let { tracker.event(it, RemoteService.eventApi()) }
+        event?.let { tracker.event(it) }
     }
 
     /**
-     * Registers a device token for push notifications.
-     * @param token Device token string (required, cannot be null or empty)
+     * Registra o token do dispositivo para push (Firebase).
+     *
+     * @param token Token FCM; se null ou vazio, não envia
      */
     fun registerDevice(token: String?) {
-        if (token.isNullOrEmpty()) {
-            return
-        }
-        performRegisterDevice(token)
-    }
-
-    private fun performRegisterDevice(token: String) {
-        tracker.registerToken(token, RemoteService.notificationApi())
+        if (!token.isNullOrEmpty()) tracker.registerToken(token)
     }
 
     /**
-     * Unregisters a device token for push notifications.
-     * @param token Device token string (required, cannot be null or empty)
+     * Remove o registro do token de push do dispositivo.
+     *
+     * @param token Token FCM; se null ou vazio, não envia
      */
     fun unregisterDevice(token: String?) {
-        if (token.isNullOrEmpty()) {
-            return
-        }
-        performUnregisterDevice(token)
-    }
-
-    private fun performUnregisterDevice(token: String) {
-        tracker.unregisterToken(token, RemoteService.notificationApi())
+        if (!token.isNullOrEmpty()) tracker.unregisterToken(token)
     }
 
     /**
-     * Called when a notification arrives (before click)
-     * @param userInfo Map containing notification data (should contain "notification" and "reference" keys)
+     * Chamado quando a notificação chega (antes do clique). Envia o evento de leitura da notificação.
+     *
+     * @param userInfo Mapa com dados da notificação (deve incluir chaves `"notification"` e `"reference"`)
      */
     fun notificationClick(userInfo: Map<String, String>) {
-        val notificationData = extractNotificationReadData(userInfo)
-
-        if (notificationData.reference.isEmpty()) {
-            return
+        val data = DitoNotificationHandler.extractReadData(userInfo)
+        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
+        tracker.notificationClick(data.notificationId, data.reference, data.userId)
+        CoroutineScope(Dispatchers.IO).launch {
+            DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(data.notificationId)
         }
-        if (notificationData.notificationId.isEmpty()) {
-            return
-        }
-
-        sendNotificationClick(notificationData.notificationId, notificationData.reference)
     }
 
+    /**
+     * Chamado quando a notificação é lida. Identifica o usuário (se houver `userId`) e traz o evento
+     * `receive-android-notification`.
+     *
+     * @param userInfo Mapa com dados da notificação (deve incluir `"notification"` e `"reference"`)
+     */
     fun notificationRead(userInfo: Map<String, String>) {
-        val notificationData = extractNotificationReadData(userInfo)
-        if (notificationData.reference.isEmpty()) {
-            return
-        }
-        if (notificationData.notificationId.isEmpty()) {
-            return
-        }
-        processNotificationReceived(notificationData)
+        val data = DitoNotificationHandler.extractReadData(userInfo)
+        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
+        processNotificationReceived(data)
     }
 
-    private fun extractNotificationReadData(userInfo: Map<String, String>): NotificationReadData {
-        val notificationId = userInfo["notification"] ?: ""
-        val reference = userInfo["reference"] ?: ""
-        val logId = userInfo["log_id"] ?: ""
-        val notificationName = userInfo["notification_name"] ?: ""
-        val userId = userInfo["user_id"] ?: ""
-        return NotificationReadData(notificationId, reference, logId, notificationName, userId)
-    }
-
+    /**
+     * Processa a notificação recebida com dados já extraídos.
+     *
+     * @param data Dados estruturados da notificação
+     */
     fun processNotificationReceived(data: NotificationReadData) {
-        identifyUserForNotification(data.userId)
-        trackNotificationReceived(data)
+        DitoNotificationHandler.processReceived(data, tracker)
     }
 
-    private fun sendNotificationClick(notificationId: String, userId: String) {
-        tracker.notificationClick(
-            notificationId,
-            RemoteService.notificationApi(),
-            userId
-        )
-    }
-
-    private fun identifyUserForNotification(userId: String) {
-        if (userId.isNotEmpty()) {
-            identify(id = userId, name = null, email = null, customData = null)
+    /**
+     * Chamado quando o usuário clica na notificação. Envia o evento de clique, chama o callback de deeplink
+     * e retorna [NotificationResult] com os dados.
+     *
+     * @param userInfo Mapa com dados (inclua `"notification"`, `"reference"` e, se houver, `"deeplink"`)
+     * @param callback Opcional; recebe a URL do deeplink
+     * @return [NotificationResult] com id, reference e deepLink
+     */
+    fun notificationClick(userInfo: Map<String, String>, callback: ((String) -> Unit)? = null): NotificationResult {
+        val result = DitoNotificationHandler.handleClick(userInfo, callback, tracker)
+        if (result.notificationId.isNotEmpty()) {
+            CoroutineScope(Dispatchers.IO).launch {
+                DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(result.notificationId)
+            }
         }
+        return result
     }
 
-    private fun trackNotificationReceived(data: NotificationReadData) {
-        val trackData = createNotificationTrackData(data)
-        track(action = "receive-android-notification", data = trackData)
-    }
-
-    private fun createNotificationTrackData(data: NotificationReadData): Map<String, Any> {
-        return mapOf(
-            "canal" to "mobile",
-            "id-disparo" to data.logId,
-            "id-notificacao" to data.notificationId,
-            "nome_notificacao" to data.notificationName,
-            "provedor" to "firebase",
-            "sistema_operacional" to "Android"
-        )
-    }
-
+    /**
+     * Dados de uma notificação recebida/lida para processamento pelo SDK.
+     */
     data class NotificationReadData(
         val notificationId: String,
         val reference: String,
         val logId: String,
         val notificationName: String,
-        val userId: String
+        val userId: String,
     )
+
+    suspend fun getNotifications(): List<DitoNotificationInfo> =
+        DitoDatabase.getInstance(applicationContext).ditoNotificationDao().getAll().map { record ->
+            DitoNotificationInfo(
+                id = record.id,
+                notificationId = record.notificationId,
+                reference = record.reference,
+                title = record.title,
+                message = record.message,
+                link = record.link,
+                receivedAt = record.receivedAt,
+                isRead = record.isRead,
+            )
+        }
+
+    suspend fun markNotificationAsRead(id: String) {
+        DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsRead(id)
+    }
+
+    internal fun isInitialized(): Boolean =
+        ::apiKey.isInitialized && apiKey.isNotEmpty() && ::apiSecret.isInitialized
 
     /**
-     * Called when a notification is clicked
-     * @param userInfo Map containing notification data (should contain "notification", "reference", and "deeplink" keys)
-     * @param callback Optional callback executed with deeplink
-     * @return NotificationResult object with notification data
+     * Retorna o valor de `br.com.dito.HIBRID_MODE` usado na inicialização (default `"OFF"`).
      */
-    fun notificationClick(
-        userInfo: Map<String, String>,
-        callback: ((String) -> Unit)? = null
-    ): NotificationResult {
-        val notificationData = extractNotificationData(userInfo)
-        processNotificationClick(notificationData)
-        invokeCallback(callback, notificationData.deepLink)
-        return createNotificationResult(notificationData)
-    }
+    fun getHibridMode(): String = hibridMode
 
-    private data class NotificationData(
-        val notificationId: String?,
-        val reference: String?,
-        val deepLink: String
-    )
-
-    private fun extractNotificationData(userInfo: Map<String, String>): NotificationData {
-        val notificationId = userInfo["notification"]
-        val reference = userInfo["reference"]
-        val deepLink = userInfo["deeplink"] ?: ""
-        return NotificationData(notificationId, reference, deepLink)
-    }
-
-    private fun processNotificationClick(data: NotificationData) {
-        if (data.notificationId != null && data.reference != null) {
-            sendNotificationClick(data.notificationId, data.reference)
+    private fun convertCustomData(customData: Map<String, Any>?): CustomData? {
+        if (customData == null) return null
+        return CustomData().apply {
+            customData.forEach { (key, value) ->
+                when (value) {
+                    is String -> add(key, value)
+                    is Int -> add(key, value)
+                    is Double -> add(key, value)
+                    is Boolean -> add(key, value)
+                    else -> params[key] = value
+                }
+            }
         }
     }
-
-    private fun invokeCallback(callback: ((String) -> Unit)?, deepLink: String) {
-        callback?.invoke(deepLink)
-    }
-
-    private fun createNotificationResult(data: NotificationData): NotificationResult {
-        return NotificationResult(
-            notificationId = data.notificationId ?: "",
-            reference = data.reference ?: "",
-            deepLink = data.deepLink
-        )
-    }
-
-    internal fun isInitialized(): Boolean {
-        return ::apiKey.isInitialized &&
-            ::apiSecret.isInitialized &&
-            apiKey.isNotEmpty() &&
-            apiSecret.isNotEmpty()
-    }
-
-    fun getHibridMode(): String {
-        return hibridMode;
-    }
-
 }

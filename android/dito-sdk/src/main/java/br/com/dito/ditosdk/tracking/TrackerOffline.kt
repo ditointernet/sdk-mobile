@@ -3,30 +3,29 @@ package br.com.dito.ditosdk.tracking
 import android.content.Context
 import android.util.Log
 import androidx.room.Room
+import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.EventOff
+import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
 import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.offline.DitoSqlHelper
 import br.com.dito.ditosdk.offline.EventOffline
 import br.com.dito.ditosdk.offline.IdentifyOffline
 import br.com.dito.ditosdk.offline.NotificationOffline
-import br.com.dito.ditosdk.service.utils.EventRequest
-import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
-import br.com.dito.ditosdk.service.utils.SigunpRequest
 import com.google.gson.Gson
 
 internal class TrackerOffline(
     context: Context,
     useInMemoryDatabase: Boolean = false,
-    allowMainThreadQueries: Boolean = false
+    allowMainThreadQueries: Boolean = false,
 ) {
-    private var gson: Gson = br.com.dito.ditosdk.service.utils.gson()
+    private val gson = Gson()
     internal val database = createDatabase(context, useInMemoryDatabase, allowMainThreadQueries)
 
     private fun createDatabase(
         context: Context,
         useInMemoryDatabase: Boolean,
-        allowMainThreadQueries: Boolean
+        allowMainThreadQueries: Boolean,
     ): DitoSqlHelper {
         val builder = if (useInMemoryDatabase) {
             Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
@@ -42,17 +41,20 @@ internal class TrackerOffline(
         return builder.build()
     }
 
-
-    fun identify(sigunpRequest: SigunpRequest, reference: String?, send: Boolean) {
+    fun identify(identify: Identify, send: Boolean) {
         try {
-            val json = gson.toJson(sigunpRequest)
+            val customJson = identify.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
             database.identifyDao().insert(
                 IdentifyOffline(
-                    _id = sigunpRequest.userData.id,
-                    json = json,
-                    reference = reference,
-                    send = send
-                )
+                    _id = identify.id,
+                    name = identify.name,
+                    email = identify.email,
+                    gender = identify.gender,
+                    birthday = identify.birthday,
+                    location = identify.location,
+                    customDataJson = customJson,
+                    send = send,
+                ),
             )
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
@@ -61,24 +63,24 @@ internal class TrackerOffline(
 
     fun updateIdentify(id: String, send: Boolean) {
         try {
-            database.identifyDao().update(
-                send,
-                id.toInt(),
-            )
+            database.identifyDao().update(send, id)
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
         }
     }
 
-    fun event(eventRequest: EventRequest) {
+    fun event(event: Event, activityId: String) {
         try {
-            val json = gson.toJson(eventRequest)
-
+            val dataJson = event.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
             database.eventDao().insert(
                 EventOffline(
-                    json = json,
-                    retry = 0
-                )
+                    activityId = activityId,
+                    action = event.action,
+                    revenue = event.revenue?.toFloat(),
+                    dataJson = dataJson,
+                    timestamp = event.createdAt ?: "",
+                    retry = 0,
+                ),
             )
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
@@ -98,7 +100,6 @@ internal class TrackerOffline(
 
     fun update(id: Int, retry: Int, tableName: String) {
         try {
-
             when (tableName) {
                 "Event" -> database.eventDao().update(id, retry)
                 "NotificationRead" -> database.notificationDao().update(id, retry)
@@ -115,7 +116,15 @@ internal class TrackerOffline(
                 return null
             }
             events.map {
-                EventOff(it._id ?: 0, it.json.orEmpty(), it.retry)
+                EventOff(
+                    it._id ?: 0,
+                    it.activityId,
+                    it.action,
+                    it.revenue,
+                    it.dataJson,
+                    it.timestamp,
+                    it.retry,
+                )
             }
         } catch (e: Exception) {
             null
@@ -129,7 +138,13 @@ internal class TrackerOffline(
                 return null
             }
             notifications.map {
-                NotificationReadOff(it._id ?: 0, it.json.orEmpty(), it.retry)
+                NotificationReadOff(
+                    it._id ?: 0,
+                    it.activityId,
+                    it.notificationId,
+                    it.identifier,
+                    it.retry,
+                )
             }
         } catch (e: Exception) {
             null
@@ -139,29 +154,31 @@ internal class TrackerOffline(
     fun getIdentify(): IdentifyOff? {
         try {
             val identify = database.identifyDao().getAll().first()
-
             return IdentifyOff(
-                identify._id,
-                identify.json.orEmpty(),
-                identify.reference,
-                identify.send
+                id = identify._id,
+                name = identify.name,
+                email = identify.email,
+                gender = identify.gender,
+                birthday = identify.birthday,
+                location = identify.location,
+                customDataJson = identify.customDataJson,
+                send = identify.send,
             )
         } catch (e: Exception) {
             return null
         }
     }
 
-    fun notificationRead(notificationOpenRequest: NotificationOpenRequest) {
+    fun notificationRead(activityId: String, notificationId: String, identifier: String) {
         try {
-            val json = gson.toJson(notificationOpenRequest)
-
             database.notificationDao().insert(
                 NotificationOffline(
-                    json = json,
-                    retry = 0
-                )
+                    activityId = activityId,
+                    notificationId = notificationId,
+                    identifier = identifier,
+                    retry = 0,
+                ),
             )
-
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
         }

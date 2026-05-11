@@ -1,5 +1,6 @@
-import Foundation
 import CoreData
+import Foundation
+import XCTest
 @testable import DitoSDK
 
 class TestHelpers {
@@ -39,7 +40,7 @@ class TestHelpers {
 
         let identifyDataManager = DitoIdentifyDataManager()
         if let identify = identifyDataManager.fetch {
-            _ = identifyDataManager.delete(id: identify.id)
+            _ = identifyDataManager.delete(id: identify.id ?? "")
         }
     }
 

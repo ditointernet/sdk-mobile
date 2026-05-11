@@ -55,6 +55,8 @@ class DitoCoreDataManager {
         withIntermediateDirectories: true
       )
       let description = NSPersistentStoreDescription(url: storeURL)
+      description.shouldMigrateStoreAutomatically = true
+      description.shouldInferMappingModelAutomatically = true
       description.setOption(
         true as NSNumber,
         forKey: NSPersistentHistoryTrackingKey
@@ -101,6 +103,8 @@ class DitoCoreDataManager {
 
     container.viewContext.undoManager = nil
     container.viewContext.shouldDeleteInaccessibleFaults = true
+
+    DitoNotificationCoreDataManager.shared.setup(container: container)
 
     return container
   }

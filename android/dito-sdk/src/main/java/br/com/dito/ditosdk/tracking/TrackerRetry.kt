@@ -3,24 +3,22 @@ package br.com.dito.ditosdk.tracking
 import android.util.Log
 import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.NotificationReadOff
-import br.com.dito.ditosdk.service.RemoteService
-import com.google.gson.JsonObject
+import br.com.dito.ditosdk.service.ActivityMapper
+import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 internal class TrackerRetry(
-    private var tracker: Tracker,
-    private var trackerOffline: TrackerOffline,
-    private var retry: Int = 5,
-    private val loginApi: br.com.dito.ditosdk.service.LoginApi = RemoteService.loginApi(),
-    private val eventApi: br.com.dito.ditosdk.service.EventApi = RemoteService.eventApi(),
-    private val notificationApi: br.com.dito.ditosdk.service.NotificationApi = RemoteService.notificationApi(),
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private val tracker: Tracker,
+    private val trackerOffline: TrackerOffline,
+    private val client: MobileIngestClientInterface,
+    private val mapper: ActivityMapper,
+    private val maxRetry: Int = 5,
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
-
-    private val gson = br.com.dito.ditosdk.service.utils.gson()
 
     fun uploadEvents() {
         checkIdentify()
@@ -28,109 +26,90 @@ internal class TrackerRetry(
         checkNotificationRead()
     }
 
+    fun close() {
+        scope.cancel()
+    }
+
     private fun checkIdentify() {
         scope.launch {
-            val identifyOff = trackerOffline.getIdentify()
-            identifyOff?.let {
-                if (!it.send) {
-                    val value = gson.fromJson(it.json, JsonObject::class.java)
-                    try {
-                        val response = loginApi.signup("portal", identifyOff.id, value)
-                        if (response.isSuccessful) {
-                            val reference =
-                                response.body()?.getAsJsonObject("data")?.get("reference")?.asString
-                            reference?.let {
-                                trackerOffline.updateIdentify(identifyOff.id, true)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.d("tracker", "tracker retry: error checking identify")
-                    }
-                }
+            val identifyOff = trackerOffline.getIdentify() ?: return@launch
+            if (identifyOff.send) return@launch
+            try {
+                val identify = mapper.fromIdentifyOff(identifyOff)
+                val activity = mapper.mapIdentify(identify)
+                val request = mapper.buildRequest(identify.id, listOf(activity), null)
+                client.activity(request)
+                trackerOffline.updateIdentify(identifyOff.id, true)
+            } catch (e: Exception) {
+                Log.d("TrackerRetry", "identify retry failed: ${e.message}")
             }
         }
     }
 
     private fun checkEvent() {
         scope.launch {
-            val events = trackerOffline.getAllEvents()
-            events?.forEach {
-                try {
-                    if (it.retry == retry) {
-                        trackerOffline.delete(it.id, "Event")
-                    } else {
-                        sendEvent(it, tracker.id)
-                    }
-                } catch (e: Exception) {
-                    if (e is UninitializedPropertyAccessException) {
-                        Log.e(
-                            "Tracker",
-                            "Antes de enviar um evento é preciso identificar o usuário."
-                        )
-                    }
-                }
+            val userId = tracker.idOrNull ?: run {
+                Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+                return@launch
             }
+            val events = trackerOffline.getAllEvents() ?: return@launch
+
+            events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
+
+            val toSend = events.filter { it.retry < maxRetry }
+            if (toSend.isEmpty()) return@launch
+
+            sendEventsBatch(toSend, userId)
         }
     }
 
-    private suspend fun sendEvent(eventOff: EventOff, id: String) {
+    private suspend fun sendEventsBatch(events: List<EventOff>, userId: String) {
+        val activities = events.map { eventOff ->
+            val event = mapper.eventFromOffline(
+                eventOff.action,
+                eventOff.revenue,
+                eventOff.dataJson,
+                eventOff.timestamp,
+            )
+            mapper.mapTrack(event, eventOff.activityId)
+        }
         try {
-            val params = gson.fromJson(eventOff.json, JsonObject::class.java)
-            val response = eventApi.track(id, params)
-            if (!response.isSuccessful) {
-                trackerOffline.update(eventOff.id, (eventOff.retry + 1), "Event")
-            } else {
-                trackerOffline.delete(eventOff.id, "Event")
-            }
+            val request = mapper.buildRequest(userId, activities, null)
+            client.activity(request)
+            events.forEach { trackerOffline.delete(it.id, "Event") }
         } catch (e: Exception) {
-            trackerOffline.update(eventOff.id, (eventOff.retry + 1), "Event")
+            events.forEach { trackerOffline.update(it.id, it.retry + 1, "Event") }
         }
     }
-
 
     private fun checkNotificationRead() {
         scope.launch {
-            val notifications = trackerOffline.getAllNotificationRead()
-            notifications?.forEach {
-                try {
-                    if (it.retry == retry) {
-                        trackerOffline.delete(it.id, "NotificationRead")
-                    } else {
-                        sendNotificationRead(it, tracker.id)
-                    }
-                } catch (e: Exception) {
-                    if (e is UninitializedPropertyAccessException) {
-                        Log.e(
-                            "Tracker",
-                            "Antes de enviar um evento é preciso identificar o usuário."
-                        )
-                    }
-                }
+            val userId = tracker.idOrNull ?: run {
+                Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+                return@launch
             }
+            val notifications = trackerOffline.getAllNotificationRead() ?: return@launch
+
+            notifications.filter { it.retry >= maxRetry }
+                .forEach { trackerOffline.delete(it.id, "NotificationRead") }
+
+            val toSend = notifications.filter { it.retry < maxRetry }
+            if (toSend.isEmpty()) return@launch
+
+            sendNotificationsBatch(toSend, userId)
         }
     }
 
-    private suspend fun sendNotificationRead(notificationReadOff: NotificationReadOff, id: String) {
+    private suspend fun sendNotificationsBatch(notifications: List<NotificationReadOff>, userId: String) {
+        val activities = notifications.map { notif ->
+            mapper.mapNotificationClick(notif.notificationId, notif.identifier, notif.activityId)
+        }
         try {
-            val params = gson.fromJson(notificationReadOff.json, JsonObject::class.java)
-            val response = notificationApi.open(id, params)
-            if (!response.isSuccessful) {
-                trackerOffline.update(
-                    notificationReadOff.id,
-                    (notificationReadOff.retry + 1),
-                    "NotificationRead"
-                )
-            } else {
-                trackerOffline.delete(notificationReadOff.id, "NotificationRead")
-            }
+            val request = mapper.buildRequest(userId, activities, null)
+            client.activity(request)
+            notifications.forEach { trackerOffline.delete(it.id, "NotificationRead") }
         } catch (e: Exception) {
-            trackerOffline.update(
-                notificationReadOff.id,
-                (notificationReadOff.retry + 1),
-                "NotificationRead"
-            )
+            notifications.forEach { trackerOffline.update(it.id, it.retry + 1, "NotificationRead") }
         }
     }
-
-
 }

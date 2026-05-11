@@ -11,11 +11,17 @@ let package = Package(
             targets: ["DitoSDK"]
         ),
     ],
-    dependencies: [],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-protobuf", from: "1.28.0"),
+        .package(url: "https://github.com/connectrpc/connect-swift", from: "0.14.0"),
+    ],
     targets: [
         .target(
             name: "DitoSDK",
-            dependencies: [],
+            dependencies: [
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+                .product(name: "Connect", package: "connect-swift"),
+            ],
             path: "DitoSDK",
             exclude: ["Info.plist"],
             resources: [

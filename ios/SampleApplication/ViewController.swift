@@ -86,6 +86,17 @@ class ViewController: UIViewController {
     private let unregisterTokenField = UITextField()
     private let testUnregisterDeviceButton = UIButton(type: .system)
 
+    // Inbox
+    private let viewInboxButton = UIButton(type: .system)
+    private let inboxTableView = UITableView()
+    private var notifications: [DitoNotificationInfo] = []
+    private let dateFormatter: DateFormatter = {
+        let fmt = DateFormatter()
+        fmt.dateStyle = .short
+        fmt.timeStyle = .short
+        return fmt
+    }()
+
     // Global Actions
     private let testAllButton = UIButton(type: .system)
     private let notificationDebugButton = UIButton(type: .system)
@@ -143,6 +154,7 @@ class ViewController: UIViewController {
         setupTrackCard()
         setupRegisterDeviceCard()
         setupUnregisterDeviceCard()
+        setupInboxCard()
         setupGlobalActionsButtons()
         setupKeyboardDismiss()
     }
@@ -240,6 +252,23 @@ class ViewController: UIViewController {
             createLabeledField("Token *", unregisterTokenField),
             testUnregisterDeviceButton
         ])
+    }
+
+    private func setupInboxCard() {
+        viewInboxButton.setTitle("Ver notificações", for: .normal)
+        viewInboxButton.addTarget(self, action: #selector(viewInboxTapped), for: .touchUpInside)
+        styleButton(viewInboxButton)
+
+        inboxTableView.register(UITableViewCell.self, forCellReuseIdentifier: "InboxCell")
+        inboxTableView.dataSource = self
+        inboxTableView.delegate = self
+        inboxTableView.isHidden = true
+        inboxTableView.layer.cornerRadius = Layout.cardCornerRadius
+        inboxTableView.clipsToBounds = true
+        inboxTableView.translatesAutoresizingMaskIntoConstraints = false
+        inboxTableView.heightAnchor.constraint(equalToConstant: 300).isActive = true
+
+        addCard(title: "Inbox de Notificações", views: [viewInboxButton, inboxTableView])
     }
 
     private func setupGlobalActionsButtons() {
@@ -566,6 +595,17 @@ class ViewController: UIViewController {
         present(hostingController, animated: true)
     }
 
+    @objc private func viewInboxTapped() {
+        notifications = Dito.shared.getNotifications()
+        inboxTableView.isHidden = notifications.isEmpty
+        inboxTableView.reloadData()
+
+        let message = notifications.isEmpty
+            ? "Nenhuma notificação no inbox"
+            : "\(notifications.count) notificação(ões) carregada(s)"
+        showToast(message)
+    }
+
     @objc private func getFcmTokenTapped() {
         fcmTokenLabel.text = "Token FCM: Solicitando..."
         fcmTokenLabel.textColor = .systemOrange
@@ -589,5 +629,41 @@ class ViewController: UIViewController {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+    }
+}
+
+// MARK: - UITableViewDataSource & UITableViewDelegate
+
+extension ViewController: UITableViewDataSource, UITableViewDelegate {
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        return notifications.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "InboxCell", for: indexPath)
+        let notification = notifications[indexPath.row]
+
+        let receivedAtText = dateFormatter.string(from: notification.receivedAt)
+        let readStatus = notification.isRead ? "Lida" : "Não lida"
+
+        var content = cell.defaultContentConfiguration()
+        content.text = notification.title
+        content.secondaryText = "\(notification.message)\n\(receivedAtText) • \(readStatus)"
+        content.secondaryTextProperties.numberOfLines = 2
+        cell.contentConfiguration = content
+
+        cell.backgroundColor = notification.isRead ? .systemGreen.withAlphaComponent(0.15) : .systemYellow.withAlphaComponent(0.3)
+
+        return cell
+    }
+
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let notification = notifications[indexPath.row]
+        Dito.shared.markNotificationAsRead(id: notification.id)
+        notifications = Dito.shared.getNotifications()
+        tableView.reloadData()
+        showToast("Notificação marcada como lida")
     }
 }

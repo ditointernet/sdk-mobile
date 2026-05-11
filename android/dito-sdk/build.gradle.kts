@@ -7,7 +7,7 @@ plugins {
 }
 
 group = "br.com.dito"
-version = System.getenv("VERSION_NAME") ?: "3.1.1"
+version = System.getenv("VERSION_NAME") ?: "4.0.0"
 
 android {
     namespace = "br.com.dito.ditosdk"
@@ -18,7 +18,7 @@ android {
     }
 
     defaultConfig {
-        minSdk = 25
+        minSdk = 26
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         consumerProguardFiles("consumer-rules.pro")
@@ -33,7 +33,15 @@ android {
                 "proguard-rules.pro"
             )
         }
+        val prodTest by creating {
+            initWith(getByName("release"))
+            buildConfigField("String", "TEST_API_KEY",
+                "\"${System.getenv("DITO_TEST_API_KEY") ?: ""}\"")
+            buildConfigField("String", "TEST_API_SECRET",
+                "\"${System.getenv("DITO_TEST_API_SECRET") ?: ""}\"")
+        }
     }
+    testBuildType = "prodTest"
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -65,15 +73,11 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
 
-    //Retrofit
-    implementation(libs.retrofit)
-    implementation(libs.converter.gson)
+    implementation(libs.connectKotlinOkhttp)
+    implementation(libs.connectKotlinGoogleJavaExt)
+    implementation(libs.protobufJavalite)
 
-    //OkHttp
-    implementation(libs.logging.interceptor)
-
-    //Gson
-    api(libs.gson)
+    implementation(libs.gson)
 
     // Firebase
     implementation(platform(libs.firebase.bom))

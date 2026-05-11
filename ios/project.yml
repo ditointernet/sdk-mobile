@@ -10,6 +10,12 @@ packages:
   Promises:
     url: https://github.com/google/promises.git
     from: 2.4.0
+  SwiftProtobuf:
+    url: https://github.com/apple/swift-protobuf
+    from: 1.28.0
+  ConnectSwift:
+    url: https://github.com/connectrpc/connect-swift
+    from: 0.14.0
 targets:
   Sample:
     type: application
@@ -22,6 +28,7 @@ targets:
           - "Main.storyboard"
           - "NotificationDebugViewController.swift"
           - "EnvLoader.swift"
+          - "Info.plist"
     dependencies:
       - target: DitoSDK
       - package: Firebase
@@ -32,13 +39,26 @@ targets:
         product: FBLPromises
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.example.samplesdk
-        GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_UIBackgroundModes: remote-notification
+        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.samplesdk
+        INFOPLIST_FILE: SampleApplication/Info.plist
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+        MOBILE_INGEST_URL: https://ingest.dito.com.br/mobile
+        MOBILE_INGEST_API_KEY: local-test-key
+      configs:
+        Debug:
+          MOBILE_INGEST_URL: http://localhost:8080
+        Release:
+          MOBILE_INGEST_URL: https://ingest.dito.com.br/mobile
 
   DitoSDK:
     type: framework
     platform: iOS
+    dependencies:
+      - package: SwiftProtobuf
+        product: SwiftProtobuf
+      - package: ConnectSwift
+        product: Connect
     sources:
       - path: DitoSDK/Sources
         name: Sources
@@ -52,6 +72,8 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: DitoSDK/Info.plist
+        MARKETING_VERSION: 3.2.1
+        CURRENT_PROJECT_VERSION: 1
 
   DitoSDKTests:
     type: bundle.unit-test
@@ -63,4 +85,14 @@ targets:
     settings:
       base:
         INFOPLIST_FILE: DitoSDKTests/Info.plist
+
+schemes:
+  DitoSDK:
+    build:
+      targets:
+        DitoSDK: all
+        DitoSDKTests: [test]
+    test:
+      targets:
+        - DitoSDKTests
 

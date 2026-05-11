@@ -39,14 +39,12 @@ struct DitoNotificationOffline {
   }
 
   func notificationRead(_ notification: DitoNotificationOpenRequest) {
-    DispatchQueue.global().async {
-      DitoLogger.information(
-        "Notification - Salvando a notifação em offline"
-      )
-      DitoLogger.debug(notification)
-      let json = notification.toString
-      self.notificationDataManager.save(with: json)
-    }
+    DitoLogger.information(
+      "Notification - Salvando a notifação em offline"
+    )
+    DitoLogger.debug(notification)
+    let json = notification.toString
+    self.notificationDataManager.save(with: json)
   }
 
   func setRegisterAsCompletion(_ completion: @escaping () -> Void) {

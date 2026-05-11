@@ -15,7 +15,6 @@ class DitoIdentifyOffline {
   }
 
   func finishIdentify() {
-    self.getIdentifyCompletionClosure()?()
     self.identifyDataManager.executeAllCompletions()
     self.identifyDataManager.deleteIdentifyStamp()
     self.identifyDataManager.identitySaveCallback = nil

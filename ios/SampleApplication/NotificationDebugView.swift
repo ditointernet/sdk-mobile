@@ -11,6 +11,7 @@ struct NotificationDebugView: View {
                     notificationListCard
                     contentCard
                     actionsCard
+                    notificationOptionsCard
                 }
                 .padding()
             }
@@ -141,6 +142,30 @@ struct NotificationDebugView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(viewModel.selectedNotification == nil)
+            }
+        }
+    }
+
+    private var notificationOptionsCard: some View {
+        CardView(title: "Notification Options") {
+            VStack(spacing: 12) {
+                TextField("Sound (nome do recurso, ex: notification_sound)", text: $viewModel.optSound)
+
+                Toggle("SDK ajusta badge ao receber/clicar", isOn: $viewModel.optBadgeEnabled)
+
+                Button("Aplicar Notification Options") {
+                    viewModel.applyNotificationOptions()
+                }
+                .buttonStyle(.borderedProminent)
+                .frame(maxWidth: .infinity)
+
+                Text("Campos abaixo aplicam-se apenas Android")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+
+                TextField("Small Icon (Android, resource name)", text: $viewModel.optSmallIcon)
+
+                TextField("Accent Color (Android, ex: #FF5722)", text: $viewModel.optAccentColor)
             }
         }
     }

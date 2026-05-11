@@ -25,4 +25,14 @@
         <attribute name="event" optional="YES" attributeType="String"/>
         <attribute name="retry" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
     </entity>
+    <entity name="DitoNotificationRecord" representedClassName="DitoNotificationRecord" syncable="YES" codeGenerationType="class">
+        <attribute name="id" optional="NO" attributeType="String"/>
+        <attribute name="isRead" optional="NO" attributeType="Boolean" defaultValueString="NO" usesScalarValueType="YES"/>
+        <attribute name="link" optional="NO" attributeType="String"/>
+        <attribute name="message" optional="NO" attributeType="String"/>
+        <attribute name="notificationId" optional="NO" attributeType="String"/>
+        <attribute name="receivedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
+        <attribute name="reference" optional="NO" attributeType="String"/>
+        <attribute name="title" optional="NO" attributeType="String"/>
+    </entity>
 </model>

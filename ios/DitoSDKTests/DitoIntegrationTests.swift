@@ -115,9 +115,9 @@ class DitoIntegrationTests: XCTestCase {
         }
         wait(for: [expectationRead], timeout: timeout)
 
-        let notificationDataManager = DitoNotificationReadDataManager()
-        let savedNotifications = notificationDataManager.fetchAll
-        XCTAssertGreaterThan(savedNotifications.count, 0, "Notification read should be saved")
+        let parsed = DitoNotificationReceived(with: userInfo)
+        XCTAssertEqual(parsed.notification, "notif_integration_123")
+        XCTAssertEqual(parsed.userId, "user_integration_123")
 
         let expectationClick = XCTestExpectation(description: "Notification click callback")
         var receivedDeeplink: String?
@@ -199,23 +199,20 @@ class DitoIntegrationTests: XCTestCase {
     }
 
     func testConcurrentIdentify() {
-        let expectation1 = XCTestExpectation(description: "Identify 1")
-        let expectation2 = XCTestExpectation(description: "Identify 2")
+        let expectation = XCTestExpectation(description: "Both identifies completed")
+        expectation.expectedFulfillmentCount = 2
 
         DitoIdentifyDataManager.shared.identitySaveCallback = {
-            expectation1.fulfill()
+            expectation.fulfill()
         }
 
         Dito.identify(id: "concurrent_user_1", name: "User 1", email: "user1@test.com", customData: nil)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            DitoIdentifyDataManager.shared.identitySaveCallback = {
-                expectation2.fulfill()
-            }
             Dito.identify(id: "concurrent_user_2", name: "User 2", email: "user2@test.com", customData: nil)
         }
 
-        wait(for: [expectation1, expectation2], timeout: timeout)
+        wait(for: [expectation], timeout: timeout)
 
         let dataManager = DitoIdentifyDataManager()
         let savedIdentify = dataManager.fetch

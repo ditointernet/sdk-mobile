@@ -476,24 +476,44 @@ Se você precisa integrar com **OneSignal, Braze, ou outros SDKs de notificaçã
 
 O Android permite apenas UM `FirebaseMessagingService` por app. O guia acima mostra como criar um serviço delegador que funciona com múltiplos SDKs simultaneamente.
 
+### Customização de Notificações com `DitoNotificationOptions` (recomendado)
+
+A partir da versão 4.0.0, use `Dito.setNotificationOptions(DitoNotificationOptions(...))` para personalizar as notificações push. Pode ser chamado a qualquer momento após o `Dito.init()`.
+
+```kotlin
+import android.graphics.Color
+import br.com.dito.ditosdk.Dito
+import br.com.dito.ditosdk.notification.DitoNotificationOptions
+
+Dito.setNotificationOptions(
+    DitoNotificationOptions(
+        smallIconResId = R.drawable.ic_notification,
+        soundResourceName = "my_sound",
+        accentColor = Color.parseColor("#FF5722"),
+        badgeEnabled = true
+    )
+)
+```
+
+| Parâmetro | Tipo | Descrição |
+|-----------|------|-----------|
+| `smallIconResId` | `Int?` | Recurso drawable monocromático para o ícone da notificação |
+| `soundResourceName` | `String?` | Nome do arquivo de som em `res/raw/` (sem extensão) |
+| `accentColor` | `Int?` | Cor de destaque da notificação (use `Color.parseColor(...)`) |
+| `badgeEnabled` | `Boolean` | Habilita badge no ícone do app (padrão: `true`) |
+
+> **Depreciado**: `Options.iconNotification` foi depreciado. Substitua por `DitoNotificationOptions(smallIconResId = ...)`.
+
 ### Configuração Básica
 
 1. Configure o Firebase no seu projeto
 
-2. Configure o ícone de notificação (opcional mas recomendado):
+2. Configure o ícone de notificação:
 
 O SDK usa o seguinte fallback para o ícone de notificação:
-- `Options.iconNotification` (se configurado)
+- `DitoNotificationOptions.smallIconResId` (se configurado via `setNotificationOptions`)
 - `applicationInfo.icon` (ícone do app)
 - `android.R.drawable.ic_dialog_info` (ícone padrão do Android)
-
-**Recomendação**: Configure um ícone customizado para melhor experiência do usuário:
-
-```kotlin
-val options = Options(retry = 5)
-options.iconNotification = R.drawable.ic_notification
-Dito.init(this, options)
-```
 
 **Nota**: O ícone deve ser um drawable monocromático (branco com transparência) seguindo as [diretrizes do Android](https://developer.android.com/develop/ui/views/notifications/badges#design_guidelines).
 

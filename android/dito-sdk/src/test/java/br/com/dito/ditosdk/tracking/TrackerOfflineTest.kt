@@ -2,13 +2,9 @@ package br.com.dito.ditosdk.tracking
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
-import br.com.dito.ditosdk.service.utils.EventRequest
-import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
-import br.com.dito.ditosdk.service.utils.SigunpRequest
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
 import com.google.common.truth.Truth.assertThat
-import com.google.gson.JsonObject
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -16,6 +12,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.UUID
 
 @RunWith(RobolectricTestRunner::class)
 class TrackerOfflineTest {
@@ -29,7 +26,7 @@ class TrackerOfflineTest {
         trackerOffline = TrackerOffline(
             context,
             useInMemoryDatabase = true,
-            allowMainThreadQueries = true
+            allowMainThreadQueries = true,
         )
     }
 
@@ -40,38 +37,36 @@ class TrackerOfflineTest {
 
     @Test
     fun `identify should insert identify into database`() = runBlocking {
-        val identify = Identify("123")
-        val request = SigunpRequest("apiKey", "secret", identify)
+        val identify = Identify("123").apply {
+            name = "n"
+            email = "e"
+        }
 
-        trackerOffline.identify(request, "ref123", true)
+        trackerOffline.identify(identify, true)
         delay(500)
 
         val result = trackerOffline.getIdentify()
         assertThat(result).isNotNull()
         assertThat(result?.id).isEqualTo("123")
-        assertThat(result?.reference).isEqualTo("ref123")
         assertThat(result?.send).isTrue()
     }
 
     @Test
-    fun `identify should handle null reference`() = runBlocking {
+    fun `identify should handle send false`() = runBlocking {
         val identify = Identify("123")
-        val request = SigunpRequest("apiKey", "secret", identify)
 
-        trackerOffline.identify(request, null, false)
+        trackerOffline.identify(identify, false)
         delay(500)
 
         val result = trackerOffline.getIdentify()
         assertThat(result).isNotNull()
-        assertThat(result?.reference).isNull()
         assertThat(result?.send).isFalse()
     }
 
     @Test
     fun `updateIdentify should update send status`() = runBlocking {
         val identify = Identify("123")
-        val request = SigunpRequest("apiKey", "secret", identify)
-        trackerOffline.identify(request, "ref123", false)
+        trackerOffline.identify(identify, false)
         delay(500)
 
         trackerOffline.updateIdentify("123", true)
@@ -84,9 +79,9 @@ class TrackerOfflineTest {
     @Test
     fun `event should insert event into database`() = runBlocking {
         val event = Event("purchase")
-        val request = EventRequest("apiKey", "secret", event)
+        val aid = UUID.randomUUID().toString()
 
-        trackerOffline.event(request)
+        trackerOffline.event(event, aid)
         delay(500)
 
         val events = trackerOffline.getAllEvents()
@@ -105,11 +100,11 @@ class TrackerOfflineTest {
     fun `getAllEvents should return all events`() = runBlocking {
         val event1 = Event("purchase")
         val event2 = Event("view")
-        val request1 = EventRequest("apiKey", "secret", event1)
-        val request2 = EventRequest("apiKey", "secret", event2)
+        val a1 = UUID.randomUUID().toString()
+        val a2 = UUID.randomUUID().toString()
 
-        trackerOffline.event(request1)
-        trackerOffline.event(request2)
+        trackerOffline.event(event1, a1)
+        trackerOffline.event(event2, a2)
         delay(500)
 
         val events = trackerOffline.getAllEvents()
@@ -120,8 +115,8 @@ class TrackerOfflineTest {
     @Test
     fun `delete should remove event from database`() = runBlocking {
         val event = Event("purchase")
-        val request = EventRequest("apiKey", "secret", event)
-        trackerOffline.event(request)
+        val aid = UUID.randomUUID().toString()
+        trackerOffline.event(event, aid)
         delay(500)
 
         val events = trackerOffline.getAllEvents()
@@ -137,8 +132,8 @@ class TrackerOfflineTest {
     @Test
     fun `update should increment retry count`() = runBlocking {
         val event = Event("purchase")
-        val request = EventRequest("apiKey", "secret", event)
-        trackerOffline.event(request)
+        val aid = UUID.randomUUID().toString()
+        trackerOffline.event(event, aid)
         delay(500)
 
         val events = trackerOffline.getAllEvents()
@@ -153,13 +148,7 @@ class TrackerOfflineTest {
 
     @Test
     fun `notificationRead should insert notification into database`() = runBlocking {
-        val data = JsonObject().apply {
-            addProperty("identifier", "ident123")
-            addProperty("reference", "ref123")
-        }
-        val request = NotificationOpenRequest("apiKey", "secret", data)
-
-        trackerOffline.notificationRead(request)
+        trackerOffline.notificationRead("act1", "notif123", "ident123")
         delay(500)
 
         val notifications = trackerOffline.getAllNotificationRead()
@@ -176,12 +165,7 @@ class TrackerOfflineTest {
 
     @Test
     fun `delete should remove notification from database`() = runBlocking {
-        val data = JsonObject().apply {
-            addProperty("identifier", "ident123")
-            addProperty("reference", "ref123")
-        }
-        val request = NotificationOpenRequest("apiKey", "secret", data)
-        trackerOffline.notificationRead(request)
+        trackerOffline.notificationRead("act1", "notif123", "ident123")
         delay(500)
 
         val notifications = trackerOffline.getAllNotificationRead()

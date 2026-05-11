@@ -35,6 +35,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     // Inicializa o Dito SDK (configurações internas do SDK)
     Dito.shared.configure()
+    let options = DitoNotificationOptions(soundName: "notification.mp3")
+    Dito.setNotificationOptions(options)
 
     // Configura o centro de notificações e registra o app para receber push
     UNUserNotificationCenter.current().delegate = self
@@ -176,6 +178,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
     if let token = cachedToken {
       Dito.notificationReceived(userInfo: userInfo, token: token)
+    
     } else {
       Messaging.messaging().token { [weak self] token, error in
         if let token = token {
@@ -221,9 +224,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
-
-    // Salvar notificação para debug (se ainda não foi salva)
-    NotificationDebugHelper.saveNotification(userInfo)
 
     // Notifica o Dito SDK sobre o clique na notificação
     Dito.notificationClick(userInfo: userInfo)

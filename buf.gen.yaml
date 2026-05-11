@@ -1,0 +1,15 @@
+version: v2
+inputs:
+  - module: buf.build/dito/ingest
+plugins:
+  - remote: buf.build/protocolbuffers/java:v28.2
+    out: android/dito-sdk/src/main/java
+    opt: lite
+  - remote: buf.build/connectrpc/kotlin:v0.7.0
+    out: android/dito-sdk/src/main/java
+    opt:
+      - paths=source_relative
+  - remote: buf.build/apple/swift:v1.28.0
+    out: ios/DitoSDK/Sources/Generated
+  - remote: buf.build/connectrpc/swift:v0.14.0
+    out: ios/DitoSDK/Sources/Generated
