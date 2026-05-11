@@ -68,7 +68,7 @@ jobs:
       if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd ios
-        xcodebuild test -project DitoSDK.xcodeproj -scheme DitoSDK -destination 'platform=iOS Simulator,name=iPhone 15'
+        xcodebuild test -project DitoSDK.xcodeproj -scheme DitoSDK -destination 'platform=iOS Simulator,name=iPhone 16'
 
     - name: Upload artifacts
       if: steps.check-changes.outputs.has_changes == 'true'
