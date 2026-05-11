@@ -50,6 +50,12 @@ android {
         jvmTarget = "17"
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     publishing {
         singleVariant("release") {
             withSourcesJar()
@@ -78,6 +84,9 @@ dependencies {
     implementation(libs.protobufJavalite)
 
     implementation(libs.gson)
+    implementation(libs.converter.gson)
+    implementation(libs.logging.interceptor)
+    implementation(libs.retrofit)
 
     // Firebase
     implementation(platform(libs.firebase.bom))
