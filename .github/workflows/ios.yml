@@ -62,7 +62,7 @@ jobs:
       if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd ios
-        xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release clean build
+        xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release -destination 'generic/platform=iOS' clean build
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
@@ -126,7 +126,7 @@ jobs:
         if: steps.check-changes.outputs.has_code_changes == 'true'
         run: |
           cd ios
-          xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release clean build
+          xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release -destination 'generic/platform=iOS' clean build
 
       - name: Publish to CocoaPods
         if: steps.check-changes.outputs.has_code_changes == 'true'
