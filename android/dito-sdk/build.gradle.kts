@@ -39,6 +39,8 @@ android {
                 "\"${System.getenv("DITO_TEST_API_KEY") ?: ""}\"")
             buildConfigField("String", "TEST_API_SECRET",
                 "\"${System.getenv("DITO_TEST_API_SECRET") ?: ""}\"")
+            buildConfigField("String", "TEST_X_API_KEY",
+                "\"${System.getenv("DITO_TEST_X_API_KEY") ?: ""}\"")
         }
     }
     testBuildType = "prodTest"

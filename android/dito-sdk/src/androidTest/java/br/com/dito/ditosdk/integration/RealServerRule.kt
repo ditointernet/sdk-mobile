@@ -15,16 +15,33 @@ internal class RealServerRule(
 
     override fun before() {
         val ctx = ApplicationProvider.getApplicationContext<Context>()
-        val opts = interceptor?.let {
-            Options(httpClientBuilder = { addInterceptor(it) })
-        }
-        if (opts != null) Dito.init(ctx, TestConfig.API_KEY, TestConfig.API_SECRET, opts)
-        else Dito.init(ctx, TestConfig.API_KEY, TestConfig.API_SECRET)
+        initDito(ctx, optionsForInterceptor())
         userId = "test-android-${UUID.randomUUID()}"
         Thread.sleep(500)
     }
 
     override fun after() {
-        Dito.init(ApplicationProvider.getApplicationContext(), TestConfig.API_KEY, TestConfig.API_SECRET)
+        val ctx = ApplicationProvider.getApplicationContext<Context>()
+        initDito(ctx, optionsForInterceptor())
+    }
+
+    private fun optionsForInterceptor(): Options? =
+        interceptor?.let { Options(httpClientBuilder = { addInterceptor(it) }) }
+
+    private fun initDito(ctx: Context, opts: Options?) {
+        val secretTrimmed = TestConfig.API_SECRET.trim()
+        if (secretTrimmed.isNotEmpty()) {
+            if (opts != null) {
+                Dito.init(ctx, TestConfig.API_KEY, secretTrimmed, opts)
+            } else {
+                Dito.init(ctx, TestConfig.API_KEY, secretTrimmed)
+            }
+        } else {
+            if (opts != null) {
+                Dito.init(ctx, TestConfig.X_API_KEY, "", opts)
+            } else {
+                Dito.init(ctx, TestConfig.X_API_KEY, "")
+            }
+        }
     }
 }
