@@ -82,6 +82,7 @@ targets:
       - path: DitoSDKTests
     dependencies:
       - target: DitoSDK
+      - target: Sample
     settings:
       base:
         INFOPLIST_FILE: DitoSDKTests/Info.plist

@@ -15,6 +15,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication
       .LaunchOptionsKey: Any]?
   ) -> Bool {
+    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+      if window == nil {
+        window = UIWindow(frame: UIScreen.main.bounds)
+        window?.rootViewController = UIViewController()
+        window?.makeKeyAndVisible()
+      }
+      return true
+    }
+
     #if DEBUG
     Dito.enableDebugMode(true)
     print("🐛 Debug mode enabled for Dito SDK")

@@ -83,6 +83,10 @@ public class Reachability {
     /// Set to `false` to force Reachability.connection to .none when on cellular connection (default value `true`)
     public var allowsCellularConnection: Bool
 
+    #if DEBUG
+    public var debug_connectionOverride: Connection?
+    #endif
+
     // The notification center on which "reachability changed" events are being posted
     public var notificationCenter: NotificationCenter = NotificationCenter.default
 
@@ -97,6 +101,11 @@ public class Reachability {
     }
 
     public var connection: Connection {
+        #if DEBUG
+        if let override = debug_connectionOverride {
+            return override
+        }
+        #endif
         if flags == nil {
             try? setReachabilityFlags()
         }

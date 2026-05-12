@@ -12,9 +12,22 @@ public class Dito {
   #if DEBUG
   static var testURLSessionConfiguration: URLSessionConfiguration? = nil
   static var testNotificationReceivedIngestClient: MobileIngestClientProtocol?
+  static var testIdentifyTrackIngestClient: MobileIngestClientProtocol?
   #endif
   private var reachability = try! Reachability()
-  lazy var retry = DitoRetry()
+  private var backingRetry: DitoRetry?
+  var retry: DitoRetry {
+    if let existing = backingRetry {
+      return existing
+    }
+    #if DEBUG
+    let created = DitoRetry(client: Dito.testIdentifyTrackIngestClient)
+    #else
+    let created = DitoRetry()
+    #endif
+    backingRetry = created
+    return created
+  }
 
   public static func enableDebugMode(_ enabled: Bool = true) {
     DitoLogger.isDebugEnabled = enabled
@@ -92,7 +105,11 @@ public class Dito {
   ) {
     let user = createUser(name: name, email: email, customData: customData)
     DispatchQueue.main.async {
+      #if DEBUG
+      let identifyController = DitoIdentify(retry: Dito.shared.retry, client: Dito.testIdentifyTrackIngestClient)
+      #else
       let identifyController = DitoIdentify(retry: Dito.shared.retry)
+      #endif
       identifyController.identify(id: id, data: user)
     }
   }
@@ -117,7 +134,11 @@ public class Dito {
   @available(*, deprecated, message: "Use identify(id:name:email:customData:) instead for consistency with Android SDK")
   nonisolated public static func identify(id: String, data: DitoUser) {
     DispatchQueue.main.async {
+      #if DEBUG
+      let dtIdentify = DitoIdentify(retry: Dito.shared.retry, client: Dito.testIdentifyTrackIngestClient)
+      #else
       let dtIdentify = DitoIdentify(retry: Dito.shared.retry)
+      #endif
       dtIdentify.identify(id: id, data: data)
     }
   }
@@ -132,7 +153,11 @@ public class Dito {
   ) {
     let event = createEvent(action: action, customData: data)
     DispatchQueue.main.async {
+      #if DEBUG
+      let trackController = DitoTrack(client: Dito.testIdentifyTrackIngestClient)
+      #else
       let trackController = DitoTrack()
+      #endif
       trackController.track(data: event)
     }
   }
@@ -153,7 +178,11 @@ public class Dito {
   @available(*, deprecated, message: "Use track(action:data:) instead for consistency with Android SDK")
   nonisolated public static func track(event: DitoEvent) {
     DispatchQueue.main.async {
+      #if DEBUG
+      let trackController = DitoTrack(client: Dito.testIdentifyTrackIngestClient)
+      #else
       let trackController = DitoTrack()
+      #endif
       trackController.track(data: event)
     }
   }
@@ -360,3 +389,30 @@ extension Dito {
     }
   }
 }
+
+#if DEBUG
+extension Dito {
+  static func resetFacadeIsolationState() {
+    NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
+    shared.reachability.stopNotifier()
+    shared.reachability.debug_connectionOverride = nil
+    shared.backingRetry = nil
+    appKey = ""
+    appSecret = ""
+    signature = ""
+    apiKey = ""
+    bundleId = ""
+    testURLSessionConfiguration = nil
+    testNotificationReceivedIngestClient = nil
+    testIdentifyTrackIngestClient = nil
+  }
+
+  static func setReachabilityConnectionOverrideForTests(_ connection: Reachability.Connection?) {
+    shared.reachability.debug_connectionOverride = connection
+  }
+
+  static func postReachabilityChangedNotificationForTests() {
+    NotificationCenter.default.post(name: .reachabilityChanged, object: shared.reachability)
+  }
+}
+#endif

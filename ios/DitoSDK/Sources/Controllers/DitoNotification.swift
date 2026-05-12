@@ -14,7 +14,11 @@ class DitoNotification {
         client: MobileIngestClientProtocol? = nil
     ) {
         self.notificationOffline = notificationOffline
+        #if DEBUG
+        self.client = client ?? Self.testMobileIngestClient ?? MobileIngestClient.buildFromDitoConfig()
+        #else
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
+        #endif
     }
 
     func makeNotificationContent(title: String, body: String) -> UNMutableNotificationContent {
@@ -181,3 +185,9 @@ class DitoNotification {
         )
     }
 }
+
+#if DEBUG
+extension DitoNotification {
+    static var testMobileIngestClient: MobileIngestClientProtocol?
+}
+#endif

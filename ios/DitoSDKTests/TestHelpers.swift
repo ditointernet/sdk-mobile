@@ -145,6 +145,7 @@ extension XCTestCase {
         Dito.setNotificationOptions(DitoNotificationOptions())
         #if DEBUG
         Dito.testURLSessionConfiguration = TestHelpers.makeFastFailConfiguration()
+        DitoNotification.testMobileIngestClient = nil
         #endif
         TestHelpers.resetAllState()
     }
@@ -153,6 +154,7 @@ extension XCTestCase {
         TestHelpers.resetAllState()
         #if DEBUG
         Dito.testURLSessionConfiguration = nil
+        DitoNotification.testMobileIngestClient = nil
         #endif
     }
 

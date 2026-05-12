@@ -151,8 +151,6 @@ struct NotificationDebugView: View {
             VStack(spacing: 12) {
                 TextField("Sound (nome do recurso, ex: notification_sound)", text: $viewModel.optSound)
 
-                Toggle("SDK ajusta badge ao receber/clicar", isOn: $viewModel.optBadgeEnabled)
-
                 Button("Aplicar Notification Options") {
                     viewModel.applyNotificationOptions()
                 }

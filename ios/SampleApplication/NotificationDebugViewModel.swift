@@ -10,7 +10,6 @@ class NotificationDebugViewModel: ObservableObject {
     @Published var showToast = false
     @Published var toastMessage = ""
     @Published var optSound: String = ""
-    @Published var optBadgeEnabled: Bool = true
     @Published var optSmallIcon: String = ""
     @Published var optAccentColor: String = ""
 
@@ -66,8 +65,7 @@ class NotificationDebugViewModel: ObservableObject {
 
     func applyNotificationOptions() {
         let options = DitoNotificationOptions(
-            soundName: optSound.isEmpty ? nil : optSound,
-            badgeEnabled: optBadgeEnabled
+            soundName: optSound.isEmpty ? nil : optSound
         )
         Dito.setNotificationOptions(options)
         showToastMessage("Notification Options aplicadas")
