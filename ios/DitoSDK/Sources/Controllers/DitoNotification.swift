@@ -11,11 +11,16 @@ class DitoNotification {
     private let client: MobileIngestClientProtocol
     var badgeUpdater: (_ delta: Int) -> Void
 
-    init(notificationOffline: DitoNotificationOffline = .init()) {
+    init(
+        notificationOffline: DitoNotificationOffline = .init(),
+        client: MobileIngestClientProtocol? = nil,
+        badgeUpdater: ((_ delta: Int) -> Void)? = nil
+    ) {
         self.notificationOffline = notificationOffline
-        self.client = MobileIngestClient.buildFromDitoConfig()
-        self.badgeUpdater = { delta in
+        self.client = client ?? MobileIngestClient.buildFromDitoConfig()
+        self.badgeUpdater = badgeUpdater ?? { delta in
             DispatchQueue.main.async {
+                guard Bundle.main.bundleIdentifier != nil else { return }
                 let current = UIApplication.shared.applicationIconBadgeNumber
                 let newValue = max(0, current + delta)
                 UNUserNotificationCenter.current().setBadgeCount(newValue) { _ in }
@@ -144,7 +149,10 @@ class DitoNotification {
 
     private func processNotificationClick(notificationId: String, reference: String, identifier: String) {
         Task {
-            guard !identifier.isEmpty else { return }
+            guard !identifier.isEmpty else {
+                DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
+                return
+            }
             let activity = mapper.mapNotificationClick(notificationId: notificationId, identifier: identifier)
             let request = mapper.buildRequest(userId: identifier, activities: [activity])
             do {
@@ -152,6 +160,24 @@ class DitoNotification {
                 DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
             } catch {
                 DitoLogger.error(error.localizedDescription)
+                let data = DitoDataNotification(
+                    identifier: identifier,
+                    reference: reference,
+                    notification: notificationId,
+                    notificationLogId: "",
+                    userId: identifier,
+                    deviceType: "",
+                    channel: "",
+                    notificationName: "",
+                    title: "",
+                    message: "",
+                    link: "",
+                    logId: ""
+                )
+                let openRequest = makeNotificationRequest(data: data)
+                DispatchQueue.global(qos: .background).async {
+                    self.notificationOffline.notificationRead(openRequest)
+                }
             }
         }
     }

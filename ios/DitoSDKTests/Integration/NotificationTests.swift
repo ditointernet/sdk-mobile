@@ -18,6 +18,11 @@ final class NotificationTests: XCTestCase {
         ProdURLProtocol.reset()
     }
 
+    override func tearDown() {
+        super.tearDown()
+        helper.teardown()
+    }
+
     func testNotificationClickReturns200() {
         let userInfo: [AnyHashable: Any] = [
             "notification": "test-notif-\(helper.userId)",
@@ -26,10 +31,10 @@ final class NotificationTests: XCTestCase {
             "notification_name": "Integration Test Notification"
         ]
         Dito.identify(id: helper.userId, name: "Notif User iOS")
-        Thread.sleep(forTimeInterval: 5)
+        TestHelpers.sleep(8)
         ProdURLProtocol.reset()
         Dito.notificationClick(userInfo: userInfo)
-        Thread.sleep(forTimeInterval: 5)
+        TestHelpers.sleep(8)
         let code = ProdURLProtocol.lastCode()
         XCTAssertTrue(code == 200 || code == 204, "notificationClick deve retornar 200 ou 204, obtido: \(code)")
     }
@@ -42,10 +47,10 @@ final class NotificationTests: XCTestCase {
             "notification_name": "Integration Test Notification"
         ]
         Dito.identify(id: helper.userId, name: "Notif User iOS")
-        Thread.sleep(forTimeInterval: 5)
+        TestHelpers.sleep(8)
         ProdURLProtocol.reset()
         Dito.notificationReceived(userInfo: userInfo, token: "fake-apns-\(helper.userId)")
-        Thread.sleep(forTimeInterval: 5)
+        TestHelpers.sleep(8)
         let code = ProdURLProtocol.lastCode()
         XCTAssertTrue(code == 200 || code == 204, "notificationReceived deve retornar 200 ou 204, obtido: \(code)")
     }

@@ -9,11 +9,12 @@ class DitoIdentify {
 
     init(
         identifyOffline: DitoIdentifyOffline = .shared,
-        retry: DitoRetry = .init()
+        retry: DitoRetry = .init(),
+        client: MobileIngestClientProtocol? = nil
     ) {
         self.identifyOffline = identifyOffline
         self.retry = retry
-        self.client = MobileIngestClient.buildFromDitoConfig()
+        self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
     func identify(id: String, data: DitoUser? = nil) {

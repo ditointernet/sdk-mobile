@@ -46,7 +46,8 @@ class TestHelpers {
 
     static func resetSingletons() {
         DitoIdentifyDataManager.shared.identitySaveCallback = nil
-        DitoIdentifyOffline.shared.finishIdentify()
+        DitoIdentifyDataManager.shared.clearCompletionClosures()
+        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
     }
 
     static func createInMemoryCoreDataStack() -> NSPersistentContainer? {
@@ -69,6 +70,13 @@ class TestHelpers {
         return container
     }
 
+    static func sleep(_ seconds: Double) {
+        let deadline = Date(timeIntervalSinceNow: seconds)
+        while Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+    }
+
     static func waitForAsyncOperation(timeout: TimeInterval = 2.0, operation: @escaping (@escaping () -> Void) -> Void) -> Bool {
         let expectation = XCTestExpectation(description: "Async operation")
 
@@ -78,6 +86,13 @@ class TestHelpers {
 
         let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
         return result == .completed
+    }
+
+    static func makeFastFailConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 0.1
+        config.timeoutIntervalForResource = 0.1
+        return config
     }
 
     static func createMockDitoUser(
@@ -125,11 +140,21 @@ class TestHelpers {
 extension XCTestCase {
 
     func setupTestEnvironment() {
+        _ = DitoCoreDataManager.shared.persistentContainer
+        Dito.setNotificationOptions(DitoNotificationOptions(badgeEnabled: false))
+        #if DEBUG
+        Dito.testURLSessionConfiguration = TestHelpers.makeFastFailConfiguration()
+        Dito.testBadgeUpdater = { _ in }
+        #endif
         TestHelpers.resetAllState()
     }
 
     func teardownTestEnvironment() {
         TestHelpers.resetAllState()
+        #if DEBUG
+        Dito.testURLSessionConfiguration = nil
+        Dito.testBadgeUpdater = nil
+        #endif
     }
 
     func waitForExpectation(

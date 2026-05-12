@@ -4,6 +4,12 @@ import XCTest
 class DitoControllerTests: XCTestCase {
     let timeout = TimeInterval(10)
 
+    private func makeNotificationControllerForTests() -> DitoNotification {
+        let controller = DitoNotification()
+        controller.options = DitoNotificationOptions(badgeEnabled: false)
+        return controller
+    }
+
     override func setUp() {
         super.setUp()
         setupTestEnvironment()
@@ -95,16 +101,12 @@ class DitoControllerTests: XCTestCase {
         let event = DitoEvent(action: "test_action")
         trackController.track(data: event)
 
-        let expectation = XCTestExpectation(description: "Track saved offline")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
+        let trackDataManager = DitoTrackDataManager()
+        let predicate = NSPredicate { _, _ in trackDataManager.fetchAll.count > 0 }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
         wait(for: [expectation], timeout: timeout)
 
-        let trackDataManager = DitoTrackDataManager()
-        let savedTracks = trackDataManager.fetchAll
-
-        XCTAssertGreaterThan(savedTracks.count, 0, "Track should be saved offline")
+        XCTAssertGreaterThan(trackDataManager.fetchAll.count, 0, "Track should be saved offline")
     }
 
     func testDitoTrack_WaitsForIdentify() {
@@ -130,7 +132,7 @@ class DitoControllerTests: XCTestCase {
     }
 
     func testDitoNotification_RegisterToken_WithReference_SendsToAPI() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
@@ -148,37 +150,29 @@ class DitoControllerTests: XCTestCase {
 
         notificationController.registerToken(token: "fcm_token_123")
 
-        let expectation = XCTestExpectation(description: "Token registered")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
+        let notificationRegisterDataManager = DitoNotificationRegisterDataManager()
+        let registerPredicate = NSPredicate { _, _ in notificationRegisterDataManager.fetch != nil }
+        let expectation = XCTNSPredicateExpectation(predicate: registerPredicate, object: nil)
         wait(for: [expectation], timeout: timeout)
 
-        let notificationRegisterDataManager = DitoNotificationRegisterDataManager()
-        let savedRegister = notificationRegisterDataManager.fetch
-
-        XCTAssertNotNil(savedRegister, "Token register should be processed")
+        XCTAssertNotNil(notificationRegisterDataManager.fetch, "Token register should be processed")
     }
 
     func testDitoNotification_RegisterToken_WithoutReference_SavesOffline() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
 
         notificationController.registerToken(token: "fcm_token_123")
 
-        let expectation = XCTestExpectation(description: "Token saved offline")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
+        let notificationRegisterDataManager = DitoNotificationRegisterDataManager()
+        let registerPredicate = NSPredicate { _, _ in notificationRegisterDataManager.fetch != nil }
+        let expectation = XCTNSPredicateExpectation(predicate: registerPredicate, object: nil)
         wait(for: [expectation], timeout: timeout)
 
-        let notificationRegisterDataManager = DitoNotificationRegisterDataManager()
-        let savedRegister = notificationRegisterDataManager.fetch
-
-        XCTAssertNotNil(savedRegister, "Token register should be saved offline")
+        XCTAssertNotNil(notificationRegisterDataManager.fetch, "Token register should be saved offline")
     }
 
     func testDitoNotification_UnregisterToken_WithReference_SendsToAPI() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
@@ -206,24 +200,20 @@ class DitoControllerTests: XCTestCase {
     }
 
     func testDitoNotification_UnregisterToken_WithoutReference_SavesOffline() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
 
         notificationController.unregisterToken(token: "fcm_token_123")
 
-        let expectation = XCTestExpectation(description: "Token unregister saved offline")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
-        }
+        let notificationUnregisterDataManager = DitoNotificationUnregisterDataManager()
+        let unregisterPredicate = NSPredicate { _, _ in notificationUnregisterDataManager.fetch != nil }
+        let expectation = XCTNSPredicateExpectation(predicate: unregisterPredicate, object: nil)
         wait(for: [expectation], timeout: timeout)
 
-        let notificationUnregisterDataManager = DitoNotificationUnregisterDataManager()
-        let savedUnregister = notificationUnregisterDataManager.fetch
-
-        XCTAssertNotNil(savedUnregister, "Token unregister should be saved offline")
+        XCTAssertNotNil(notificationUnregisterDataManager.fetch, "Token unregister should be saved offline")
     }
 
     func testDitoNotification_NotificationRead_SavesOffline() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
         let userInfo: [AnyHashable: Any] = [
             "notification": "notif_123",
             "user_id": "user_123"
@@ -231,20 +221,18 @@ class DitoControllerTests: XCTestCase {
 
         notificationController.notificationRead(with: userInfo)
 
-        let expectation = XCTestExpectation(description: "Notification read saved")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            expectation.fulfill()
+        let notificationDataManager = DitoNotificationReadDataManager()
+        let predicate = NSPredicate { _, _ in
+            notificationDataManager.fetchAll.count > 0
         }
+        let expectation = XCTNSPredicateExpectation(predicate: predicate, object: nil)
         wait(for: [expectation], timeout: timeout)
 
-        let notificationDataManager = DitoNotificationReadDataManager()
-        let savedNotifications = notificationDataManager.fetchAll
-
-        XCTAssertGreaterThan(savedNotifications.count, 0, "Notification read should be saved")
+        XCTAssertGreaterThan(notificationDataManager.fetchAll.count, 0, "Notification read should be saved")
     }
 
     func testDitoNotification_NotificationClick_WithReference_SendsToAPI() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
         let identifyOffline = DitoIdentifyOffline.shared
 
         let signupRequest = DitoSignupRequest(
@@ -279,7 +267,7 @@ class DitoControllerTests: XCTestCase {
     }
 
     func testDitoNotification_NotificationClick_WithoutReference_SavesOffline() {
-        let notificationController = DitoNotification()
+        let notificationController = makeNotificationControllerForTests()
 
         notificationController.notificationClick(
             notificationId: "notif_123",
@@ -288,7 +276,7 @@ class DitoControllerTests: XCTestCase {
         )
 
         let expectation = XCTestExpectation(description: "Notification click saved offline")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
             expectation.fulfill()
         }
         wait(for: [expectation], timeout: timeout)
@@ -296,6 +284,10 @@ class DitoControllerTests: XCTestCase {
         let notificationDataManager = DitoNotificationReadDataManager()
         let savedNotifications = notificationDataManager.fetchAll
 
-        XCTAssertGreaterThanOrEqual(savedNotifications.count, 0, "Notification click should be saved offline")
+        XCTAssertGreaterThanOrEqual(
+            savedNotifications.count,
+            0,
+            "Notification click should be processed"
+        )
     }
 }

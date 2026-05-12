@@ -104,7 +104,7 @@ extension String {
 
   private var stripped: String {
     let okayChars = Set(
-      "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLKMNOPQRSTUVWXYZ-"
+      "abcdefghijklmnopqrstuvwxyz ABCDEFGHIJKLKMNOPQRSTUVWXYZ-_"
     )
     return self.filter { okayChars.contains($0) }
   }

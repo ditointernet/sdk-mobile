@@ -61,9 +61,14 @@ final class MobileIngestClient: MobileIngestClientProtocol {
     }
 
     static func buildFromDitoConfig() -> MobileIngestClient {
-        Dito.apiKey.isEmpty
-            ? withLegacyAuth(apiKey: Dito.appKey, sha1Signature: Dito.signature)
-            : withApiKey(Dito.apiKey, bundleId: Dito.bundleId)
+        #if DEBUG
+        let urlSessionConfiguration = Dito.testURLSessionConfiguration
+        #else
+        let urlSessionConfiguration: URLSessionConfiguration? = nil
+        #endif
+        return Dito.apiKey.isEmpty
+            ? withLegacyAuth(apiKey: Dito.appKey, sha1Signature: Dito.signature, urlSessionConfiguration: urlSessionConfiguration)
+            : withApiKey(Dito.apiKey, bundleId: Dito.bundleId, urlSessionConfiguration: urlSessionConfiguration)
     }
 }
 

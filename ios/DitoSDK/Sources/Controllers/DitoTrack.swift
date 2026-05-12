@@ -6,9 +6,12 @@ class DitoTrack {
     private let mapper = ActivityMapper()
     private let client: MobileIngestClientProtocol
 
-    init(trackOffline: DitoTrackOffline = .init()) {
+    init(
+        trackOffline: DitoTrackOffline = .init(),
+        client: MobileIngestClientProtocol? = nil
+    ) {
         self.trackOffline = trackOffline
-        self.client = MobileIngestClient.buildFromDitoConfig()
+        self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
     func track(data: DitoEvent) {

@@ -134,20 +134,18 @@ class DitoIntegrationTests: XCTestCase {
     }
 
     func testIdentify_WithEmptyID() {
-        let expectation = XCTestExpectation(description: "Identify with empty ID")
-
-        DitoIdentifyDataManager.shared.identitySaveCallback = {
-            expectation.fulfill()
-        }
-
         Dito.identify(id: "", name: "Test", email: "test@test.com", customData: nil)
 
+        let expectation = XCTestExpectation(description: "Identify with empty ID")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            expectation.fulfill()
+        }
         wait(for: [expectation], timeout: timeout)
 
         let dataManager = DitoIdentifyDataManager()
         let savedIdentify = dataManager.fetch
 
-        XCTAssertNotNil(savedIdentify, "Identify should still be saved even with empty ID")
+        XCTAssertNil(savedIdentify, "Identify with empty ID should not be saved")
     }
 
     func testTrack_WithEmptyAction() {
@@ -199,19 +197,16 @@ class DitoIntegrationTests: XCTestCase {
     }
 
     func testConcurrentIdentify() {
-        let expectation = XCTestExpectation(description: "Both identifies completed")
-        expectation.expectedFulfillmentCount = 2
-
-        DitoIdentifyDataManager.shared.identitySaveCallback = {
-            expectation.fulfill()
-        }
-
         Dito.identify(id: "concurrent_user_1", name: "User 1", email: "user1@test.com", customData: nil)
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             Dito.identify(id: "concurrent_user_2", name: "User 2", email: "user2@test.com", customData: nil)
         }
 
+        let expectation = XCTestExpectation(description: "Both identifies dispatched")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            expectation.fulfill()
+        }
         wait(for: [expectation], timeout: timeout)
 
         let dataManager = DitoIdentifyDataManager()

@@ -37,8 +37,7 @@ class DitoNotificationCoreDataManager {
 
     func getAll() -> [DitoNotificationRecord] {
         guard let container = container else { return [] }
-        let context = container.newBackgroundContext()
-        context.undoManager = nil
+        let context = container.viewContext
         var results: [DitoNotificationRecord] = []
         context.performAndWait {
             let request = DitoNotificationRecord.fetchRequest()
@@ -55,8 +54,7 @@ class DitoNotificationCoreDataManager {
 
     func markAsRead(id: String) {
         guard let container = container else { return }
-        let context = container.newBackgroundContext()
-        context.undoManager = nil
+        let context = container.viewContext
         context.performAndWait {
             let request = DitoNotificationRecord.fetchRequest()
             request.predicate = NSPredicate(format: "id == %@", id)
@@ -72,8 +70,7 @@ class DitoNotificationCoreDataManager {
 
     func markAsReadByNotificationId(_ notificationId: String) {
         guard let container = container else { return }
-        let context = container.newBackgroundContext()
-        context.undoManager = nil
+        let context = container.viewContext
         context.performAndWait {
             let request = DitoNotificationRecord.fetchRequest()
             request.predicate = NSPredicate(format: "notificationId == %@", notificationId)

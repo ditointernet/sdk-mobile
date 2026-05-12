@@ -123,8 +123,8 @@ struct ActivityMapper {
 
     private func buildAppInfo() -> Mobileingest_V1_AppInfo {
         var app = Mobileingest_V1_AppInfo()
-        app.id = Bundle.main.bundleIdentifier ?? ""
-        app.version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        app.id = Dito.bundleId
+        app.version = Bundle(for: Dito.self).infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
         app.platform = "iOS"
         return app
     }

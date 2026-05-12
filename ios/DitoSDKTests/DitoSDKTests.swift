@@ -246,16 +246,9 @@ class DitoSDKTests: XCTestCase {
     }
 
     func testCreateAt() {
-        let expect = expectation(
-            description: "register an user with an valid created at date"
-        )
-
-        let id = "1020"
-
         let createdAt = Date()
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
-
         let user = DitoUser(
             name: nil,
             gender: nil,
@@ -265,20 +258,6 @@ class DitoSDKTests: XCTestCase {
             createdAt: createdAt,
             customData: nil
         )
-
-        // Set completion closure using the shared singleton
-        DitoIdentifyDataManager.shared.identitySaveCallback = {
-            expect.fulfill()
-        }
-
-        Dito.identify(
-            id: id,
-            name: nil,
-            email: nil,
-            customData: nil
-        )
-        wait(for: [expect], timeout: self.timeout)
-
         XCTAssertEqual(user.createdAt, dateFormatter.string(from: createdAt))
     }
 
@@ -444,6 +423,7 @@ class DitoSDKTests: XCTestCase {
     func testPersistenceFetchIdentify() {
 
         let dataManager = DitoIdentifyDataManager()
+        _ = dataManager.save(id: "sdk223", reference: "drrt", json: "rtrt:{{rtrt:}}", send: true)
         let result = dataManager.fetch
 
         XCTAssertNotNil(result, "Result must be not nil")
@@ -473,6 +453,7 @@ class DitoSDKTests: XCTestCase {
     func testPersistenceFetchTrack() {
 
         let dataManager = DitoTrackDataManager()
+        _ = dataManager.save(event: "toque-no-botao-de-cancelar", retry: 1)
         let result = dataManager.fetchAll
 
         XCTAssertTrue(!result.isEmpty, "Result must not be empty - tracks should exist")

@@ -22,6 +22,12 @@ final class ProdURLProtocol: URLProtocol {
         return capturedCodes
     }
 
+    static func makeConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.default
+        config.protocolClasses = [ProdURLProtocol.self]
+        return config
+    }
+
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
@@ -29,7 +35,8 @@ final class ProdURLProtocol: URLProtocol {
         let config = URLSessionConfiguration.default
         config.protocolClasses = []
         let session = URLSession(configuration: config)
-        session.dataTask(with: request) { data, response, error in
+        session.dataTask(with: request) { [session] data, response, error in
+            _ = session
             if let http = response as? HTTPURLResponse {
                 ProdURLProtocol.capturedCodesLock.lock()
                 ProdURLProtocol.capturedCodes.append(http.statusCode)

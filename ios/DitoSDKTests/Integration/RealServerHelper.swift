@@ -6,6 +6,8 @@ final class RealServerHelper {
     private(set) var userId: String = ""
 
     func setup() {
+        Dito.testURLSessionConfiguration = ProdURLProtocol.makeConfiguration()
+        Dito.testBadgeUpdater = { _ in }
         let secret = TestConfig.apiSecret
         if !secret.isEmpty {
             Dito.configure(appKey: TestConfig.apiKey, appSecret: secret)
@@ -24,7 +26,14 @@ final class RealServerHelper {
             }
             Dito.configure(apiKey: xKey, bundleId: bundleId)
         }
-        Thread.sleep(forTimeInterval: 0.5)
+        TestHelpers.sleep(0.5)
         userId = "test-ios-\(UUID().uuidString)"
+    }
+
+    func teardown() {
+        TestHelpers.resetAllState()
+        Dito.testURLSessionConfiguration = nil
+        Dito.testBadgeUpdater = nil
+        ProdURLProtocol.reset()
     }
 }

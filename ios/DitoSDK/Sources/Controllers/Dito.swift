@@ -9,6 +9,10 @@ public class Dito {
   static var bundleId: String = ""
   private static var notificationOptions = DitoNotificationOptions()
   public static var notificationReceivedListener: (([AnyHashable: Any]) -> Void)? = nil
+  #if DEBUG
+  static var testURLSessionConfiguration: URLSessionConfiguration? = nil
+  static var testBadgeUpdater: ((_ delta: Int) -> Void)? = nil
+  #endif
   private var reachability = try! Reachability()
   lazy var retry = DitoRetry()
 
@@ -158,7 +162,11 @@ public class Dito {
   /// - Parameter token: The FCM token obtained from Firebase Messaging
   nonisolated public static func registerDevice(token: String) {
     DispatchQueue.main.async {
+      #if DEBUG
+      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
+      #else
       let notificationController = DitoNotification()
+      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.registerToken(token: token)
     }
@@ -168,7 +176,11 @@ public class Dito {
   /// - Parameter token: The FCM token to unregister
   nonisolated public static func unregisterDevice(token: String) {
     DispatchQueue.main.async {
+      #if DEBUG
+      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
+      #else
       let notificationController = DitoNotification()
+      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.unregisterToken(token: token)
     }
@@ -296,7 +308,11 @@ public class Dito {
   ) -> DitoNotificationReceived {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
+      #if DEBUG
+      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
+      #else
       let notificationController = DitoNotification()
+      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
@@ -325,7 +341,11 @@ public class Dito {
   ) -> DitoNotificationReceived {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
+      #if DEBUG
+      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
+      #else
       let notificationController = DitoNotification()
+      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
