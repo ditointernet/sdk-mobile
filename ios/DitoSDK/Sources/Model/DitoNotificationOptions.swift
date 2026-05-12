@@ -1,9 +1,7 @@
 public struct DitoNotificationOptions {
     public var soundName: String?
-    public var badgeEnabled: Bool
 
-    public init(soundName: String? = nil, badgeEnabled: Bool = true) {
+    public init(soundName: String? = nil) {
         self.soundName = soundName
-        self.badgeEnabled = badgeEnabled
     }
 }

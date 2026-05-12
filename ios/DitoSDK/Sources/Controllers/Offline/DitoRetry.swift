@@ -2,12 +2,6 @@ import CoreData
 import Foundation
 
 extension DitoRetry {
-    struct TrackData: Sendable {
-        let id: NSManagedObjectID
-        let eventJSON: String
-        let retry: Int16
-    }
-
     struct NotificationData: Sendable {
         let id: NSManagedObjectID
         let json: String?
@@ -28,24 +22,29 @@ class DitoRetry {
     init(
         identifyOffline: DitoIdentifyOffline = .shared,
         trackOffline: DitoTrackOffline = .init(),
-        notificationOffline: DitoNotificationOffline = .init()
+        notificationOffline: DitoNotificationOffline = .init(),
+        client: MobileIngestClientProtocol? = nil
     ) {
         self.identifyOffline = identifyOffline
         self.trackOffline = trackOffline
         self.notificationReadOffline = notificationOffline
-        self.client = MobileIngestClient.buildFromDitoConfig()
+        self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
     func loadOffline() {
         Task {
-            let identifySuccess = await checkIdentify()
-            if identifySuccess {
-                await withTaskGroup(of: Void.self) { group in
-                    group.addTask { await self.checkTrack() }
-                    group.addTask { await self.checkNotification() }
-                    group.addTask { await self.checkNotificationRegister() }
-                    group.addTask { await self.checkNotificationUnregister() }
-                }
+            await runLoadOffline()
+        }
+    }
+
+    internal func runLoadOffline() async {
+        let identifySuccess = await checkIdentify()
+        if identifySuccess {
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await self.checkTrack() }
+                group.addTask { await self.checkNotification() }
+                group.addTask { await self.checkNotificationRegister() }
+                group.addTask { await self.checkNotificationUnregister() }
             }
         }
     }
@@ -78,7 +77,7 @@ class DitoRetry {
     }
 
     private func checkTrack() async {
-        let tracks = trackOffline.getTrack
+        let tracks = trackOffline.offlinePersistedTracks
 
         #if DEBUG
         if !tracks.isEmpty {
@@ -90,6 +89,9 @@ class DitoRetry {
             DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
             return
         }
+
+        var trackBatch: [(id: NSManagedObjectID, request: DitoEventRequest, retry: Int16)] = []
+        trackBatch.reserveCapacity(tracks.count)
 
         for track in tracks {
             guard let eventJSON = track.event,
@@ -112,16 +114,28 @@ class DitoRetry {
             DitoLogger.debug("🔄 [RETRY] Reenviando evento: \(eventRequest.event.action ?? "") (tentativa \(currentRetry + 1))")
             #endif
 
-            let activity = mapper.mapFromEventRequest(eventRequest)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
-            do {
-                try await client.activity(request)
-                trackOffline.delete(id: trackId)
-                DitoLogger.information("✅ [RETRY] Track enviado")
-            } catch {
-                trackOffline.update(id: trackId, event: eventRequest, retry: currentRetry + 1)
-                DitoLogger.error(error.localizedDescription)
+            trackBatch.append((id: trackId, request: eventRequest, retry: currentRetry))
+        }
+
+        guard !trackBatch.isEmpty else { return }
+
+        let activities = trackBatch.map { mapper.mapFromEventRequest($0.request) }
+        let request = mapper.buildRequest(userId: userId, activities: activities)
+        do {
+            try await client.activity(request)
+            for item in trackBatch {
+                trackOffline.delete(id: item.id)
             }
+            if trackBatch.count == 1 {
+                DitoLogger.information("✅ [RETRY] Track enviado")
+            } else {
+                DitoLogger.information("✅ [RETRY] \(trackBatch.count) tracks enviados")
+            }
+        } catch {
+            for item in trackBatch {
+                trackOffline.update(id: item.id, event: item.request, retry: item.retry + 1)
+            }
+            DitoLogger.error(error.localizedDescription)
         }
     }
 

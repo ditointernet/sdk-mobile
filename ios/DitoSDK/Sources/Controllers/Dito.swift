@@ -11,7 +11,7 @@ public class Dito {
   public static var notificationReceivedListener: (([AnyHashable: Any]) -> Void)? = nil
   #if DEBUG
   static var testURLSessionConfiguration: URLSessionConfiguration? = nil
-  static var testBadgeUpdater: ((_ delta: Int) -> Void)? = nil
+  static var testNotificationReceivedIngestClient: MobileIngestClientProtocol?
   #endif
   private var reachability = try! Reachability()
   lazy var retry = DitoRetry()
@@ -162,11 +162,7 @@ public class Dito {
   /// - Parameter token: The FCM token obtained from Firebase Messaging
   nonisolated public static func registerDevice(token: String) {
     DispatchQueue.main.async {
-      #if DEBUG
-      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
-      #else
       let notificationController = DitoNotification()
-      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.registerToken(token: token)
     }
@@ -176,11 +172,7 @@ public class Dito {
   /// - Parameter token: The FCM token to unregister
   nonisolated public static func unregisterDevice(token: String) {
     DispatchQueue.main.async {
-      #if DEBUG
-      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
-      #else
       let notificationController = DitoNotification()
-      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.unregisterToken(token: token)
     }
@@ -248,11 +240,16 @@ public class Dito {
     if !received.userId.isEmpty {
       Task {
         let mapper = ActivityMapper()
-        let client = MobileIngestClient.buildFromDitoConfig()
+        #if DEBUG
+        let ingestClient: MobileIngestClientProtocol =
+          Dito.testNotificationReceivedIngestClient ?? MobileIngestClient.buildFromDitoConfig()
+        #else
+        let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
+        #endif
         let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
         let trackActivity = mapper.mapFromDitoEvent(createNotificationTrackEvent(received, token: token))
         let request = mapper.buildRequest(userId: received.userId, activities: [identifyActivity, trackActivity])
-        try? await client.activity(request)
+        try? await ingestClient.activity(request)
       }
     }
     _ = DitoCoreDataManager.shared.persistentContainer
@@ -308,11 +305,7 @@ public class Dito {
   ) -> DitoNotificationReceived {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
-      #if DEBUG
-      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
-      #else
       let notificationController = DitoNotification()
-      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
@@ -341,11 +334,7 @@ public class Dito {
   ) -> DitoNotificationReceived {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
-      #if DEBUG
-      let notificationController = DitoNotification(badgeUpdater: Dito.testBadgeUpdater)
-      #else
       let notificationController = DitoNotification()
-      #endif
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,

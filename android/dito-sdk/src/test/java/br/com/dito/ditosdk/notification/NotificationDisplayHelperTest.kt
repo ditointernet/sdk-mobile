@@ -4,7 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
-import androidx.core.app.NotificationCompat
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -88,50 +87,6 @@ class NotificationDisplayHelperTest {
 
         // Assert
         assertThat(icon).isEqualTo(expectedResId)
-    }
-
-    // (c) badgeEnabled=false → BADGE_ICON_NONE setado — verificado via production helper
-    @Test
-    fun `resolveSmallIcon with badgeEnabled false uses BADGE_ICON_NONE constant value zero`() {
-        // Arrange & Act: BADGE_ICON_NONE == 0 is the sentinel that disables badge
-        val options = DitoNotificationOptions(badgeEnabled = false)
-
-        // Assert
-        assertThat(options.badgeEnabled).isFalse()
-        assertThat(NotificationCompat.BADGE_ICON_NONE).isEqualTo(0)
-    }
-
-    @Test
-    fun `showNotification posts a notification when badgeEnabled false`() {
-        // Arrange
-        val shadowManager = shadowOf(notificationManager)
-        val options = DitoNotificationOptions(badgeEnabled = false)
-
-        // Act: replicate production logic — setBadgeIconType is called when badge disabled
-        val builder = NotificationCompat.Builder(context, "dito")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setContentTitle("Test")
-            .setContentText("Test message")
-        if (!options.badgeEnabled) {
-            builder.setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
-        }
-        notificationManager.notify(1, builder.build())
-
-        // Assert: notification was posted; badge icon type in extras is NONE (0) or absent
-        assertThat(shadowManager.allNotifications).hasSize(1)
-        val notification = shadowManager.allNotifications[0]
-        val badgeIconType = notification.extras.getInt("android.appInfo.badgeIconType", NotificationCompat.BADGE_ICON_NONE)
-        assertThat(badgeIconType).isNotEqualTo(NotificationCompat.BADGE_ICON_LARGE)
-        assertThat(badgeIconType).isNotEqualTo(NotificationCompat.BADGE_ICON_SMALL)
-    }
-
-    @Test
-    fun `DitoNotificationOptions defaults have badgeEnabled true`() {
-        // Arrange & Act
-        val options = DitoNotificationOptions()
-
-        // Assert
-        assertThat(options.badgeEnabled).isTrue()
     }
 
     // (d) canal 'dito' não sobrescreve canais de SDKs terceiras

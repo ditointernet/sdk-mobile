@@ -3,6 +3,10 @@ import CoreData
 
 struct DitoTrackOffline {
 
+    private static let persistenceQueue = DispatchQueue(
+        label: "br.com.dito.ditosdk.trackoffline.persistence"
+    )
+
     private var trackDataManager: DitoTrackDataManager
     private let identifyOffline: DitoIdentifyOffline
 
@@ -32,28 +36,33 @@ struct DitoTrackOffline {
     }
 
     func completeTrack(event: DitoEventRequest) {
-
-        DispatchQueue.global().async {
-            let json = event.toString
+        Self.persistenceQueue.async {
+            guard let json = event.toString, !json.isEmpty else {
+                DitoLogger.error("Track offline: falha ao serializar DitoEventRequest")
+                return
+            }
             self.trackDataManager.save(event: json)
         }
-
     }
 
     var reference: String? {
         return identifyOffline.getIdentify?.reference
     }
 
-    var getTrack: [Track] {
-        return trackDataManager.fetchAll
+    var offlinePersistedTracks: [OfflinePersistedTrack] {
+        trackDataManager.fetchOfflinePersistedTracks()
     }
 
     func update(id: NSManagedObjectID, event: DitoEventRequest, retry: Int16) {
-        let json = event.toString
-        trackDataManager.update(id: id, event: json, retry: retry)
+        Self.persistenceQueue.sync {
+            let json = event.toString
+            trackDataManager.update(id: id, event: json, retry: retry)
+        }
     }
 
     func delete(id: NSManagedObjectID) {
-        trackDataManager.delete(with: id)
+        Self.persistenceQueue.sync {
+            trackDataManager.delete(with: id)
+        }
     }
 }

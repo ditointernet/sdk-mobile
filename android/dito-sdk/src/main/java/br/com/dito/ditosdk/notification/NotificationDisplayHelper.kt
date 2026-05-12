@@ -96,10 +96,6 @@ object NotificationDisplayHelper {
             notificationBuilder.setColor(color)
         }
 
-        if (!options.badgeEnabled) {
-            notificationBuilder.setBadgeIconType(NotificationCompat.BADGE_ICON_NONE)
-        }
-
         val notificationIdInt = System.currentTimeMillis().toInt()
 
         Log.d(TAG, "=== Notification Details ===")

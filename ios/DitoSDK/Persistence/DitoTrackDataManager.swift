@@ -1,6 +1,12 @@
 import CoreData
 import Foundation
 
+struct OfflinePersistedTrack: Sendable {
+  let objectID: NSManagedObjectID
+  let event: String?
+  let retry: Int16
+}
+
 struct DitoTrackDataManager {
 
   @discardableResult
@@ -74,20 +80,23 @@ struct DitoTrackDataManager {
     return success
   }
 
-  var fetchAll: [Track] {
+  func fetchOfflinePersistedTracks() -> [OfflinePersistedTrack] {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext()
     else {
       DitoLogger.error("Failed to create background context for fetch")
       return []
     }
 
-    var results: [Track] = []
+    var results: [OfflinePersistedTrack] = []
     context.performAndWait {
       let fetchRequest = NSFetchRequest<Track>(entityName: "Track")
       fetchRequest.returnsObjectsAsFaults = false
 
       do {
-        results = try context.fetch(fetchRequest)
+        let fetched = try context.fetch(fetchRequest)
+        results = fetched.map {
+          OfflinePersistedTrack(objectID: $0.objectID, event: $0.event, retry: $0.retry)
+        }
         DitoLogger.information(
           "\(results.count) Tracks found - Successfully!!!"
         )

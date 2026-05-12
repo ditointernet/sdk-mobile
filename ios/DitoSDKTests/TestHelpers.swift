@@ -13,7 +13,7 @@ class TestHelpers {
 
     static func resetCoreData() {
         let trackDataManager = DitoTrackDataManager()
-        let tracks = trackDataManager.fetchAll
+        let tracks = trackDataManager.fetchOfflinePersistedTracks()
         for track in tracks {
             _ = trackDataManager.delete(with: track.objectID)
         }
@@ -48,6 +48,7 @@ class TestHelpers {
         DitoIdentifyDataManager.shared.identitySaveCallback = nil
         DitoIdentifyDataManager.shared.clearCompletionClosures()
         DitoIdentifyDataManager.shared.deleteIdentifyStamp()
+        DitoIdentifyOffline.shared.finishIdentify()
     }
 
     static func createInMemoryCoreDataStack() -> NSPersistentContainer? {
@@ -141,10 +142,9 @@ extension XCTestCase {
 
     func setupTestEnvironment() {
         _ = DitoCoreDataManager.shared.persistentContainer
-        Dito.setNotificationOptions(DitoNotificationOptions(badgeEnabled: false))
+        Dito.setNotificationOptions(DitoNotificationOptions())
         #if DEBUG
         Dito.testURLSessionConfiguration = TestHelpers.makeFastFailConfiguration()
-        Dito.testBadgeUpdater = { _ in }
         #endif
         TestHelpers.resetAllState()
     }
@@ -153,7 +153,6 @@ extension XCTestCase {
         TestHelpers.resetAllState()
         #if DEBUG
         Dito.testURLSessionConfiguration = nil
-        Dito.testBadgeUpdater = nil
         #endif
     }
 

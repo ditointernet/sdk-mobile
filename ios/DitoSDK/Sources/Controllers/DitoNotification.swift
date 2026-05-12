@@ -1,5 +1,4 @@
 import Foundation
-import UIKit
 import UserNotifications
 
 class DitoNotification {
@@ -9,23 +8,13 @@ class DitoNotification {
     private let notificationOffline: DitoNotificationOffline
     private let mapper = ActivityMapper()
     private let client: MobileIngestClientProtocol
-    var badgeUpdater: (_ delta: Int) -> Void
 
     init(
         notificationOffline: DitoNotificationOffline = .init(),
-        client: MobileIngestClientProtocol? = nil,
-        badgeUpdater: ((_ delta: Int) -> Void)? = nil
+        client: MobileIngestClientProtocol? = nil
     ) {
         self.notificationOffline = notificationOffline
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
-        self.badgeUpdater = badgeUpdater ?? { delta in
-            DispatchQueue.main.async {
-                guard Bundle.main.bundleIdentifier != nil else { return }
-                let current = UIApplication.shared.applicationIconBadgeNumber
-                let newValue = max(0, current + delta)
-                UNUserNotificationCenter.current().setBadgeCount(newValue) { _ in }
-            }
-        }
     }
 
     func makeNotificationContent(title: String, body: String) -> UNMutableNotificationContent {
@@ -115,10 +104,6 @@ class DitoNotification {
     }
 
     func notificationRead(with userInfo: [AnyHashable: Any]) {
-        if options.badgeEnabled {
-            badgeUpdater(+1)
-        }
-
         DispatchQueue.global(qos: .background).async {
             let notificationData = DitoDataNotification(from: userInfo)
             let notificationRequest = self.makeNotificationRequest(data: notificationData)
@@ -138,46 +123,44 @@ class DitoNotification {
 
         guard !notificationId.isEmpty else { return }
 
-        if options.badgeEnabled {
-            badgeUpdater(-1)
-        }
-
-        DispatchQueue.global(qos: .background).async {
-            self.processNotificationClick(notificationId: notificationId, reference: reference, identifier: identifier)
+        Task {
+            await processNotificationClick(
+                notificationId: notificationId,
+                reference: reference,
+                identifier: identifier
+            )
         }
     }
 
-    private func processNotificationClick(notificationId: String, reference: String, identifier: String) {
-        Task {
-            guard !identifier.isEmpty else {
-                DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
-                return
-            }
-            let activity = mapper.mapNotificationClick(notificationId: notificationId, identifier: identifier)
-            let request = mapper.buildRequest(userId: identifier, activities: [activity])
-            do {
-                try await client.activity(request)
-                DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
-            } catch {
-                DitoLogger.error(error.localizedDescription)
-                let data = DitoDataNotification(
-                    identifier: identifier,
-                    reference: reference,
-                    notification: notificationId,
-                    notificationLogId: "",
-                    userId: identifier,
-                    deviceType: "",
-                    channel: "",
-                    notificationName: "",
-                    title: "",
-                    message: "",
-                    link: "",
-                    logId: ""
-                )
-                let openRequest = makeNotificationRequest(data: data)
-                DispatchQueue.global(qos: .background).async {
-                    self.notificationOffline.notificationRead(openRequest)
-                }
+    private func processNotificationClick(notificationId: String, reference: String, identifier: String) async {
+        guard !identifier.isEmpty else {
+            DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
+            return
+        }
+        let activity = mapper.mapNotificationClick(notificationId: notificationId, identifier: identifier)
+        let request = mapper.buildRequest(userId: identifier, activities: [activity])
+        do {
+            try await client.activity(request)
+            DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
+        } catch {
+            DitoLogger.error(error.localizedDescription)
+            let data = DitoDataNotification(
+                identifier: identifier,
+                reference: reference,
+                notification: notificationId,
+                notificationLogId: "",
+                userId: identifier,
+                deviceType: "",
+                channel: "",
+                notificationName: "",
+                title: "",
+                message: "",
+                link: "",
+                logId: ""
+            )
+            let openRequest = makeNotificationRequest(data: data)
+            Task {
+                self.notificationOffline.notificationRead(openRequest)
             }
         }
     }

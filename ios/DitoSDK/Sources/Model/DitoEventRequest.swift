@@ -34,4 +34,26 @@ struct DitoEventRequest: Codable {
     try container.encode(encoding, forKey: .encoding)
     try container.encode(idType, forKey: .idType)
   }
+
+  init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    platformAppKey = try container.decode(String.self, forKey: .platformAppKey)
+    sha1Signature = try container.decode(String.self, forKey: .sha1Signature)
+    if let nested = try? container.decode(DitoEvent.self, forKey: .event) {
+      event = nested
+    } else {
+      let eventString = try container.decode(String.self, forKey: .event)
+      guard let parsed = eventString.convertToObject(type: DitoEvent.self) else {
+        throw DecodingError.dataCorruptedError(
+          forKey: .event,
+          in: container,
+          debugDescription: "event is not valid DitoEvent JSON"
+        )
+      }
+      event = parsed
+    }
+    networkName = try container.decodeIfPresent(String.self, forKey: .networkName) ?? "pt"
+    encoding = try container.decodeIfPresent(String.self, forKey: .encoding) ?? "base64"
+    idType = try container.decodeIfPresent(String.self, forKey: .idType) ?? "id"
+  }
 }
