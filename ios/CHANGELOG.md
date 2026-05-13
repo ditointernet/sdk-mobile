@@ -2,6 +2,18 @@
 
 - feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
 
+### Correções
+
+- fix(ios): declarar dependências CocoaPods do DitoSDK (#17) (fcc19fe)
+
+### Outros
+
+- chore(release): ios 3.3.0 (e927ba7)
+
+### Funcionalidades
+
+- feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
+
 ## [4.0.0](https://github.com/ditointernet/sdk-mobile/compare/ios-v3.2.1...ios-v4.0.0) (2026-05-06)
 
 ### Funcionalidades
