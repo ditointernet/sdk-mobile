@@ -6,13 +6,13 @@ Pod::Spec.new do |s|
   s.homepage         = 'https://github.com/ditointernet/sdk-mobile'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
   s.author           = { 'igorduarte' => 'igor.duarte@dito.com.br' }
-  s.source           = { :git => 'https://github.com/ditointernet/sdk-mobile.git', :tag => 'ios-v' + s.version.to_s, :subdirectory => 'ios' }
+  s.source           = { :git => 'https://github.com/ditointernet/sdk-mobile.git', :tag => 'ios-v' + s.version.to_s }
 
   s.swift_version = "5.10"
   s.ios.deployment_target = '16.0'
   s.pod_target_xcconfig = { 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
   s.dependency 'Connect-Swift', '~> 0.14.0'
-  s.source_files = 'DitoSDK/Sources/**/*', 'DitoSDK/Persistence/*.{swift}'
-  s.resources = 'DitoSDK/Persistence/*.{xcdatamodeld}'
-  s.exclude_files = 'DitoSDK/Sources/Info.plist'
+  s.source_files = 'ios/DitoSDK/Sources/**/*', 'ios/DitoSDK/Persistence/*.{swift}'
+  s.resources = 'ios/DitoSDK/Persistence/*.{xcdatamodeld}'
+  s.exclude_files = 'ios/DitoSDK/Sources/Info.plist'
 end
