@@ -1,3 +1,7 @@
+### Funcionalidades
+
+- feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
+
 ### Outros
 
 - chore(release): flutter 3.2.3 (81f78d7)
