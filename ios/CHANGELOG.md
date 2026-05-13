@@ -1,3 +1,7 @@
+### Correções
+
+- fix(ios): update podspec file paths for DitoSDK (fae0320)
+
 ### Funcionalidades
 
 - feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
