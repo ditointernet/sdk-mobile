@@ -45,7 +45,9 @@ Veja o exemplo completo em [iOS README](../ios/README.md#configuração-inicial)
 **Ordem Importante (iOS 18+)**:
 1. `FirebaseApp.configure()`
 2. `Messaging.messaging().delegate = self`
-3. `Dito.configure()`
+3. `Dito.shared.configure()`
+
+**Cold start e `receive-ios-notification`**: guarde o token FCM em `UserDefaults` na primeira obtenção e quando o Firebase o alterar (`Messaging.messaging(_:didReceiveRegistrationToken:)`), e reutilize-o em `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` quando a propriedade em memória ainda for `nil`. O evento `receive-ios-notification` só é enviado ao ingest se o payload incluir `user_id` (string no topo do `userInfo`). A inbox do SDK (`Dito.shared.getNotifications()`) e ficheiros de debug escritos pela app são fontes independentes. Detalhes: [iOS README — secção 3.1](../ios/README.md).
 
 ### Android
 
@@ -420,7 +422,7 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 **Solução**: Siga a ordem exata:
 1. `FirebaseApp.configure()`
 2. `Messaging.messaging().delegate = self`
-3. `Dito.configure()`
+3. `Dito.shared.configure()`
 4. No `didRegisterForRemoteNotificationsWithDeviceToken`, defina `Messaging.messaging().apnsToken = deviceToken` ANTES de solicitar o token FCM
 
 ## 📝 Exemplos de Payload

@@ -3,11 +3,7 @@ import Foundation
 class Util {
 
   static func toDate(_ date: Date?) -> String? {
-
-    guard let date = date else {
-      return Date().formatToISO
-    }
-    return date.formatToISO
+    return date?.formatToDitoDate
   }
 
   static func toString(from json: Any?) -> String? {

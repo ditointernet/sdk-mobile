@@ -30,10 +30,10 @@
 
         <meta-data
             android:name="br.com.dito.API_KEY"
-            android:value="" />
+            android:value="${API_KEY}" />
         <meta-data
             android:name="br.com.dito.API_SECRET"
-            android:value="" />
+            android:value="${API_SECRET}" />
 
         <service
             android:name="br.com.dito.ditosdk.notification.DitoMessagingService"

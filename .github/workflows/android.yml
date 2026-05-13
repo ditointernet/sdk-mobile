@@ -9,6 +9,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      DITO_TEST_API_KEY: ${{ secrets.DITO_TEST_API_KEY }}
+      DITO_TEST_API_SECRET: ${{ secrets.DITO_TEST_API_SECRET }}
+      DITO_TEST_X_API_KEY: ${{ secrets.DITO_TEST_X_API_KEY }}
 
     steps:
     - uses: actions/checkout@v3
@@ -23,6 +27,23 @@ jobs:
 
     - name: Grant execute permission for gradlew
       run: chmod +x android/gradlew
+
+    - name: Validate DITO test credentials
+      run: |
+        SECRET_TRIMMED=$(printf '%s' "${DITO_TEST_API_SECRET:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        if [ -n "$SECRET_TRIMMED" ]; then
+          KEY_TRIMMED=$(printf '%s' "${DITO_TEST_API_KEY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$KEY_TRIMMED" ]; then
+            echo "::error::No fluxo legado (DITO_TEST_API_SECRET preenchido após trim), configure o secret DITO_TEST_API_KEY em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        else
+          X_TRIMMED=$(printf '%s' "${DITO_TEST_X_API_KEY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$X_TRIMMED" ]; then
+            echo "::error::No modo solo (DITO_TEST_API_SECRET vazio ou ausente após trim), configure o secret DITO_TEST_X_API_KEY em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        fi
 
     - name: Build Android SDK
       working-directory: android

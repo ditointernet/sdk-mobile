@@ -6,7 +6,13 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.Dito.NotificationReadData
+import br.com.dito.ditosdk.notification.inbox.DitoNotificationRecord
+import br.com.dito.ditosdk.offline.DitoDatabase
 import com.google.firebase.messaging.RemoteMessage
+import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class DitoNotificationHandler(private val context: Context) {
 
@@ -67,8 +73,28 @@ class DitoNotificationHandler(private val context: Context) {
             reference = reference,
             deepLink = deepLink,
             channel = getApplicationName() + " notifications",
-            channelDescription = getApplicationName() + " application notifications"
+            channelDescription = getApplicationName() + " application notifications",
+            userId = userId,
+            options = Dito.notificationOptions,
         )
+
+        val record = DitoNotificationRecord(
+            id = UUID.randomUUID().toString(),
+            notificationId = notificationId,
+            reference = reference,
+            title = title,
+            message = message,
+            link = deepLink,
+            receivedAt = System.currentTimeMillis(),
+            isRead = false,
+        )
+        CoroutineScope(Dispatchers.IO).launch {
+            DitoDatabase.getInstance(context).ditoNotificationDao().insert(record)
+        }
+
+        val rawData = remoteMessage.data.toMap()
+        Dito.notificationReceivedListener?.invoke(rawData)
+        DitoMessagingService.notificationInterceptor?.onNotificationReceived(rawData)
     }
 
     @RequiresApi(Build.VERSION_CODES.O)

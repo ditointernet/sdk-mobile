@@ -5,19 +5,52 @@ public class Dito {
   static var appKey: String = ""
   static var appSecret: String = ""
   static var signature: String = ""
+  static var apiKey: String = ""
+  static var bundleId: String = ""
+  private static var notificationOptions = DitoNotificationOptions()
+  public static var notificationReceivedListener: (([AnyHashable: Any]) -> Void)? = nil
+  #if DEBUG
+  static var testURLSessionConfiguration: URLSessionConfiguration? = nil
+  static var testNotificationReceivedIngestClient: MobileIngestClientProtocol?
+  static var testIdentifyTrackIngestClient: MobileIngestClientProtocol?
+  #endif
   private var reachability = try! Reachability()
-  private lazy var retry = DitoRetry()
+  private var backingRetry: DitoRetry?
+  var retry: DitoRetry {
+    if let existing = backingRetry {
+      return existing
+    }
+    #if DEBUG
+    let created = DitoRetry(client: Dito.testIdentifyTrackIngestClient)
+    #else
+    let created = DitoRetry()
+    #endif
+    backingRetry = created
+    return created
+  }
 
   public static func enableDebugMode(_ enabled: Bool = true) {
     DitoLogger.isDebugEnabled = enabled
   }
 
+  public static func setNotificationOptions(_ options: DitoNotificationOptions) {
+    Dito.notificationOptions = options
+  }
+
   init() {
-    if Dito.appKey.isEmpty && Dito.appSecret.isEmpty && Dito.signature.isEmpty {
-      Dito.appKey = Bundle.main.appKey
-      let data = Bundle.main.appSecret.data(using: .utf8) ?? Data()
-      Dito.appSecret = data.base64EncodedString()
-      Dito.signature = Bundle.main.appSecret.sha1
+    if Dito.appKey.isEmpty && Dito.appSecret.isEmpty && Dito.signature.isEmpty && Dito.apiKey.isEmpty {
+      let rawKey = Bundle.main.appKey
+      let rawSecret = Bundle.main.appSecret
+      guard !rawKey.isEmpty else { return }
+      if rawSecret.isEmpty {
+        Dito.apiKey = rawKey
+        Dito.bundleId = Bundle.main.bundleIdentifier ?? ""
+      } else {
+        Dito.appKey = rawKey
+        let data = rawSecret.data(using: .utf8) ?? Data()
+        Dito.appSecret = data.base64EncodedString()
+        Dito.signature = rawSecret.sha1
+      }
     }
   }
 
@@ -47,6 +80,13 @@ public class Dito {
     shared.configure()
   }
 
+  public static func configure(apiKey: String, bundleId: String) {
+    let shared = Dito.shared
+    Dito.apiKey = apiKey
+    Dito.bundleId = bundleId
+    shared.configure()
+  }
+
   nonisolated public static func sha1(for email: String) -> String {
     return email.sha1
   }
@@ -65,7 +105,11 @@ public class Dito {
   ) {
     let user = createUser(name: name, email: email, customData: customData)
     DispatchQueue.main.async {
-      let identifyController = DitoIdentify()
+      #if DEBUG
+      let identifyController = DitoIdentify(retry: Dito.shared.retry, client: Dito.testIdentifyTrackIngestClient)
+      #else
+      let identifyController = DitoIdentify(retry: Dito.shared.retry)
+      #endif
       identifyController.identify(id: id, data: user)
     }
   }
@@ -90,7 +134,11 @@ public class Dito {
   @available(*, deprecated, message: "Use identify(id:name:email:customData:) instead for consistency with Android SDK")
   nonisolated public static func identify(id: String, data: DitoUser) {
     DispatchQueue.main.async {
-      let dtIdentify = DitoIdentify()
+      #if DEBUG
+      let dtIdentify = DitoIdentify(retry: Dito.shared.retry, client: Dito.testIdentifyTrackIngestClient)
+      #else
+      let dtIdentify = DitoIdentify(retry: Dito.shared.retry)
+      #endif
       dtIdentify.identify(id: id, data: data)
     }
   }
@@ -105,7 +153,11 @@ public class Dito {
   ) {
     let event = createEvent(action: action, customData: data)
     DispatchQueue.main.async {
+      #if DEBUG
+      let trackController = DitoTrack(client: Dito.testIdentifyTrackIngestClient)
+      #else
       let trackController = DitoTrack()
+      #endif
       trackController.track(data: event)
     }
   }
@@ -126,7 +178,11 @@ public class Dito {
   @available(*, deprecated, message: "Use track(action:data:) instead for consistency with Android SDK")
   nonisolated public static func track(event: DitoEvent) {
     DispatchQueue.main.async {
+      #if DEBUG
+      let trackController = DitoTrack(client: Dito.testIdentifyTrackIngestClient)
+      #else
       let trackController = DitoTrack()
+      #endif
       trackController.track(data: event)
     }
   }
@@ -136,6 +192,7 @@ public class Dito {
   nonisolated public static func registerDevice(token: String) {
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
+      notificationController.options = Dito.notificationOptions
       notificationController.registerToken(token: token)
     }
   }
@@ -145,6 +202,7 @@ public class Dito {
   nonisolated public static func unregisterDevice(token: String) {
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
+      notificationController.options = Dito.notificationOptions
       notificationController.unregisterToken(token: token)
     }
   }
@@ -157,11 +215,9 @@ public class Dito {
     userInfo: [AnyHashable: Any],
     token: String
   ) {
-    let notificationReceived = createNotificationReceived(from: userInfo)
-    DispatchQueue.main.async {
-      identifyUserForNotification(notificationReceived)
-      trackNotificationReceived(notificationReceived, token: token)
-    }
+    let received = createNotificationReceived(from: userInfo)
+    sendNotificationReceivedActivities(received, token: token)
+    Dito.notificationReceivedListener?(userInfo)
   }
 
   /// Called when a notification arrives (before click)
@@ -174,11 +230,9 @@ public class Dito {
     with userInfo: [AnyHashable: Any],
     token: String
   ) {
-    let notificationReceived = createNotificationReceived(from: userInfo)
-    DispatchQueue.main.async {
-      identifyUserForNotification(notificationReceived)
-      trackNotificationReceived(notificationReceived, token: token)
-    }
+    let received = createNotificationReceived(from: userInfo)
+    sendNotificationReceivedActivities(received, token: token)
+    Dito.notificationReceivedListener?(userInfo)
   }
 
   /// Called when a notification arrives (before click) - DEPRECATED
@@ -211,34 +265,59 @@ public class Dito {
     DitoNotificationReceived(with: userInfo)
   }
 
-  private static func identifyUserForNotification(_ notificationReceived: DitoNotificationReceived) {
-    guard !notificationReceived.userId.isEmpty else {
-      return
+  private static func sendNotificationReceivedActivities(_ received: DitoNotificationReceived, token: String) {
+    if !received.userId.isEmpty {
+      Task {
+        let mapper = ActivityMapper()
+        #if DEBUG
+        let ingestClient: MobileIngestClientProtocol =
+          Dito.testNotificationReceivedIngestClient ?? MobileIngestClient.buildFromDitoConfig()
+        #else
+        let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
+        #endif
+        let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
+        let trackActivity = mapper.mapFromDitoEvent(createNotificationTrackEvent(received, token: token))
+        let request = mapper.buildRequest(userId: received.userId, activities: [identifyActivity, trackActivity])
+        try? await ingestClient.activity(request)
+      }
     }
-    let identifyController = DitoIdentify()
-    identifyController.identify(
-      id: notificationReceived.userId,
-      data: DitoUser()
+    _ = DitoCoreDataManager.shared.persistentContainer
+    DitoNotificationCoreDataManager.shared.insert(
+      notificationId: received.notification,
+      reference: received.reference,
+      title: received.title,
+      message: received.message,
+      link: received.deeplink
     )
   }
 
-  private static func trackNotificationReceived(_ notificationReceived: DitoNotificationReceived, token: String) {
-    let trackController = DitoTrack()
-    let event = createNotificationTrackEvent(notificationReceived, token: token)
-    trackController.track(data: event)
+  public func getNotifications() -> [DitoNotificationInfo] {
+    DitoNotificationCoreDataManager.shared.getAll().map { record in
+      DitoNotificationInfo(
+        id: record.id ?? "",
+        notificationId: record.notificationId ?? "",
+        reference: record.reference ?? "",
+        title: record.title ?? "",
+        message: record.message ?? "",
+        link: record.link ?? "",
+        receivedAt: record.receivedAt ?? Date(),
+        isRead: record.isRead
+      )
+    }
+  }
+
+  public func markNotificationAsRead(id: String) {
+    DitoNotificationCoreDataManager.shared.markAsRead(id: id)
   }
 
   private static func createNotificationTrackEvent(_ notificationReceived: DitoNotificationReceived, token: String) -> DitoEvent {
     DitoEvent(
       action: "receive-ios-notification",
       customData: [
-        "canal": "mobile",
         "token": token,
-        "id-disparo": notificationReceived.logId,
-        "id-notificacao": notificationReceived.notification,
-        "nome_notificacao": notificationReceived.notificationName,
-        "provedor": "firebase",
-        "sistema_operacional": "Apple iPhone",
+        "dispatch_id": notificationReceived.logId,
+        "notification_id": notificationReceived.notification,
+        "notification_name": notificationReceived.notificationName,
       ]
     )
   }
@@ -256,11 +335,15 @@ public class Dito {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
+      notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
         reference: notificationReceived.reference,
         identifier: notificationReceived.identifier
       )
+    }
+    if !notificationReceived.notification.isEmpty {
+      DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
     }
     callback?(notificationReceived.deeplink)
     return notificationReceived
@@ -281,11 +364,15 @@ public class Dito {
     let notificationReceived = DitoNotificationReceived(with: userInfo)
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
+      notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
         reference: notificationReceived.reference,
         identifier: notificationReceived.identifier
       )
+    }
+    if !notificationReceived.notification.isEmpty {
+      DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
     }
     callback?(notificationReceived.deeplink)
     return notificationReceived
@@ -302,3 +389,30 @@ extension Dito {
     }
   }
 }
+
+#if DEBUG
+extension Dito {
+  static func resetFacadeIsolationState() {
+    NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
+    shared.reachability.stopNotifier()
+    shared.reachability.debug_connectionOverride = nil
+    shared.backingRetry = nil
+    appKey = ""
+    appSecret = ""
+    signature = ""
+    apiKey = ""
+    bundleId = ""
+    testURLSessionConfiguration = nil
+    testNotificationReceivedIngestClient = nil
+    testIdentifyTrackIngestClient = nil
+  }
+
+  static func setReachabilityConnectionOverrideForTests(_ connection: Reachability.Connection?) {
+    shared.reachability.debug_connectionOverride = connection
+  }
+
+  static func postReachabilityChangedNotificationForTests() {
+    NotificationCenter.default.post(name: .reachabilityChanged, object: shared.reachability)
+  }
+}
+#endif

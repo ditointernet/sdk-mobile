@@ -1,187 +1,193 @@
-//
-//  DitoNotification.swift
-//  DitoSDK
-//
-//  Created by Rodrigo Damacena Gamarra Maciel on 27/01/21.
-//
-
 import Foundation
+import UserNotifications
 
 class DitoNotification {
 
-  private let service: DitoNotificationService
-  private let notificationOffline: DitoNotificationOffline
+    var options: DitoNotificationOptions = DitoNotificationOptions()
 
-  init(service: DitoNotificationService = .init(), trackOffline: DitoNotificationOffline = .init())
-  {
-    self.service = service
-    self.notificationOffline = trackOffline
-  }
+    private let notificationOffline: DitoNotificationOffline
+    private let mapper = ActivityMapper()
+    private let client: MobileIngestClientProtocol
 
-  /// Registers a Firebase Cloud Messaging (FCM) token
-  /// - Parameter token: The FCM token from Firebase Messaging
-  func registerToken(token: String) {
-    #if DEBUG
-    DitoLogger.information("📱 [REGISTER TOKEN] token=\(token.prefix(20))...")
-    #endif
+    init(
+        notificationOffline: DitoNotificationOffline = .init(),
+        client: MobileIngestClientProtocol? = nil
+    ) {
+        self.notificationOffline = notificationOffline
+        #if DEBUG
+        self.client = client ?? Self.testMobileIngestClient ?? MobileIngestClient.buildFromDitoConfig()
+        #else
+        self.client = client ?? MobileIngestClient.buildFromDitoConfig()
+        #endif
+    }
 
-    let appKey = Dito.appKey
-    let signature = Dito.signature
+    func makeNotificationContent(title: String, body: String) -> UNMutableNotificationContent {
+        let content = UNMutableNotificationContent()
+        content.title = title
+        content.body = body
+        content.sound = options.soundName.map { UNNotificationSound(named: UNNotificationSoundName($0)) } ?? .default
+        return content
+    }
 
-    if notificationOffline.isSaving {
-      #if DEBUG
-      DitoLogger.debug("⏳ [REGISTER TOKEN] Aguardando identify completar...")
-      #endif
-      notificationOffline.setRegisterAsCompletion {
-        DispatchQueue.global().async {
-          let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
-          self.processTokenRegistration(tokenRequest: tokenRequest)
+    func registerToken(token: String) {
+        #if DEBUG
+        DitoLogger.information("📱 [REGISTER TOKEN] token=\(token.prefix(20))...")
+        #endif
+
+        if notificationOffline.isSaving {
+            #if DEBUG
+            DitoLogger.debug("⏳ [REGISTER TOKEN] Aguardando identify completar...")
+            #endif
+            notificationOffline.setRegisterAsCompletion {
+                DispatchQueue.global().async {
+                    self.processTokenRegistration(token: token)
+                }
+            }
+        } else {
+            DispatchQueue.global().async {
+                self.processTokenRegistration(token: token)
+            }
         }
-      }
-    } else {
-      DispatchQueue.global().async {
-        let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
-        self.processTokenRegistration(tokenRequest: tokenRequest)
-      }
-    }
-  }
-
-  private func createTokenRequest(appKey: String, signature: String, token: String) -> DitoTokenRequest {
-    DitoTokenRequest(platformAppKey: appKey, sha1Signature: signature, token: token)
-  }
-
-  private func processTokenRegistration(tokenRequest: DitoTokenRequest) {
-      guard let reference = notificationOffline.reference, !reference.isEmpty else {
-      notificationOffline.notificationRegister(tokenRequest)
-      DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
-      return
     }
 
-    service.register(reference: reference, data: tokenRequest) { [weak self] (register, error) in
-      guard let self = self else { return }
-      if let error = error {
-        self.notificationOffline.notificationRegister(tokenRequest)
-        DitoLogger.error(error.localizedDescription)
-      } else {
-        DitoLogger.information("✅ [REGISTER TOKEN] Sucesso")
-      }
-    }
-  }
-
-  /// Unregisters a Firebase Cloud Messaging (FCM) token
-  /// - Parameter token: The FCM token to unregister
-  func unregisterToken(token: String) {
-    #if DEBUG
-    DitoLogger.information("📴 [UNREGISTER TOKEN] token=\(token.prefix(20))...")
-    #endif
-
-    let appKey = Dito.appKey
-    let signature = Dito.signature
-
-    if notificationOffline.isSaving {
-      #if DEBUG
-      DitoLogger.debug("⏳ [UNREGISTER TOKEN] Aguardando identify completar...")
-      #endif
-      notificationOffline.setRegisterAsCompletion {
-        DispatchQueue.global().async {
-          let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
-          self.processTokenUnregistration(tokenRequest: tokenRequest)
+    private func processTokenRegistration(token: String) {
+        guard let userId = notificationOffline.reference, !userId.isEmpty else {
+            let tokenRequest = makeTokenRequest(token: token)
+            notificationOffline.notificationRegister(tokenRequest)
+            DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
+            return
         }
-      }
-    } else {
-      DispatchQueue.global().async {
-        let tokenRequest = self.createTokenRequest(appKey: appKey, signature: signature, token: token)
-        self.processTokenUnregistration(tokenRequest: tokenRequest)
-      }
-    }
-  }
-
-  private func processTokenUnregistration(tokenRequest: DitoTokenRequest) {
-    guard let reference = notificationOffline.reference, !reference.isEmpty else {
-      notificationOffline.notificationUnregister(tokenRequest)
-      DitoLogger.warning("⚠️ [UNREGISTER TOKEN] Usuário não identificado - salvando offline")
-      return
+        Task {
+            let activity = mapper.mapFromTokenRequest(makeTokenRequest(token: token), isRegister: true)
+            let request = mapper.buildRequest(userId: userId, activities: [activity])
+            do {
+                try await client.activity(request)
+                DitoLogger.information("✅ [REGISTER TOKEN] Sucesso")
+            } catch {
+                notificationOffline.notificationRegister(makeTokenRequest(token: token))
+                DitoLogger.error(error.localizedDescription)
+            }
+        }
     }
 
-    service.unregister(reference: reference, data: tokenRequest) { [weak self] (register, error) in
-      guard let self = self else { return }
-      if let error = error {
-        self.notificationOffline.notificationUnregister(tokenRequest)
-        DitoLogger.error(error.localizedDescription)
-      } else {
-        DitoLogger.information("✅ [UNREGISTER TOKEN] Sucesso")
-      }
+    func unregisterToken(token: String) {
+        #if DEBUG
+        DitoLogger.information("📴 [UNREGISTER TOKEN] token=\(token.prefix(20))...")
+        #endif
+
+        if notificationOffline.isSaving {
+            notificationOffline.setRegisterAsCompletion {
+                DispatchQueue.global().async {
+                    self.processTokenUnregistration(token: token)
+                }
+            }
+        } else {
+            DispatchQueue.global().async {
+                self.processTokenUnregistration(token: token)
+            }
+        }
     }
-  }
 
-  /// Called when notification is received (before click)
-  /// - Parameter userInfo: The notification data dictionary
-  func notificationRead(with userInfo: [AnyHashable: Any]) {
-    let appKey = Dito.appKey
-    let signature = Dito.signature
-    DispatchQueue.global(qos: .background).async {
-      let notificationData = self.createNotificationData(from: userInfo)
-
-      #if DEBUG
-      DitoLogger.information("🔔 [NOTIFICATION RECEIVED] id=\(notificationData.notification)")
-      #endif
-
-      let notificationRequest = self.createNotificationRequest(appKey: appKey, signature: signature, data: notificationData)
-      self.processNotificationRead(notificationData: notificationData, notificationRequest: notificationRequest)
+    private func processTokenUnregistration(token: String) {
+        guard let userId = notificationOffline.reference, !userId.isEmpty else {
+            notificationOffline.notificationUnregister(makeTokenRequest(token: token))
+            DitoLogger.warning("⚠️ [UNREGISTER TOKEN] Usuário não identificado - salvando offline")
+            return
+        }
+        Task {
+            let activity = mapper.mapFromTokenRequest(makeTokenRequest(token: token), isRegister: false)
+            let request = mapper.buildRequest(userId: userId, activities: [activity])
+            do {
+                try await client.activity(request)
+                DitoLogger.information("✅ [UNREGISTER TOKEN] Sucesso")
+            } catch {
+                notificationOffline.notificationUnregister(makeTokenRequest(token: token))
+                DitoLogger.error(error.localizedDescription)
+            }
+        }
     }
-  }
 
-  private func createNotificationData(from userInfo: [AnyHashable: Any]) -> DitoDataNotification {
-    DitoDataNotification(from: userInfo)
-  }
+    func notificationRead(with userInfo: [AnyHashable: Any]) {
+        DispatchQueue.global(qos: .background).async {
+            let notificationData = DitoDataNotification(from: userInfo)
+            let notificationRequest = self.makeNotificationRequest(data: notificationData)
 
-  private func createNotificationRequest(appKey: String, signature: String, data: DitoDataNotification) -> DitoNotificationOpenRequest {
-    DitoNotificationOpenRequest(
-      platformAppKey: appKey,
-      sha1Signature: signature,
-      data: data
-    )
-  }
+            #if DEBUG
+            DitoLogger.information("🔔 [NOTIFICATION RECEIVED] id=\(notificationData.notification)")
+            #endif
 
-  private func processNotificationRead(notificationData: DitoDataNotification, notificationRequest: DitoNotificationOpenRequest) {
-    notificationOffline.notificationRead(notificationRequest)
-  }
-
-  /// Called when notification is clicked
-  /// - Parameters:
-  ///   - notificationId: The notification ID
-  ///   - reference: The user reference
-  ///   - identifier: The identifier
-  func notificationClick(notificationId: String, reference: String, identifier: String) {
-    #if DEBUG
-    DitoLogger.information("👆 [NOTIFICATION CLICK] id=\(notificationId)")
-    #endif
-
-    let appKey = Dito.appKey
-    let signature = Dito.signature
-    DispatchQueue.global(qos: .background).async {
-      let data = self.createNotificationData(identifier: identifier, reference: reference)
-      let notificationRequest = self.createNotificationRequest(appKey: appKey, signature: signature, data: data)
-      self.processNotificationClick(notificationId: notificationId, notificationRequest: notificationRequest)
+            self.notificationOffline.notificationRead(notificationRequest)
+        }
     }
-  }
 
-  private func createNotificationData(identifier: String, reference: String) -> DitoDataNotification {
-    DitoDataNotification(identifier: identifier, reference: reference)
-  }
+    func notificationClick(notificationId: String, reference: String, identifier: String) {
+        #if DEBUG
+        DitoLogger.information("👆 [NOTIFICATION CLICK] id=\(notificationId)")
+        #endif
 
-  private func processNotificationClick(notificationId: String, notificationRequest: DitoNotificationOpenRequest) {
-    guard !notificationId.isEmpty else { return }
+        guard !notificationId.isEmpty else { return }
 
-    service.read(notificationId: notificationId, data: notificationRequest) { [weak self] (register, error) in
-      guard let self = self else { return }
-      if let error = error {
-        self.notificationOffline.notificationRead(notificationRequest)
-        DitoLogger.error(error.localizedDescription)
-      } else {
-        DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
-      }
+        Task {
+            await processNotificationClick(
+                notificationId: notificationId,
+                reference: reference,
+                identifier: identifier
+            )
+        }
     }
-  }
 
+    private func processNotificationClick(notificationId: String, reference: String, identifier: String) async {
+        guard !identifier.isEmpty else {
+            DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
+            return
+        }
+        let activity = mapper.mapNotificationClick(notificationId: notificationId, identifier: identifier)
+        let request = mapper.buildRequest(userId: identifier, activities: [activity])
+        do {
+            try await client.activity(request)
+            DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
+        } catch {
+            DitoLogger.error(error.localizedDescription)
+            let data = DitoDataNotification(
+                identifier: identifier,
+                reference: reference,
+                notification: notificationId,
+                notificationLogId: "",
+                userId: identifier,
+                deviceType: "",
+                channel: "",
+                notificationName: "",
+                title: "",
+                message: "",
+                link: "",
+                logId: ""
+            )
+            let openRequest = makeNotificationRequest(data: data)
+            Task {
+                self.notificationOffline.notificationRead(openRequest)
+            }
+        }
+    }
+
+    private func makeTokenRequest(token: String) -> DitoTokenRequest {
+        DitoTokenRequest(
+            platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
+            sha1Signature: Dito.signature,
+            token: token
+        )
+    }
+
+    private func makeNotificationRequest(data: DitoDataNotification) -> DitoNotificationOpenRequest {
+        DitoNotificationOpenRequest(
+            platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
+            sha1Signature: Dito.signature,
+            data: data
+        )
+    }
 }
+
+#if DEBUG
+extension DitoNotification {
+    static var testMobileIngestClient: MobileIngestClientProtocol?
+}
+#endif

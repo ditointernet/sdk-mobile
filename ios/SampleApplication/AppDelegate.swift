@@ -2,8 +2,18 @@ import DitoSDK
 import FirebaseAnalytics
 import FirebaseCore
 import FirebaseMessaging
+import os
 import UIKit
 import UserNotifications
+
+private enum SamplePushStorage {
+  static let fcmTokenKey = "FCMToken"
+}
+
+private let pushDebugLog = Logger(
+  subsystem: Bundle.main.bundleIdentifier ?? "DitoSample",
+  category: "PushDebug"
+)
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
@@ -15,6 +25,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     didFinishLaunchingWithOptions launchOptions: [UIApplication
       .LaunchOptionsKey: Any]?
   ) -> Bool {
+    if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+      if window == nil {
+        window = UIWindow(frame: UIScreen.main.bounds)
+        window?.rootViewController = UIViewController()
+        window?.makeKeyAndVisible()
+      }
+      return true
+    }
+
     #if DEBUG
     Dito.enableDebugMode(true)
     print("🐛 Debug mode enabled for Dito SDK")
@@ -26,6 +45,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     FirebaseApp.configure()
     print("✅ Firebase configured")
 
+    let stored = UserDefaults.standard.string(forKey: SamplePushStorage.fcmTokenKey)?
+      .trimmingCharacters(in: .whitespacesAndNewlines)
+    if let stored, !stored.isEmpty {
+      fcmToken = stored
+    }
+
     Analytics.setAnalyticsCollectionEnabled(true)
     // Registra evento de abertura do app no Analytics
     Analytics.logEvent(AnalyticsEventAppOpen, parameters: nil)
@@ -35,6 +60,8 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
 
     // Inicializa o Dito SDK (configurações internas do SDK)
     Dito.shared.configure()
+    let options = DitoNotificationOptions(soundName: "notification.mp3")
+    Dito.setNotificationOptions(options)
 
     // Configura o centro de notificações e registra o app para receber push
     UNUserNotificationCenter.current().delegate = self
@@ -59,7 +86,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     return true
   }
 
-
   func application(
     _ application: UIApplication,
     didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
@@ -76,6 +102,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         if let error = error {
           print("❌ AppDelegate: Error fetching FCM registration token: \(error.localizedDescription)")
         } else if let fcmToken = fcmToken {
+          self?.persistFCMTokenIfNeeded(fcmToken)
           self?.fcmToken = fcmToken
           print("✅ AppDelegate: FCM registration token obtido: \(fcmToken)")
 
@@ -109,6 +136,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
           print("❌ AppDelegate: FCM token não disponível no simulador: \(error.localizedDescription)")
           print("💡 AppDelegate: Para testar push notifications, use um dispositivo físico")
         } else if let fcmToken = fcmToken {
+          self?.persistFCMTokenIfNeeded(fcmToken)
           self?.fcmToken = fcmToken
           print("✅ AppDelegate: FCM token obtido no simulador: \(fcmToken)")
         }
@@ -117,6 +145,22 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     #else
     print("💡 AppDelegate: Verifique se o entitlement 'aps-environment' está configurado no target")
     #endif
+  }
+
+  // MARK: - Firebase Messaging Token Handling
+  // Este método é chamado quando o token FCM é atualizado
+  // é necessário ter o "Remote notifications" habilitado em Background Modes e "Background fetch" ativado
+  func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
+    guard let token = fcmToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty else {
+      return
+    }
+    persistFCMTokenIfNeeded(token)
+    self.fcmToken = token
+    NotificationCenter.default.post(
+      name: NSNotification.Name("FCMTokenReceived"),
+      object: nil,
+      userInfo: ["token": token]
+    )
   }
 
   // MARK: Background remote notification (silent / content-available)
@@ -140,15 +184,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       completionHandler(.newData)
     }
 
-    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
-    if let token = cachedToken {
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: SamplePushStorage.fcmTokenKey)
+    if let token = cachedToken, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       callNotificationReceived(token)
     } else {
       // Fallback: tentar obter o token se ainda não estiver armazenado
       Messaging.messaging().token { [weak self] token, error in
-        if let token = token {
+        if let token = token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          self?.persistFCMTokenIfNeeded(token)
           self?.fcmToken = token
-          UserDefaults.standard.set(token, forKey: "FCMToken")
           callNotificationReceived(token)
         } else {
           print(
@@ -159,6 +203,50 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
       }
     }
   }
+
+  // MARK: - Helper methods
+  // Este método é usado para persistir o token FCM no UserDefaults
+  // é necessário ter o "Remote notifications" habilitado em Background Modes e "Background fetch" ativado
+  private func persistFCMTokenIfNeeded(_ token: String) {
+    let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+
+    let ud = UserDefaults.standard
+    let existing = ud.string(forKey: SamplePushStorage.fcmTokenKey)?
+      .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+    if existing.isEmpty {
+      ud.set(trimmed, forKey: SamplePushStorage.fcmTokenKey)
+      pushDebugLog.notice("FCM token persistido (inicial)")
+      fcmToken = trimmed
+    } else if existing != trimmed {
+      ud.set(trimmed, forKey: SamplePushStorage.fcmTokenKey)
+      pushDebugLog.notice("FCM token atualizado")
+      fcmToken = trimmed
+    } else if fcmToken == nil || fcmToken?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == true {
+      fcmToken = trimmed
+    }
+  }
+
+  // MARK: - Helper methods
+  // Este método é usado para logar se a notificação não tem user_id no payload
+  // é necessário ter o "Remote notifications" habilitado em Background Modes e "Background fetch" ativado  
+  private func logIfPushMissingUserId(_ userInfo: [AnyHashable: Any]) {
+    let raw = userInfo["user_id"]
+    let userId: String?
+    if let s = raw as? String {
+      userId = s
+    } else if let n = raw as? NSNumber {
+      userId = n.stringValue
+    } else {
+      userId = nil
+    }
+    let trimmed = userId?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    guard trimmed.isEmpty else { return }
+
+    let keys = userInfo.keys.map { "\($0)" }.sorted().joined(separator: ", ")
+    pushDebugLog.warning("Push recebida sem user_id no payload (receive-ios-notification não vai ao ingest); chaves topo: \(keys, privacy: .public)")
+  }
 }
 
 extension AppDelegate: UNUserNotificationCenterDelegate {
@@ -168,19 +256,23 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler:
       @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-      let userInfo = notification.request.content.userInfo
+    let userInfo = notification.request.content.userInfo
 
     // Salvar notificação para debug
     NotificationDebugHelper.saveNotification(userInfo)
 
-    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
-    if let token = cachedToken {
+
+    // Tentativa de obter o token FCM do UserDefaults
+    let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: SamplePushStorage.fcmTokenKey)
+    if let token = cachedToken, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
       Dito.notificationReceived(userInfo: userInfo, token: token)
+
     } else {
       Messaging.messaging().token { [weak self] token, error in
-        if let token = token {
+        // Se o token foi obtido com sucesso, persistir e notificar o Dito
+        if let token = token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+          self?.persistFCMTokenIfNeeded(token)
           self?.fcmToken = token
-          UserDefaults.standard.set(token, forKey: "FCMToken")
           Dito.notificationReceived(userInfo: userInfo, token: token)
         }
       }
@@ -221,9 +313,6 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
     let userInfo = response.notification.request.content.userInfo
-
-    // Salvar notificação para debug (se ainda não foi salva)
-    NotificationDebugHelper.saveNotification(userInfo)
 
     // Notifica o Dito SDK sobre o clique na notificação
     Dito.notificationClick(userInfo: userInfo)

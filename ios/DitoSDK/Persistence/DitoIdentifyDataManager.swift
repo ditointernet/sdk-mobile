@@ -88,6 +88,10 @@ class DitoIdentifyDataManager {
         completionClosures.append(closure)
     }
 
+    func clearCompletionClosures() {
+        completionClosures.removeAll()
+    }
+
     func executeAllCompletions() {
         // Execute the legacy callback if set
         identitySaveCallback?()

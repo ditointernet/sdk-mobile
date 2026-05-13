@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.app.PendingIntent.*
 import android.content.Context
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.media.RingtoneManager
+import android.net.Uri
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -27,7 +29,9 @@ object NotificationDisplayHelper {
         reference: String?,
         deepLink: String?,
         channel: String?,
-        channelDescription: String?
+        channelDescription: String?,
+        userId: String? = null,
+        options: DitoNotificationOptions = DitoNotificationOptions(),
     ) {
         Log.d(TAG, "showNotification called - Title: $title, Message: $message")
 
@@ -35,6 +39,7 @@ object NotificationDisplayHelper {
             putExtra(Dito.DITO_NOTIFICATION_ID, notificationId)
             putExtra(Dito.DITO_NOTIFICATION_REFERENCE, reference)
             putExtra(Dito.DITO_DEEP_LINK, deepLink)
+            putExtra(Dito.DITO_USER_ID, userId)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 
@@ -45,17 +50,18 @@ object NotificationDisplayHelper {
             FLAG_IMMUTABLE or FLAG_UPDATE_CURRENT
         )
 
-        val smallIcon = getNotificationIcon(context)
+        val smallIcon = resolveSmallIcon(context, options)
         Log.d(TAG, "Notification icon: $smallIcon")
 
         val channelId = context.getString(R.string.default_notification_channel_id)
-        val defaultSoundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+        val soundUri = resolveSoundUri(context, options)
 
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
+            val notificationChannel = NotificationChannel(
                 channelId,
                 channel,
                 NotificationManager.IMPORTANCE_HIGH
@@ -64,7 +70,7 @@ object NotificationDisplayHelper {
                 enableLights(true)
                 enableVibration(true)
             }
-            notificationManager.createNotificationChannel(channel)
+            notificationManager.createNotificationChannel(notificationChannel)
             Log.d(TAG, "Notification channel created: $channelId")
         }
 
@@ -74,10 +80,21 @@ object NotificationDisplayHelper {
             .setContentText(message)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setSound(defaultSoundUri)
+            .setSound(soundUri)
             .setStyle(NotificationCompat.BigTextStyle().bigText(message))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+
+        options.largeIconResId?.let { resId ->
+            val largeBitmap = BitmapFactory.decodeResource(context.resources, resId)
+            if (largeBitmap != null) {
+                notificationBuilder.setLargeIcon(largeBitmap)
+            }
+        }
+
+        options.accentColor?.let { color ->
+            notificationBuilder.setColor(color)
+        }
 
         val notificationIdInt = System.currentTimeMillis().toInt()
 
@@ -93,6 +110,21 @@ object NotificationDisplayHelper {
             notificationManager.notify(notificationIdInt, notification)
         } catch (e: Exception) {
         }
+    }
+
+    internal fun resolveSmallIcon(context: Context, options: DitoNotificationOptions): Int {
+        options.smallIconResId?.let { resId ->
+            if (resId != 0) return resId
+        }
+        return getNotificationIcon(context)
+    }
+
+    internal fun resolveSoundUri(context: Context, options: DitoNotificationOptions): Uri {
+        val soundName = options.soundResourceName
+        if (!soundName.isNullOrEmpty()) {
+            return Uri.parse("android.resource://${context.packageName}/raw/$soundName")
+        }
+        return RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
     }
 
     private fun getNotificationIcon(context: Context): Int {

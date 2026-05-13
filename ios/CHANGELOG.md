@@ -1,5 +1,25 @@
+## [4.0.0](https://github.com/ditointernet/sdk-mobile/compare/ios-v3.2.1...ios-v4.0.0) (2026-05-06)
+
+### Funcionalidades
+
+- feat(ios): adicionar DitoNotificationOptions com soundName e badgeEnabled
+- feat(ios): expor Dito.setNotificationOptions para personalização de push
+- feat(ios): gerenciamento automático de badge no recebimento e clique de notificação
+
+### Notas
+
+- Personalização de som via APNs requer UNNotificationServiceExtension no app (limitação de plataforma)
+- Badge é gerenciado automaticamente pelo SDK; para desativar, use DitoNotificationOptions(badgeEnabled: false)
+
+### Breaking Changes
+
+- Versão major incrementada (D-05)
+
+---
+
 ### Outros
 
+- chore(ios): Sample — persistência FCM em UserDefaults, log `os.Logger` sem `user_id`, gravação de payloads de debug (JSON/plist/txt) e documentação alinhada
 - chore(release): flutter 3.2.3 (81f78d7)
 
 ## [3.2.0](https://github.com/ditointernet/sdk-mobile/compare/ios-v3.1.0...ios-v3.2.0) (2026-03-24)

@@ -21,6 +21,8 @@ kotlinxCoroutinesTest = "1.8.0"
 kotlinTest = "2.0.0"
 truth = "1.4.3"
 roomTesting = "2.7.0"
+connectKotlin = "0.7.1"
+protobufJavalite = "4.28.2"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -45,6 +47,9 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlin-test = { group = "org.jetbrains.kotlin", name = "kotlin-test", version.ref = "kotlinTest" }
 truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
 androidx-room-testing = { group = "androidx.room", name = "room-testing", version.ref = "roomTesting" }
+connectKotlinOkhttp = { module = "com.connectrpc:connect-kotlin-okhttp", version.ref = "connectKotlin" }
+connectKotlinGoogleJavaExt = { module = "com.connectrpc:connect-kotlin-google-javalite-ext", version.ref = "connectKotlin" }
+protobufJavalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobufJavalite" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

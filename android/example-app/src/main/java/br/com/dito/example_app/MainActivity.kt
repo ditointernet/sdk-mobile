@@ -3,20 +3,30 @@ package br.com.dito.example_app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Typeface
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
+import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
+import androidx.lifecycle.lifecycleScope
 import br.com.dito.ditosdk.Dito
+import br.com.dito.ditosdk.notification.inbox.DitoNotificationInfo
 import br.com.dito.example_app.databinding.ActivityMainBinding
 import com.google.firebase.messaging.FirebaseMessaging
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.security.MessageDigest
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -119,6 +129,65 @@ class MainActivity : AppCompatActivity() {
 
         binding.buttonNotificationDebug.setOnClickListener {
             startActivity(Intent(this, NotificationDebugActivity::class.java))
+        }
+
+        binding.buttonGetNotifications.setOnClickListener {
+            loadNotifications()
+        }
+    }
+
+    private fun loadNotifications() {
+        lifecycleScope.launch {
+            val list = Dito.getNotifications()
+            updateNotificationsUI(list)
+        }
+    }
+
+    private fun updateNotificationsUI(list: List<DitoNotificationInfo>) {
+        binding.textNotificationsCount.text = "${list.size} notificação(ões) encontrada(s)"
+        binding.layoutNotificationsList.removeAllViews()
+
+        if (list.isEmpty()) {
+            val emptyView = TextView(this).apply {
+                text = "Nenhuma notificação no inbox."
+                setPadding(0, 8, 0, 8)
+            }
+            binding.layoutNotificationsList.addView(emptyView)
+            return
+        }
+
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
+        list.forEach { item ->
+            val itemView = TextView(this).apply {
+                val readStatus = if (item.isRead) "✓ Lida" else "● Não lida"
+                val date = dateFormat.format(Date(item.receivedAt))
+                text = "[$readStatus] ${item.title}\n${item.message}\n$date"
+                setPadding(0, 12, 0, 12)
+                setTypeface(null, if (item.isRead) Typeface.NORMAL else Typeface.BOLD)
+                tag = item.id
+                isClickable = true
+                isFocusable = true
+
+                setOnClickListener {
+                    lifecycleScope.launch {
+                        Dito.markNotificationAsRead(item.id)
+                        Log.d("DitoExample", "Notificação marcada como lida: ${item.id}")
+                        loadNotifications()
+                    }
+                }
+            }
+
+            val divider = View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    1,
+                ).also { it.setMargins(0, 4, 0, 4) }
+                setBackgroundColor(0xFFDDDDDD.toInt())
+            }
+
+            binding.layoutNotificationsList.addView(itemView)
+            binding.layoutNotificationsList.addView(divider)
         }
     }
 

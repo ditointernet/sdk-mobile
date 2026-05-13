@@ -62,13 +62,56 @@ jobs:
       if: steps.check-changes.outputs.has_changes == 'true'
       run: |
         cd ios
-        xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release clean build
+        xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release -destination 'generic/platform=iOS' clean build
+
+    - name: Validate DITO test credentials
+      if: steps.check-changes.outputs.has_changes == 'true'
+      env:
+        DITO_TEST_API_KEY: ${{ secrets.DITO_TEST_API_KEY }}
+        DITO_TEST_API_SECRET: ${{ secrets.DITO_TEST_API_SECRET }}
+        DITO_TEST_X_API_KEY: ${{ secrets.DITO_TEST_X_API_KEY }}
+      run: |
+        SECRET_TRIMMED=$(printf '%s' "${DITO_TEST_API_SECRET:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        if [ -n "$SECRET_TRIMMED" ]; then
+          KEY_TRIMMED=$(printf '%s' "${DITO_TEST_API_KEY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$KEY_TRIMMED" ]; then
+            echo "::error::No fluxo legado (DITO_TEST_API_SECRET preenchido após trim), configure o secret DITO_TEST_API_KEY em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        else
+          X_TRIMMED=$(printf '%s' "${DITO_TEST_X_API_KEY:-}" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+          if [ -z "$X_TRIMMED" ]; then
+            echo "::error::No modo solo (DITO_TEST_API_SECRET vazio ou ausente após trim), configure o secret DITO_TEST_X_API_KEY em Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+        fi
+
+    - name: Resolve iOS Simulator UDID
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: |
+        set -euo pipefail
+        LINE=$(xcrun simctl list devices available | grep iPhone | head -n 1 || true)
+        if [ -z "$LINE" ]; then
+          echo "::error::Nenhum simulador disponível cuja linha contenha \"iPhone\" em xcrun simctl list devices available."
+          exit 1
+        fi
+        UDID=$(echo "$LINE" | grep -Eo '[0-9A-F-]{36}' | head -n 1)
+        if [ -z "$UDID" ]; then
+          echo "::error::Não foi possível extrair um UUID (regex [0-9A-F-]{36}) da linha do simulador: $LINE"
+          exit 1
+        fi
+        echo "IOS_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
+        echo "Simulador escolhido (UDID): $UDID"
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
+      env:
+        DITO_TEST_API_KEY: ${{ secrets.DITO_TEST_API_KEY }}
+        DITO_TEST_API_SECRET: ${{ secrets.DITO_TEST_API_SECRET }}
+        DITO_TEST_X_API_KEY: ${{ secrets.DITO_TEST_X_API_KEY }}
       run: |
         cd ios
-        xcodebuild test -project DitoSDK.xcodeproj -scheme DitoSDK -destination 'platform=iOS Simulator,name=iPhone 15'
+        xcodebuild test -project DitoSDK.xcodeproj -scheme DitoSDK -destination "platform=iOS Simulator,id=$IOS_SIMULATOR_UDID"
 
     - name: Upload artifacts
       if: steps.check-changes.outputs.has_changes == 'true'
@@ -126,7 +169,7 @@ jobs:
         if: steps.check-changes.outputs.has_code_changes == 'true'
         run: |
           cd ios
-          xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release clean build
+          xcodebuild -project DitoSDK.xcodeproj -scheme DitoSDK -configuration Release -destination 'generic/platform=iOS' clean build
 
       - name: Publish to CocoaPods
         if: steps.check-changes.outputs.has_code_changes == 'true'

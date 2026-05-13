@@ -1,6 +1,6 @@
 IDENTIFY_ID=11111111111
-IDENTIFY_NAME=John Doe
-IDENTIFY_EMAIL=john.doe@example.com
+IDENTIFY_NAME=Igor Duarte Android
+IDENTIFY_EMAIL=igor.duarte+android@dito.com.br      
 IDENTIFY_CUSTOM_DATA={"age": 30, "city": "São Paulo"}
 
 TRACK_ACTION=purchase

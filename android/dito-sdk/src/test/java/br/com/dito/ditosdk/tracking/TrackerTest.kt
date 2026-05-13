@@ -1,47 +1,46 @@
 package br.com.dito.ditosdk.tracking
 
+import android.content.Context
+import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
-import br.com.dito.ditosdk.service.EventApi
-import br.com.dito.ditosdk.service.LoginApi
-import br.com.dito.ditosdk.service.NotificationApi
-import br.com.dito.ditosdk.service.utils.EventRequest
-import br.com.dito.ditosdk.service.utils.NotificationOpenRequest
-import br.com.dito.ditosdk.service.utils.SigunpRequest
+import br.com.dito.ditosdk.service.ActivityMapper
+import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import com.google.common.truth.Truth.assertThat
-import com.google.gson.JsonObject
-import io.mockk.*
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.mockk
+import io.mockk.verify
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.cancel
+import mobileingest.v1.Api
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import retrofit2.Response
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 class TrackerTest {
 
     private val testScope = TestScope()
+    private lateinit var context: Context
     private lateinit var tracker: Tracker
     private lateinit var trackerOffline: TrackerOffline
-    private lateinit var mockLoginApi: LoginApi
-    private lateinit var mockEventApi: EventApi
-    private lateinit var mockNotificationApi: NotificationApi
+    private lateinit var mockClient: MobileIngestClientInterface
 
     @Before
     fun setup() {
+        context = ApplicationProvider.getApplicationContext()
         trackerOffline = mockk(relaxed = true)
-        tracker = Tracker("apiKey", "apiSecret", trackerOffline, testScope)
-        mockLoginApi = mockk(relaxed = true)
-        mockEventApi = mockk(relaxed = true)
-        mockNotificationApi = mockk(relaxed = true)
+        mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
+        coEvery { mockClient.activity(any()) } returns Api.Response.getDefaultInstance()
+        val mapper = ActivityMapper(context)
+        tracker = Tracker(trackerOffline, mockClient, mapper, scope = testScope)
     }
 
     @After
@@ -50,43 +49,24 @@ class TrackerTest {
     }
 
     @Test
-    fun `identify should call API and save reference on success`() = testScope.runTest {
+    fun `identify should call client and save on success`() = testScope.runTest {
         val identify = Identify("user123")
-        val responseBody = JsonObject().apply {
-            add("data", JsonObject().apply {
-                addProperty("reference", "ref123")
-            })
-        }
-        val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
 
-        tracker.identify(identify, mockLoginApi, null)
+        tracker.identify(identify, null)
 
         advanceUntilIdle()
-        coVerify { mockLoginApi.signup("portal", "user123", any<SigunpRequest>()) }
-    }
-
-    @Test
-    fun `identify should save offline on API error`() = testScope.runTest {
-        val identify = Identify("user123")
-        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
-        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
-
-        tracker.identify(identify, mockLoginApi, null)
-
-        delay(500)
-        verify { trackerOffline.identify(any(), null, false) }
+        coVerify { mockClient.activity(any()) }
     }
 
     @Test
     fun `identify should save offline on exception`() = testScope.runTest {
         val identify = Identify("user123")
-        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } throws Exception("Network error")
+        coEvery { mockClient.activity(any()) } throws Exception("Network error")
 
-        tracker.identify(identify, mockLoginApi, null)
+        tracker.identify(identify, null)
 
         delay(500)
-        verify { trackerOffline.identify(any(), null, false) }
+        verify { trackerOffline.identify(any(), false) }
     }
 
     @Test
@@ -94,113 +74,84 @@ class TrackerTest {
         val identify = Identify("user123")
         var callbackInvoked = false
         val callback: () -> Unit = { callbackInvoked = true }
-        val responseBody = JsonObject().apply {
-            add("data", JsonObject().apply {
-                addProperty("reference", "ref123")
-            })
-        }
-        val response = Response.success(responseBody)
-        coEvery { mockLoginApi.signup(any(), any(), any<SigunpRequest>()) } returns response
 
-        tracker.identify(identify, mockLoginApi, callback)
+        tracker.identify(identify, callback)
 
         delay(500)
         assertThat(callbackInvoked).isTrue()
     }
 
     @Test
-    fun `event should call API`() = testScope.runTest {
+    fun `event should call client`() = testScope.runTest {
         tracker.id = "user123"
         val event = Event("purchase")
-        val response = Response.success(JsonObject())
-        coEvery { mockEventApi.track(any(), any<EventRequest>()) } returns response
 
-        tracker.event(event, mockEventApi)
+        tracker.event(event)
 
         advanceUntilIdle()
-        coVerify { mockEventApi.track("user123", any<EventRequest>()) }
+        coVerify { mockClient.activity(any()) }
     }
 
     @Test
     fun `event should save offline on API error`() = testScope.runTest {
         tracker.id = "user123"
         val event = Event("purchase")
-        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
-        coEvery { mockEventApi.track(any(), any<EventRequest>()) } returns response
+        coEvery { mockClient.activity(any()) } throws Exception("err")
 
-        tracker.event(event, mockEventApi)
-
-        delay(500)
-        verify { trackerOffline.event(any()) }
-    }
-
-    @Test
-    fun `event should save offline on exception`() = testScope.runTest {
-        tracker.id = "user123"
-        val event = Event("purchase")
-        coEvery { mockEventApi.track(any(), any<EventRequest>()) } throws Exception("Network error")
-
-        tracker.event(event, mockEventApi)
+        tracker.event(event)
 
         delay(500)
-        verify { trackerOffline.event(any()) }
+        verify { trackerOffline.event(any(), any()) }
     }
 
     @Test
-    fun `registerToken should call API`() = testScope.runTest {
+    fun `registerToken should call client`() = testScope.runTest {
         tracker.id = "user123"
-        val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.add(any(), any()) } returns response
 
-        tracker.registerToken("token123", mockNotificationApi)
+        tracker.registerToken("token123")
 
         advanceUntilIdle()
-        coVerify { mockNotificationApi.add("user123", any()) }
+        coVerify { mockClient.activity(any()) }
     }
 
     @Test
-    fun `unregisterToken should call API`() = testScope.runTest {
+    fun `unregisterToken should call client`() = testScope.runTest {
         tracker.id = "user123"
-        val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.disable(any(), any()) } returns response
 
-        tracker.unregisterToken("token123", mockNotificationApi)
+        tracker.unregisterToken("token123")
 
         advanceUntilIdle()
-        coVerify { mockNotificationApi.disable("user123", any()) }
+        coVerify { mockClient.activity(any()) }
     }
 
     @Test
-    fun `notificationClick should not call API when reference is empty`() = testScope.runTest {
+    fun `notificationClick should not call client when reference is empty`() = testScope.runTest {
         tracker.id = "user123"
 
-        tracker.notificationClick("", mockNotificationApi, "")
+        tracker.notificationClick("", "", "")
 
         delay(500)
-        coVerify(exactly = 0) { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) }
+        coVerify(exactly = 0) { mockClient.activity(any()) }
     }
 
     @Test
-    fun `notificationClick should call API with correct parameters`() = testScope.runTest {
+    fun `notificationClick should call client with parameters`() = testScope.runTest {
         tracker.id = "user123"
-        val response = Response.success(JsonObject())
-        coEvery { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) } returns response
 
-        tracker.notificationClick("notif123", mockNotificationApi, "ref123")
+        tracker.notificationClick("notif123", "ref123", "user123")
 
         advanceUntilIdle()
-        coVerify { mockNotificationApi.open("notif123", any<NotificationOpenRequest>()) }
+        coVerify { mockClient.activity(any()) }
     }
 
     @Test
     fun `notificationClick should save offline on API error`() = testScope.runTest {
         tracker.id = "user123"
-        val response = Response.error<JsonObject>(400, mockk(relaxed = true))
-        coEvery { mockNotificationApi.open(any(), any<NotificationOpenRequest>()) } returns response
+        coEvery { mockClient.activity(any()) } throws Exception("err")
 
-        tracker.notificationClick("notif123", mockNotificationApi, "ref123")
+        tracker.notificationClick("notif123", "ref123", "user123")
 
         delay(500)
-        verify { trackerOffline.notificationRead(any()) }
+        verify { trackerOffline.notificationRead(any(), any(), any()) }
     }
 }

@@ -1,0 +1,6 @@
+// stub.proto exists solely to satisfy buf dep update requirements.
+// It is not used for code generation. The actual proto schema comes from
+// buf.build/dito/ingest (declared in buf.gen.yaml inputs).
+syntax = "proto3";
+
+package buf;

@@ -1,5 +1,6 @@
-import Foundation
 import CoreData
+import Foundation
+import XCTest
 @testable import DitoSDK
 
 class TestHelpers {
@@ -12,7 +13,7 @@ class TestHelpers {
 
     static func resetCoreData() {
         let trackDataManager = DitoTrackDataManager()
-        let tracks = trackDataManager.fetchAll
+        let tracks = trackDataManager.fetchOfflinePersistedTracks()
         for track in tracks {
             _ = trackDataManager.delete(with: track.objectID)
         }
@@ -39,12 +40,14 @@ class TestHelpers {
 
         let identifyDataManager = DitoIdentifyDataManager()
         if let identify = identifyDataManager.fetch {
-            _ = identifyDataManager.delete(id: identify.id)
+            _ = identifyDataManager.delete(id: identify.id ?? "")
         }
     }
 
     static func resetSingletons() {
         DitoIdentifyDataManager.shared.identitySaveCallback = nil
+        DitoIdentifyDataManager.shared.clearCompletionClosures()
+        DitoIdentifyDataManager.shared.deleteIdentifyStamp()
         DitoIdentifyOffline.shared.finishIdentify()
     }
 
@@ -68,6 +71,13 @@ class TestHelpers {
         return container
     }
 
+    static func sleep(_ seconds: Double) {
+        let deadline = Date(timeIntervalSinceNow: seconds)
+        while Date() < deadline {
+            RunLoop.main.run(until: Date(timeIntervalSinceNow: 0.05))
+        }
+    }
+
     static func waitForAsyncOperation(timeout: TimeInterval = 2.0, operation: @escaping (@escaping () -> Void) -> Void) -> Bool {
         let expectation = XCTestExpectation(description: "Async operation")
 
@@ -77,6 +87,13 @@ class TestHelpers {
 
         let result = XCTWaiter.wait(for: [expectation], timeout: timeout)
         return result == .completed
+    }
+
+    static func makeFastFailConfiguration() -> URLSessionConfiguration {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = 0.1
+        config.timeoutIntervalForResource = 0.1
+        return config
     }
 
     static func createMockDitoUser(
@@ -124,11 +141,21 @@ class TestHelpers {
 extension XCTestCase {
 
     func setupTestEnvironment() {
+        _ = DitoCoreDataManager.shared.persistentContainer
+        Dito.setNotificationOptions(DitoNotificationOptions())
+        #if DEBUG
+        Dito.testURLSessionConfiguration = TestHelpers.makeFastFailConfiguration()
+        DitoNotification.testMobileIngestClient = nil
+        #endif
         TestHelpers.resetAllState()
     }
 
     func teardownTestEnvironment() {
         TestHelpers.resetAllState()
+        #if DEBUG
+        Dito.testURLSessionConfiguration = nil
+        DitoNotification.testMobileIngestClient = nil
+        #endif
     }
 
     func waitForExpectation(

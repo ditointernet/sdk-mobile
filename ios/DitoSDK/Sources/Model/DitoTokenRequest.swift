@@ -5,7 +5,7 @@ struct DitoTokenRequest: Codable {
   let platformAppKey: String
   let sha1Signature: String
   let token: String
-  let platform: String = "Apple iPhone"
+  let platform: String = "iOS"
   let idType: String = "id"
   let encoding: String = "base64"
 

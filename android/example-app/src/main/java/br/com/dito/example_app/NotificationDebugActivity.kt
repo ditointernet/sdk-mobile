@@ -1,5 +1,6 @@
 package br.com.dito.example_app
 
+import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -13,6 +14,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.notification.DitoMessagingService
+import br.com.dito.ditosdk.notification.DitoNotificationOptions
 import br.com.dito.example_app.databinding.ActivityNotificationDebugBinding
 import com.google.firebase.messaging.RemoteMessage
 import java.io.File
@@ -106,6 +108,26 @@ class NotificationDebugActivity : AppCompatActivity() {
 
         binding.buttonSimulate.isEnabled = false
         binding.buttonCopyJson.isEnabled = false
+
+        setupNotificationOptionsCard()
+    }
+
+    @SuppressLint("UseCompatLoadingForDrawables")
+    private fun setupNotificationOptionsCard() {
+        binding.buttonSetNotificationOptions.setOnClickListener {
+            try {
+                val options = DitoNotificationOptions(
+                    smallIconResId =  R.drawable.ic_notification,
+                    largeIconResId =  R.drawable.ic_notification,
+                    soundResourceName = "notification",
+                    badgeEnabled = true,
+                )
+                Dito.setNotificationOptions(options)
+                Toast.makeText(this, "Notification Options aplicadas com sucesso", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(this, "Erro: ${e.message}", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun copyJsonToClipboard() {

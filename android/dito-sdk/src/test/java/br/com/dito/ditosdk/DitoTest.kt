@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import androidx.test.core.app.ApplicationProvider
-import br.com.dito.ditosdk.tracking.Tracker
 import com.google.common.truth.Truth.assertThat
 import io.mockk.*
 import kotlinx.coroutines.delay
@@ -14,7 +13,6 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import java.lang.reflect.Field
 import kotlin.test.assertFailsWith
 
 @RunWith(RobolectricTestRunner::class)
@@ -69,7 +67,7 @@ class DitoTest {
     }
 
     @Test
-    fun `init should throw exception when API_SECRET is missing`() {
+    fun `init should use X-Api-Key when only API_KEY is in manifest`() {
         val mockContext = mockk<Context>(relaxed = true)
         val mockPackageManager = mockk<PackageManager>(relaxed = true)
         val mockAppInfo = mockk<ApplicationInfo>(relaxed = true)
@@ -82,9 +80,9 @@ class DitoTest {
         every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
         mockAppInfo.metaData = mockMetaData
 
-        assertFailsWith<RuntimeException> {
-            Dito.init(mockContext, null)
-        }
+        Dito.init(mockContext, null)
+
+        assertThat(Dito.isInitialized()).isTrue()
     }
 
     @Test

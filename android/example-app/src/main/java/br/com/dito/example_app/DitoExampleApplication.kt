@@ -1,5 +1,6 @@
 package br.com.dito.example_app
 
+import android.R
 import android.app.Application
 import android.os.Build
 import android.util.Log
@@ -27,7 +28,7 @@ class DitoExampleApplication : Application() {
         try {
             val options = Options(retry = 5)
             options.debug = true
-            options.iconNotification = android.R.drawable.ic_dialog_info
+            R.drawable.ic_dialog_info.also { options.iconNotification = it }
             Dito.init(this, options)
             Log.d("DitoExample", "Dito SDK inicializado com sucesso")
         } catch (e: Exception) {
