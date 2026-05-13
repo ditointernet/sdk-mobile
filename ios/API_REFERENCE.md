@@ -1,19 +1,19 @@
 ## 📚 API Reference
 
-### Dito.configure()
+### Dito.shared.configure()
 
 Inicializa o DitoSDK. **Deve ser chamado no AppDelegate**.
 
 ```swift
 // No AppDelegate, após FirebaseApp.configure()
-Dito.configure()
+Dito.shared.configure()
 ```
 
 - ✅ Carrega credenciais do Info.plist
 - ✅ Inicializa gerenciador de persistência offline
 - ✅ Inicia monitor de conectividade
 
-**Erro comum**: Chamar `configure()` ANTES de `FirebaseApp.configure()` causará erro
+**Erro comum**: Chamar `Dito.shared.configure()` ANTES de `FirebaseApp.configure()` causará erro
 
 ---
 
@@ -237,6 +237,7 @@ extension AppDelegate: MessagingDelegate {
 
 - Chamada automaticamente via `MessagingDelegate`
 - Você pode chamar manualmente se necessário
+- Para `Dito.notificationReceived` em **background** ou cold start, recomenda-se **persistir** o token FCM (por exemplo em `UserDefaults`) na primeira obtenção e quando o Firebase o alterar, e reutilizar esse valor quando `fcmToken` em memória ainda for `nil`
 - O token é persistido automaticamente
 
 **Documentação Firebase**: [Get Registration Token](https://firebase.google.com/docs/cloud-messaging/ios/client#retrieve_the_current_registration_token)
@@ -339,6 +340,8 @@ App pode atualizar dados
 **Registra quando uma notificação é RECEBIDA (não clicada).**
 
 Deve ser chamado quando a notificação chega, ANTES do clique do usuário.
+
+O envio do track automático `receive-ios-notification` ao ingest **requer** `user_id` no `userInfo` (chave no topo do dicionário, valor string). Sem isso, o SDK pode ainda persistir a notificação na inbox local (`Dito.shared.getNotifications()`).
 
 #### Parâmetros
 
@@ -511,7 +514,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         Messaging.messaging().delegate = self
 
         // 3. Dito
-        Dito.configure()
+        Dito.shared.configure()
 
         // 4. Notificações
         UNUserNotificationCenter.current().delegate = self

@@ -107,7 +107,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         Messaging.messaging().delegate = self
 
         // 3. Inicializa o Dito SDK
-        Dito.configure()
+        Dito.shared.configure()
 
         // 4. Configura notificações
         UNUserNotificationCenter.current().delegate = self
@@ -218,15 +218,26 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 }
 ```
 
+### 3.1 Token FCM, UserDefaults e cold start
+
+Para `Dito.notificationReceived(userInfo:token:)` em **background** ou após reinício do processo, não dependa apenas da propriedade `fcmToken` em memória.
+
+- Guarde o token FCM em `UserDefaults` na **primeira** vez que o obtiver e sempre que o Firebase devolver um valor **diferente** (incluindo `Messaging.messaging(_:didReceiveRegistrationToken:)`).
+- Opcional: após `FirebaseApp.configure()`, reatribua `fcmToken` a partir do valor persistido para o primeiro push em cold start.
+- O evento automático `receive-ios-notification` **só é enviado ao ingest** se o payload incluir `user_id` como string no topo do `userInfo` (regra do SDK).
+- A **inbox** (`Dito.shared.getNotifications()`, Core Data) e ficheiros de debug gravados pela app são **origens distintas**. Uma falha ao serializar o `userInfo` para JSON num ficheiro de debug não impede a inbox de ser atualizada quando `notificationReceived` corre.
+
+Referência no repositório: [`SampleApplication/AppDelegate.swift`](SampleApplication/AppDelegate.swift) e [`SampleApplication/NotificationDebugHelper.swift`](SampleApplication/NotificationDebugHelper.swift).
+
 ## 📖 Métodos Disponíveis
 
-### configure
+### configure (instância)
 
 **Descrição**: Inicializa e configura o Dito SDK. Este método deve ser chamado no `AppDelegate` durante o lançamento do app.
 
 **Assinatura**:
 ```swift
-public static func configure()
+public func configure()
 ```
 
 **Parâmetros**: Nenhum
@@ -243,10 +254,12 @@ func application(
 ) -> Bool {
     FirebaseApp.configure()
     Messaging.messaging().delegate = self
-    Dito.configure()
+    Dito.shared.configure()
     return true
 }
 ```
+
+Chame sempre na instância partilhada: `Dito.shared.configure()`.
 
 **Notas**:
 - Deve ser chamado após `FirebaseApp.configure()` e antes de qualquer outro método do SDK
@@ -547,14 +560,14 @@ graph LR
 
 ## 🔔 Push Notifications
 
-Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](./docs/push-notifications.md).
+Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
 ### Personalização de Notificações Push
 
 O DitoSDK permite personalizar o comportamento das notificações push via `DitoNotificationOptions`:
 
 ```swift
-// Configure após Dito.configure(...)
+// Configure após Dito.shared.configure()
 Dito.setNotificationOptions(DitoNotificationOptions(
     soundName: "custom_sound.aiff", // nil = som padrão do sistema
     badgeEnabled: true               // false = SDK não gerencia badge
@@ -604,7 +617,7 @@ func application(
     Messaging.messaging().delegate = self
 
     // 3️⃣ Dito por último
-    Dito.configure()
+    Dito.shared.configure()
 
     return true
 }
@@ -685,7 +698,7 @@ func application(
 ) -> Bool {
     FirebaseApp.configure()
     Messaging.messaging().delegate = self
-    Dito.configure()
+    Dito.shared.configure()
     return true
 }
 
