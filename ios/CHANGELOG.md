@@ -1,3 +1,7 @@
+### Funcionalidades
+
+- feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
+
 ## [4.0.0](https://github.com/ditointernet/sdk-mobile/compare/ios-v3.2.1...ios-v4.0.0) (2026-05-06)
 
 ### Funcionalidades
