@@ -73,13 +73,15 @@ class TrackerTest {
     @Test
     fun `identify should invoke callback on success`() = testScope.runTest {
         val identify = Identify("user123")
-        var callbackInvoked = false
-        val callback: () -> Unit = { callbackInvoked = true }
+        var receivedStatus: Tracker.OperationStatus? = null
+        val callback: (Tracker.OperationStatus?, Throwable?) -> Unit = { status, _ ->
+            receivedStatus = status
+        }
 
         tracker.identify(identify, callback)
 
         delay(500)
-        assertThat(callbackInvoked).isTrue()
+        assertThat(receivedStatus).isEqualTo(Tracker.OperationStatus.SENT)
     }
 
     @Test
