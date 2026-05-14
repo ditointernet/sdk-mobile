@@ -1,3 +1,7 @@
+### Outros
+
+- Fix/android ios event callback (#18) (b64edde)
+
 ### Funcionalidades
 
 - feat: Change request protocol to RPC & Enable notification central list (#16) (b4ed718)
