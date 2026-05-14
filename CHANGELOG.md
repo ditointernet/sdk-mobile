@@ -5,6 +5,14 @@ Todas as mudanças notáveis neste projeto serão documentadas neste arquivo.
 O formato é baseado em [Keep a Changelog](https://keepachangelog.com/pt-BR/1.0.0/),
 e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
+## [Unreleased]
+
+### Adicionado
+
+#### Cross-Platform
+- Método público `logout` nas SDKs Flutter e React Native para limpar localmente dados persistidos por `identify` e a identidade local usada por tracking.
+- O logout não remove configuração da SDK, opções de notificação, inbox de notificações, tokens de push ou dados remotos no backend.
+
 ## [3.0.1] - 2026-02-04
 
 ### Alterado

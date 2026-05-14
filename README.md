@@ -8,6 +8,7 @@ Este monorepo contém:
 
 - **SDKs Nativas**: Implementações nativas para iOS e Android
 - **Plugins Cross-Platform**: Wrappers Flutter e React Native que fornecem APIs unificadas
+- **Logout Cross-Platform**: Método público para limpar a identidade local de `identify` e tracking sem invalidar token remoto ou limpar inbox
 - **Documentação**: Guias completos de integração e uso
 - **Exemplos**: Apps de exemplo demonstrando o uso de cada plataforma
 
@@ -68,6 +69,9 @@ await DitoSdk.track(
   action: 'purchase',
   data: {'product': 'item123', 'price': 99.99},
 );
+
+// Limpar identidade local após logout no app host
+await DitoSdk.logout();
 ```
 
 ### React Native
@@ -93,6 +97,9 @@ await DitoSdk.track({
   action: 'purchase',
   data: { product: 'item123', price: 99.99 },
 });
+
+// Limpar identidade local após logout no app host
+await DitoSdk.logout();
 ```
 
 Para exemplos completos e guias detalhados, consulte a documentação específica de cada plataforma.
@@ -215,6 +222,7 @@ npm run ios  # ou npm run android
 - ✅ Inicialização do SDK
 - ✅ Identificação de usuários
 - ✅ Rastreamento de eventos
+- ✅ Logout local de identidade de usuário
 - ✅ Registro de tokens de dispositivo
 - ✅ Interceptação de push notifications
 - ✅ Tratamento de erros robusto
