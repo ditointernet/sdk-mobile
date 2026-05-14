@@ -37,6 +37,9 @@ interface IdentifyOfflineDao {
 
     @Query("DELETE FROM identify WHERE _id =:id")
     fun delete(id: String)
+
+    @Query("DELETE FROM identify")
+    fun deleteAll()
 }
 
 @Entity(tableName = "event")

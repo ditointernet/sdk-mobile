@@ -119,8 +119,7 @@ class NotificationDebugActivity : AppCompatActivity() {
                 val options = DitoNotificationOptions(
                     smallIconResId =  R.drawable.ic_notification,
                     largeIconResId =  R.drawable.ic_notification,
-                    soundResourceName = "notification",
-                    badgeEnabled = true,
+                    soundResourceName = "notification"
                 )
                 Dito.setNotificationOptions(options)
                 Toast.makeText(this, "Notification Options aplicadas com sucesso", Toast.LENGTH_SHORT).show()

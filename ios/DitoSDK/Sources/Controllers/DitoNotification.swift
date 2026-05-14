@@ -29,7 +29,10 @@ class DitoNotification {
         return content
     }
 
-    func registerToken(token: String) {
+    func registerToken(
+        token: String,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+    ) {
         #if DEBUG
         DitoLogger.information("📱 [REGISTER TOKEN] token=\(token.prefix(20))...")
         #endif
@@ -40,21 +43,25 @@ class DitoNotification {
             #endif
             notificationOffline.setRegisterAsCompletion {
                 DispatchQueue.global().async {
-                    self.processTokenRegistration(token: token)
+                    self.processTokenRegistration(token: token, completion: completion)
                 }
             }
         } else {
             DispatchQueue.global().async {
-                self.processTokenRegistration(token: token)
+                self.processTokenRegistration(token: token, completion: completion)
             }
         }
     }
 
-    private func processTokenRegistration(token: String) {
+    private func processTokenRegistration(
+        token: String,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)?
+    ) {
         guard let userId = notificationOffline.reference, !userId.isEmpty else {
             let tokenRequest = makeTokenRequest(token: token)
             notificationOffline.notificationRegister(tokenRequest)
             DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
+            completion?(.success(.savedLocally))
             return
         }
         Task {
@@ -63,14 +70,19 @@ class DitoNotification {
             do {
                 try await client.activity(request)
                 DitoLogger.information("✅ [REGISTER TOKEN] Sucesso")
+                completion?(.success(.sent))
             } catch {
                 notificationOffline.notificationRegister(makeTokenRequest(token: token))
                 DitoLogger.error(error.localizedDescription)
+                completion?(.success(.savedLocally))
             }
         }
     }
 
-    func unregisterToken(token: String) {
+    func unregisterToken(
+        token: String,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+    ) {
         #if DEBUG
         DitoLogger.information("📴 [UNREGISTER TOKEN] token=\(token.prefix(20))...")
         #endif
@@ -78,20 +90,24 @@ class DitoNotification {
         if notificationOffline.isSaving {
             notificationOffline.setRegisterAsCompletion {
                 DispatchQueue.global().async {
-                    self.processTokenUnregistration(token: token)
+                    self.processTokenUnregistration(token: token, completion: completion)
                 }
             }
         } else {
             DispatchQueue.global().async {
-                self.processTokenUnregistration(token: token)
+                self.processTokenUnregistration(token: token, completion: completion)
             }
         }
     }
 
-    private func processTokenUnregistration(token: String) {
+    private func processTokenUnregistration(
+        token: String,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)?
+    ) {
         guard let userId = notificationOffline.reference, !userId.isEmpty else {
             notificationOffline.notificationUnregister(makeTokenRequest(token: token))
             DitoLogger.warning("⚠️ [UNREGISTER TOKEN] Usuário não identificado - salvando offline")
+            completion?(.success(.savedLocally))
             return
         }
         Task {
@@ -100,9 +116,11 @@ class DitoNotification {
             do {
                 try await client.activity(request)
                 DitoLogger.information("✅ [UNREGISTER TOKEN] Sucesso")
+                completion?(.success(.sent))
             } catch {
                 notificationOffline.notificationUnregister(makeTokenRequest(token: token))
                 DitoLogger.error(error.localizedDescription)
+                completion?(.success(.savedLocally))
             }
         }
     }

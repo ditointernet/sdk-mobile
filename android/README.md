@@ -189,6 +189,35 @@ Dito.identify(
 
 ---
 
+### logout
+
+**Descrição**: Limpa localmente os dados de identificação do usuário atual.
+
+**Assinatura**:
+```kotlin
+Dito.logout()
+```
+
+**Parâmetros**: Nenhum
+
+**Retorno**: Nenhum
+
+**Possíveis Erros**: Nenhum (a operação é local)
+
+**Exemplo**:
+```kotlin
+fun userDidLogout() {
+    Dito.logout()
+}
+```
+
+**Notas**:
+- Remove os dados locais salvos por `identify`
+- Remove a identidade local usada por `track`
+- Não remove a configuração da SDK, opções de notificação, inbox de notificações ou token remoto de push
+
+---
+
 ### track
 
 **Descrição**: Rastreia um evento no CRM Dito.

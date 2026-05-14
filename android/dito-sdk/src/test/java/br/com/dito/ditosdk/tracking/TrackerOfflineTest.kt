@@ -77,6 +77,19 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `deleteIdentify should remove persisted identify`() = runBlocking {
+        val identify = Identify("123")
+        trackerOffline.identify(identify, true)
+        delay(500)
+
+        trackerOffline.deleteIdentify()
+        delay(500)
+
+        val result = trackerOffline.getIdentify()
+        assertThat(result).isNull()
+    }
+
+    @Test
     fun `event should insert event into database`() = runBlocking {
         val event = Event("purchase")
         val aid = UUID.randomUUID().toString()

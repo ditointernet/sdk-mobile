@@ -69,6 +69,60 @@ final class DitoFacadeTests: XCTestCase {
     )
   }
 
+  func testLogout_removesLocalIdentityAndPreservesConfigurationAndInbox() {
+    let appKey = "facade-logout-app-key"
+    let appSecret = "facade-logout-secret"
+    Dito.configure(appKey: appKey, appSecret: appSecret)
+    Dito.setNotificationOptions(DitoNotificationOptions(soundName: "logout-sound.mp3"))
+
+    let userId = "facade-logout-user"
+    let signup = DitoSignupRequest(
+      platformAppKey: appKey,
+      sha1Signature: appSecret.sha1,
+      userData: DitoUser(email: "logout@example.com")
+    )
+    XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: signup.toString, send: true))
+    DitoIdentifyOffline.shared.initiateIdentify()
+
+    var callbackCallCount = 0
+    DitoIdentifyOffline.shared.setIdentityCompletionClosure {
+      callbackCallCount += 1
+    }
+
+    let notificationId = "facade-logout-notification"
+    DitoNotificationCoreDataManager.shared.insert(
+      notificationId: notificationId,
+      reference: userId,
+      title: "Logout inbox",
+      message: "Inbox deve permanecer",
+      link: "https://example.test/logout"
+    )
+    TestHelpers.sleep(0.15)
+
+    XCTAssertEqual(DitoTrackOffline().reference, userId)
+    XCTAssertEqual(DitoNotificationOffline().reference, userId)
+    XCTAssertTrue(DitoIdentifyOffline.shared.getSavingState)
+    XCTAssertTrue(Dito.shared.getNotifications().contains { $0.notificationId == notificationId })
+
+    Dito.logout()
+
+    XCTAssertNil(DitoIdentifyOffline.shared.getIdentify)
+    XCTAssertFalse(DitoIdentifyOffline.shared.getSavingState)
+    XCTAssertNil(DitoTrackOffline().reference)
+    XCTAssertNil(DitoNotificationOffline().reference)
+    assertFacadeStaticState(
+      appKey: appKey,
+      appSecret: (appSecret.data(using: .utf8) ?? Data()).base64EncodedString(),
+      signature: appSecret.sha1,
+      apiKey: "",
+      bundleId: ""
+    )
+    XCTAssertTrue(Dito.shared.getNotifications().contains { $0.notificationId == notificationId })
+
+    DitoIdentifyOffline.shared.finishIdentify()
+    XCTAssertEqual(callbackCallCount, 0)
+  }
+
   #if DEBUG
   func testIdentify_viaDitoStaticAPI_mockIngestReceivesIdentifyActivity() async throws {
     let mock = MockMobileIngestClient()

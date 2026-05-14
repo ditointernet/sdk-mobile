@@ -16,6 +16,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+enum class DitoOperationStatus {
+    SENT,
+    SAVED_LOCALLY,
+}
+
 /**
  * Ponto de entrada do SDK Dito. Inicialize com [init] antes de chamar métodos de tracking ou notificações.
  *
@@ -161,15 +166,29 @@ object Dito {
      * @param email E-mail (opcional)
      * @param customData Dados customizados adicionais (opcional)
      */
-    fun identify(id: String, name: String? = null, email: String? = null, customData: Map<String, Any>? = null) {
+    fun identify(
+        id: String,
+        name: String? = null,
+        email: String? = null,
+        customData: Map<String, Any>? = null,
+        callback: ((DitoOperationStatus?, Throwable?) -> Unit)? = null,
+    ) {
         tracker.identify(
             Identify(id).apply {
                 this.name = name
                 this.email = email
                 this.data = convertCustomData(customData)
             },
-            null,
-        )
+        ) { status, error ->
+            callback?.invoke(status?.toDitoOperationStatus(), error)
+        }
+    }
+
+    private fun Tracker.OperationStatus.toDitoOperationStatus(): DitoOperationStatus {
+        return when (this) {
+            Tracker.OperationStatus.SENT -> DitoOperationStatus.SENT
+            Tracker.OperationStatus.SAVED_LOCALLY -> DitoOperationStatus.SAVED_LOCALLY
+        }
     }
 
     /**
@@ -184,7 +203,11 @@ object Dito {
         replaceWith = ReplaceWith("identify(id, identify.name, identify.email, identify.data?.toMap())"),
     )
     fun identify(identify: Identify?, callback: (() -> Unit)?) {
-        identify?.let { tracker.identify(it, callback) }
+        identify?.let {
+            tracker.identify(it) { status, _ ->
+                if (status == Tracker.OperationStatus.SENT) callback?.invoke()
+            }
+        }
     }
 
     /**
@@ -193,10 +216,16 @@ object Dito {
      * @param action Nome da ação do evento
      * @param data Dados adicionais do evento (opcional)
      */
-    fun track(action: String, data: Map<String, Any>? = null) {
+    fun track(
+        action: String,
+        data: Map<String, Any>? = null,
+        callback: ((DitoOperationStatus?, Throwable?) -> Unit)? = null,
+    ) {
         tracker.event(
             Event(action).apply { this.data = convertCustomData(data) },
-        )
+        ) { status, error ->
+            callback?.invoke(status?.toDitoOperationStatus(), error)
+        }
     }
 
     /**
@@ -218,8 +247,15 @@ object Dito {
      *
      * @param token Token FCM; se null ou vazio, não envia
      */
-    fun registerDevice(token: String?) {
-        if (!token.isNullOrEmpty()) tracker.registerToken(token)
+    fun registerDevice(
+        token: String?,
+        callback: ((DitoOperationStatus?, Throwable?) -> Unit)? = null,
+    ) {
+        if (!token.isNullOrEmpty()) {
+            tracker.registerToken(token) { status, error ->
+                callback?.invoke(status?.toDitoOperationStatus(), error)
+            }
+        }
     }
 
     /**
@@ -227,8 +263,19 @@ object Dito {
      *
      * @param token Token FCM; se null ou vazio, não envia
      */
-    fun unregisterDevice(token: String?) {
-        if (!token.isNullOrEmpty()) tracker.unregisterToken(token)
+    fun unregisterDevice(
+        token: String?,
+        callback: ((DitoOperationStatus?, Throwable?) -> Unit)? = null,
+    ) {
+        if (!token.isNullOrEmpty()) {
+            tracker.unregisterToken(token) { status, error ->
+                callback?.invoke(status?.toDitoOperationStatus(), error)
+            }
+        }
+    }
+
+    fun logout() {
+        tracker.logout()
     }
 
     /**

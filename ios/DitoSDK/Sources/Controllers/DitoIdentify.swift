@@ -17,7 +17,11 @@ class DitoIdentify {
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
-    func identify(id: String, data: DitoUser? = nil) {
+    func identify(
+        id: String,
+        data: DitoUser? = nil,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+    ) {
         #if DEBUG
         DitoLogger.information("🆔 [IDENTIFY] user_id=\(id), email=\(data?.email ?? "nil")")
         #endif
@@ -26,17 +30,23 @@ class DitoIdentify {
 
         guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             identifyOffline.finishIdentify()
+            completion?(.failure(DitoOperationError.invalidIdentifier))
             return
         }
 
         Task {
-            await performIdentify(id: id, userData: data)
+            await performIdentify(id: id, userData: data, completion: completion)
         }
     }
 
-    private func performIdentify(id: String, userData: DitoUser?) async {
+    private func performIdentify(
+        id: String,
+        userData: DitoUser?,
+        completion: ((Result<DitoOperationStatus, Error>) -> Void)?
+    ) async {
         guard !id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             identifyOffline.finishIdentify()
+            completion?(.failure(DitoOperationError.invalidIdentifier))
             return
         }
         let activity = mapper.mapFromDitoUser(userData: userData, userId: id)
@@ -55,11 +65,13 @@ class DitoIdentify {
             DitoLogger.information("✅ [IDENTIFY] Sucesso")
             #endif
 
+            completion?(.success(.sent))
             retry.loadOffline()
         } catch {
             identifyOffline.identify(id: id, params: signupRequest, reference: nil, send: false)
             identifyOffline.finishIdentify()
             DitoLogger.error(error.localizedDescription)
+            completion?(.failure(error))
         }
     }
 }

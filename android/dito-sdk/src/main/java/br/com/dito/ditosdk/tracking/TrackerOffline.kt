@@ -69,6 +69,14 @@ internal class TrackerOffline(
         }
     }
 
+    fun deleteIdentify() {
+        try {
+            database.identifyDao().deleteAll()
+        } catch (e: Exception) {
+            Log.e("TrackerOffline", e.message, e)
+        }
+    }
+
     fun event(event: Event, activityId: String) {
         try {
             val dataJson = event.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
