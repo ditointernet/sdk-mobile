@@ -1,11 +1,17 @@
-import DitoSdk, { DitoErrorCode } from '../src/index';
-import { NativeModules } from 'react-native';
-
 const mockNativeModule = {
+  addListener: jest.fn(),
+  getNotifications: jest.fn(),
+  handleNotificationClick: jest.fn(),
   initialize: jest.fn(),
+  initializeWithApiKey: jest.fn(),
   identify: jest.fn(),
-  track: jest.fn(),
+  logout: jest.fn(),
+  markNotificationAsRead: jest.fn(),
   registerDeviceToken: jest.fn(),
+  removeListeners: jest.fn(),
+  setNotificationOptions: jest.fn(),
+  track: jest.fn(),
+  unregisterDeviceToken: jest.fn(),
 };
 
 jest.mock('react-native', () => {
@@ -14,10 +20,41 @@ jest.mock('react-native', () => {
   return RN;
 });
 
+const { NativeModules } = require('react-native');
+const DitoModule = require('../src/index');
+const DitoSdk = DitoModule.default;
+const { DitoErrorCode } = DitoModule;
+
 describe('DitoSdk', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (DitoSdk as any)._isInitialized = false;
+  });
+
+  describe('public API', () => {
+    it('should expose compatible public methods and notification types', () => {
+      // Arrange
+      const publicMethods = [
+        'addNotificationClickListener',
+        'getNotifications',
+        'handleNotificationClick',
+        'identify',
+        'initialize',
+        'initializeWithApiKey',
+        'logout',
+        'markNotificationAsRead',
+        'registerDeviceToken',
+        'setNotificationOptions',
+        'track',
+        'unregisterDeviceToken',
+      ];
+
+      // Act & Assert
+      publicMethods.forEach((method) => {
+        expect(typeof DitoSdk[method]).toBe('function');
+      });
+      expect(DitoModule.DitoNotificationListener).toBeDefined();
+    });
   });
 
   describe('initialize', () => {
@@ -71,6 +108,23 @@ describe('DitoSdk', () => {
     });
   });
 
+  describe('initializeWithApiKey', () => {
+    it('should initialize successfully with apiKey and bundleId', async () => {
+      mockNativeModule.initializeWithApiKey.mockResolvedValue(undefined);
+
+      await DitoSdk.initializeWithApiKey({
+        apiKey: 'test-api-key',
+        bundleId: 'br.com.dito.app',
+      });
+
+      expect(mockNativeModule.initializeWithApiKey).toHaveBeenCalledWith(
+        'test-api-key',
+        'br.com.dito.app',
+      );
+      expect(DitoSdk.isInitialized).toBe(true);
+    });
+  });
+
   describe('identify', () => {
     it('should identify user successfully', async () => {
       mockNativeModule.initialize.mockResolvedValue(undefined);
@@ -119,6 +173,29 @@ describe('DitoSdk', () => {
     });
   });
 
+  describe('logout', () => {
+    it('should throw NOT_INITIALIZED error before initialization', async () => {
+      await expect(DitoSdk.logout()).rejects.toMatchObject({
+        code: DitoErrorCode.NOT_INITIALIZED,
+      });
+      expect(mockNativeModule.logout).not.toHaveBeenCalled();
+    });
+
+    it('should call native module without payload', async () => {
+      mockNativeModule.initialize.mockResolvedValue(undefined);
+      mockNativeModule.logout.mockResolvedValue(undefined);
+
+      await DitoSdk.initialize({
+        apiKey: 'test-api-key',
+        apiSecret: 'test-api-secret',
+      });
+      await DitoSdk.logout();
+
+      expect(mockNativeModule.logout).toHaveBeenCalledTimes(1);
+      expect(mockNativeModule.logout).toHaveBeenCalledWith();
+    });
+  });
+
   describe('registerDeviceToken', () => {
     it('should register device token successfully', async () => {
       mockNativeModule.initialize.mockResolvedValue(undefined);
@@ -134,6 +211,84 @@ describe('DitoSdk', () => {
       expect(mockNativeModule.registerDeviceToken).toHaveBeenCalledWith(
         'test-device-token',
       );
+    });
+  });
+
+  describe('handleNotificationClick', () => {
+    it('should forward notification click payload to native module', async () => {
+      mockNativeModule.handleNotificationClick.mockResolvedValue(true);
+
+      const handled = await DitoSdk.handleNotificationClick({
+        channel: 'DITO',
+        link: 'app://notification',
+        notification: 'notification-123',
+        reference: 'user-123',
+      });
+
+      expect(handled).toBe(true);
+      expect(mockNativeModule.handleNotificationClick).toHaveBeenCalledWith({
+        channel: 'DITO',
+        link: 'app://notification',
+        notification: 'notification-123',
+        reference: 'user-123',
+      });
+    });
+  });
+
+  describe('notification inbox', () => {
+    it('should return notifications from native inbox', async () => {
+      // Arrange
+      mockNativeModule.initialize.mockResolvedValue(undefined);
+      mockNativeModule.getNotifications.mockResolvedValue([
+        {
+          id: 'inbox-1',
+          notificationId: 'notification-123',
+          reference: 'user-123',
+          title: 'Title',
+          message: 'Message',
+          link: 'app://notification',
+          receivedAt: 1710000000000,
+          isRead: false,
+        },
+      ]);
+
+      // Act
+      await DitoSdk.initialize({
+        apiKey: 'test-api-key',
+        apiSecret: 'test-api-secret',
+      });
+      const notifications = await DitoSdk.getNotifications();
+
+      // Assert
+      expect(mockNativeModule.getNotifications).toHaveBeenCalledTimes(1);
+      expect(notifications).toEqual([
+        {
+          id: 'inbox-1',
+          notificationId: 'notification-123',
+          reference: 'user-123',
+          title: 'Title',
+          message: 'Message',
+          link: 'app://notification',
+          receivedAt: 1710000000000,
+          isRead: false,
+        },
+      ]);
+    });
+
+    it('should mark notification as read through native inbox', async () => {
+      // Arrange
+      mockNativeModule.initialize.mockResolvedValue(undefined);
+      mockNativeModule.markNotificationAsRead.mockResolvedValue(undefined);
+
+      // Act
+      await DitoSdk.initialize({
+        apiKey: 'test-api-key',
+        apiSecret: 'test-api-secret',
+      });
+      await DitoSdk.markNotificationAsRead('inbox-1');
+
+      // Assert
+      expect(mockNativeModule.markNotificationAsRead).toHaveBeenCalledWith('inbox-1');
     });
   });
 

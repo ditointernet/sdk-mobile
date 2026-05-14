@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'dito_notification_info.dart';
+import 'dito_notification_options.dart';
+import 'dito_operation_result.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 
@@ -12,7 +15,9 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
 
   @override
   Future<String?> getPlatformVersion() async {
-    final version = await methodChannel.invokeMethod<String>('getPlatformVersion');
+    final version = await methodChannel.invokeMethod<String>(
+      'getPlatformVersion',
+    );
     return version;
   }
 
@@ -35,13 +40,10 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
     required String appSecret,
   }) async {
     try {
-      await methodChannel.invokeMethod<void>(
-        'initialize',
-        {
+      await methodChannel.invokeMethod<void>('initialize', {
         'appKey': appKey,
         'appSecret': appSecret,
-        },
-      );
+      });
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -50,22 +52,35 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   }
 
   @override
-  Future<void> identify({
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) async {
+    try {
+      await methodChannel.invokeMethod<void>('initializeWithApiKey', {
+        'apiKey': apiKey,
+        'bundleId': bundleId,
+      });
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
+  Future<DitoOperationResult> identify({
     required String id,
     String? name,
     String? email,
     Map<String, dynamic>? customData,
   }) async {
     try {
-      await methodChannel.invokeMethod<void>(
+      final result = await methodChannel.invokeMapMethod<Object?, Object?>(
         'identify',
-        {
-          'id': id,
-          'name': name,
-          'email': email,
-          'customData': customData,
-        },
+        {'id': id, 'name': name, 'email': email, 'customData': customData},
       );
+      return DitoOperationResult.fromMap(result);
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -74,18 +89,16 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   }
 
   @override
-  Future<void> track({
+  Future<DitoOperationResult> track({
     required String action,
     Map<String, dynamic>? data,
   }) async {
     try {
-      await methodChannel.invokeMethod<void>(
+      final result = await methodChannel.invokeMapMethod<Object?, Object?>(
         'track',
-        {
-          'action': action,
-          'data': data,
-        },
+        {'action': action, 'data': data},
       );
+      return DitoOperationResult.fromMap(result);
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -94,14 +107,24 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   }
 
   @override
-  Future<void> registerDeviceToken(String token) async {
+  Future<void> logout() async {
     try {
-      await methodChannel.invokeMethod<void>(
+      await methodChannel.invokeMethod<void>('logout');
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
+  Future<DitoOperationResult> registerDeviceToken(String token) async {
+    try {
+      final result = await methodChannel.invokeMapMethod<Object?, Object?>(
         'registerDeviceToken',
-        {
-          'token': token,
-        },
+        {'token': token},
       );
+      return DitoOperationResult.fromMap(result);
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -110,14 +133,13 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   }
 
   @override
-  Future<void> unregisterDeviceToken(String token) async {
+  Future<DitoOperationResult> unregisterDeviceToken(String token) async {
     try {
-      await methodChannel.invokeMethod<void>(
+      final result = await methodChannel.invokeMapMethod<Object?, Object?>(
         'unregisterDeviceToken',
-        {
-          'token': token,
-        },
+        {'token': token},
       );
+      return DitoOperationResult.fromMap(result);
     } on PlatformException {
       rethrow;
     } catch (e) {
@@ -133,6 +155,47 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
         userInfo,
       );
       return handled ?? false;
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
+  Future<void> setNotificationOptions(DitoNotificationOptions options) async {
+    try {
+      await methodChannel.invokeMethod<void>(
+        'setNotificationOptions',
+        options.toMap(),
+      );
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
+  Future<List<DitoNotificationInfo>> getNotifications() async {
+    try {
+      final list = await methodChannel.invokeListMethod<Map<Object?, Object?>>(
+        'getNotifications',
+      );
+      return (list ?? []).map(DitoNotificationInfo.fromMap).toList();
+    } on PlatformException {
+      rethrow;
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  @override
+  Future<void> markNotificationAsRead(String id) async {
+    try {
+      await methodChannel.invokeMethod<void>('markNotificationAsRead', {
+        'id': id,
+      });
     } on PlatformException {
       rethrow;
     } catch (e) {

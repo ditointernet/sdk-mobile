@@ -1,3 +1,17 @@
+## Unreleased
+
+### Adicionado
+
+- Adicionado `DitoSdk.logout()` como método público para limpar localmente dados persistidos por `identify` e a identidade local usada por tracking, sem remover configuração da SDK, opções de notificação, inbox, tokens de push ou dados remotos no backend.
+
+## 3.4.0
+
+### Alterado
+
+- Alinhada a dependência Android do wrapper para `br.com.dito:ditosdk:3.4.0`
+- Alinhada a dependência iOS do wrapper para `DitoSDK` em `ios-v3.3.1`
+- Alinhada a versão do pacote Flutter e do pod do wrapper em `3.4.0`
+
 ### Outros
 
 - chore(release): flutter 3.2.3 (81f78d7)

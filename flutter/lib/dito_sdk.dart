@@ -1,8 +1,14 @@
+export 'dito_notification_info.dart';
 export 'dito_notification_listener.dart';
+export 'dito_notification_options.dart';
+export 'dito_operation_result.dart';
 
 import 'package:flutter/services.dart';
 
+import 'dito_notification_info.dart';
 import 'dito_notification_listener.dart';
+import 'dito_notification_options.dart';
+import 'dito_operation_result.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 import 'parameter_validator.dart';
@@ -62,7 +68,24 @@ class DitoSdk {
     try {
       await DitoSdkPlatform.instance.initialize(
         appKey: appKey,
-        appSecret: appSecret
+        appSecret: appSecret,
+      );
+      _isInitialized = true;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) async {
+    try {
+      await DitoSdkPlatform.instance.initializeWithApiKey(
+        apiKey: apiKey,
+        bundleId: bundleId,
       );
       _isInitialized = true;
     } on PlatformException catch (e) {
@@ -88,7 +111,7 @@ class DitoSdk {
   ///   customData: {'type': 'premium', 'points': 1500},
   /// );
   /// ```
-  Future<void> identify({
+  Future<DitoOperationResult> identify({
     required String id,
     String? name,
     String? email,
@@ -96,7 +119,12 @@ class DitoSdk {
   }) async {
     _checkInitialized();
     _validateIdentifyParameters(id, email);
-    await _performIdentify(id: id, name: name, email: email, customData: customData);
+    return _performIdentify(
+      id: id,
+      name: name,
+      email: email,
+      customData: customData,
+    );
   }
 
   void _validateIdentifyParameters(String id, String? email) {
@@ -104,14 +132,14 @@ class DitoSdk {
     validateEmail(email);
   }
 
-  Future<void> _performIdentify({
+  Future<DitoOperationResult> _performIdentify({
     required String id,
     String? name,
     String? email,
     Map<String, dynamic>? customData,
   }) async {
     try {
-      await DitoSdkPlatform.instance.identify(
+      return await DitoSdkPlatform.instance.identify(
         id: id,
         name: name,
         email: email,
@@ -138,28 +166,37 @@ class DitoSdk {
   ///   data: {'product': 'item123', 'price': 99.99},
   /// );
   /// ```
-  Future<void> track({
+  Future<DitoOperationResult> track({
     required String action,
     Map<String, dynamic>? data,
   }) async {
     _checkInitialized();
     _validateTrackParameters(action);
-    await _performTrack(action: action, data: data);
+    return _performTrack(action: action, data: data);
   }
 
   void _validateTrackParameters(String action) {
     validateAction(action);
   }
 
-  Future<void> _performTrack({
+  Future<DitoOperationResult> _performTrack({
     required String action,
     Map<String, dynamic>? data,
   }) async {
     try {
-      await DitoSdkPlatform.instance.track(
-        action: action,
-        data: data,
-      );
+      return await DitoSdkPlatform.instance.track(action: action, data: data);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> logout() async {
+    _checkInitialized();
+
+    try {
+      await DitoSdkPlatform.instance.logout();
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {
@@ -178,19 +215,19 @@ class DitoSdk {
   /// ```dart
   /// await DitoSdk.registerDeviceToken('fcm-device-token');
   /// ```
-  Future<void> registerDeviceToken(String token) async {
+  Future<DitoOperationResult> registerDeviceToken(String token) async {
     _checkInitialized();
     _validateTokenParameter(token);
-    await _performRegisterDeviceToken(token);
+    return _performRegisterDeviceToken(token);
   }
 
   void _validateTokenParameter(String token) {
     validateToken(token);
   }
 
-  Future<void> _performRegisterDeviceToken(String token) async {
+  Future<DitoOperationResult> _performRegisterDeviceToken(String token) async {
     try {
-      await DitoSdkPlatform.instance.registerDeviceToken(token);
+      return await DitoSdkPlatform.instance.registerDeviceToken(token);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {
@@ -209,15 +246,17 @@ class DitoSdk {
   /// ```dart
   /// await DitoSdk.unregisterDeviceToken('fcm-device-token');
   /// ```
-  Future<void> unregisterDeviceToken(String token) async {
+  Future<DitoOperationResult> unregisterDeviceToken(String token) async {
     _checkInitialized();
     _validateTokenParameter(token);
-    await _performUnregisterDeviceToken(token);
+    return _performUnregisterDeviceToken(token);
   }
 
-  Future<void> _performUnregisterDeviceToken(String token) async {
+  Future<DitoOperationResult> _performUnregisterDeviceToken(
+    String token,
+  ) async {
     try {
-      await DitoSdkPlatform.instance.unregisterDeviceToken(token);
+      return await DitoSdkPlatform.instance.unregisterDeviceToken(token);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {
@@ -228,6 +267,36 @@ class DitoSdk {
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) async {
     try {
       return await DitoSdkPlatform.instance.handleNotificationClick(userInfo);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> setNotificationOptions(DitoNotificationOptions options) async {
+    try {
+      await DitoSdkPlatform.instance.setNotificationOptions(options);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<List<DitoNotificationInfo>> getNotifications() async {
+    try {
+      return await DitoSdkPlatform.instance.getNotifications();
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> markNotificationAsRead(String id) async {
+    try {
+      await DitoSdkPlatform.instance.markNotificationAsRead(id);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {

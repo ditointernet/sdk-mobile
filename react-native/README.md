@@ -221,6 +221,36 @@ try {
 
 ---
 
+### logout
+
+**Descrição**: Limpa a identidade local persistida pelo `identify` e a identidade local usada por tracking. Use após a saída de conta no app host para evitar que eventos futuros reutilizem o usuário anterior.
+
+**Assinatura**:
+```typescript
+DitoSdk.logout(): Promise<void>
+```
+
+**Retorno**: `Promise<void>`
+
+**Possíveis Erros**:
+- `DitoError` com código `NOT_INITIALIZED`: Se o SDK não foi inicializado
+
+**Exemplo**:
+```typescript
+async function handleAccountSignOut() {
+  await signOutAccount();
+  await DitoSdk.logout();
+}
+```
+
+**Notas**:
+- Deve ser chamado após `DitoSdk.initialize(...)`
+- O plugin React Native encaminha a operação para as SDKs nativas Android e iOS
+- O efeito é local: remove dados persistidos por `identify` e identidade local usada por tracking
+- Não remove credenciais ou configuração da SDK, opções de notificação, inbox de notificações, tokens de push ou dados remotos no backend
+
+---
+
 ### registerDeviceToken
 
 **Descrição**: Registra um token de dispositivo para receber push notifications.
@@ -302,6 +332,41 @@ npm install @react-native-firebase/messaging
 ```
 
 3. Configure o tratamento de notificações conforme mostrado abaixo.
+
+### Customização de Notificações — `setNotificationOptions`
+
+Use `setNotificationOptions` para personalizar a aparência das notificações push geradas pelo Dito SDK. Suportado em **Android** e **iOS**.
+
+**Assinatura**:
+```typescript
+static async setNotificationOptions(options: DitoNotificationOptions): Promise<void>
+```
+
+**Interface `DitoNotificationOptions`**:
+
+| Campo | Tipo | Plataforma | Descrição |
+|-------|------|------------|-----------|
+| `smallIconResId` | `number?` | Android | Resource ID do ícone pequeno na barra de status |
+| `largeIconResId` | `number?` | Android | Resource ID do ícone grande na notificação expandida |
+| `soundResourceName` | `string?` | Android/iOS | Nome do recurso de som personalizado |
+| `accentColor` | `number?` | Android | Cor de destaque em formato ARGB (ex: `0xFF1A73E8`) |
+| `badgeEnabled` | `boolean?` | Android/iOS | Habilita badge no ícone do app (padrão: `true`) |
+
+**Exemplo**:
+```typescript
+import DitoSdk, { DitoNotificationOptions } from '@ditointernet/dito-sdk';
+
+const notificationOptions: DitoNotificationOptions = {
+  smallIconResId: R.drawable.ic_notification,
+  soundResourceName: 'custom_sound',
+  accentColor: 0xFF1A73E8,
+  badgeEnabled: true,
+};
+
+await DitoSdk.setNotificationOptions(notificationOptions);
+```
+
+> **Nota**: Recomenda-se chamar `setNotificationOptions` durante a inicialização do app, antes de receber qualquer notificação.
 
 ## ⚠️ Tratamento de Erros
 

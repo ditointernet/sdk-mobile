@@ -277,6 +277,38 @@ try {
 
 ---
 
+### logout
+
+**Descrição**: Limpa a identidade local persistida pelo `identify` e a identidade local usada por tracking. Use após a saída de conta no app host para evitar que eventos futuros reutilizem o usuário anterior.
+
+**Assinatura**:
+```dart
+Future<void> logout()
+```
+
+**Retorno**: `Future<void>`
+
+**Possíveis Erros**:
+- `PlatformException` com código `NOT_INITIALIZED`: Se o SDK não foi inicializado
+
+**Exemplo**:
+```dart
+final ditoSdk = DitoSdk();
+
+Future<void> handleAccountSignOut() async {
+  await signOutAccount();
+  await ditoSdk.logout();
+}
+```
+
+**Notas**:
+- Deve ser chamado após `ditoSdk.initialize(...)`
+- O plugin Flutter encaminha a operação para as SDKs nativas Android e iOS
+- O efeito é local: remove dados persistidos por `identify` e identidade local usada por tracking
+- Não remove credenciais ou configuração da SDK, opções de notificação, inbox de notificações, tokens de push ou dados remotos no backend
+
+---
+
 ### registerDeviceToken
 
 **Descrição**: Registra um token de dispositivo para receber push notifications.
@@ -531,6 +563,34 @@ void main() async {
   runApp(MyApp());
 }
 ```
+
+### Personalização de notificações
+
+Use `DitoSdk.setNotificationOptions` para personalizar a aparência das notificações push. Pode ser chamado antes ou depois de `initialize`.
+
+```dart
+import 'package:dito_sdk/dito_sdk.dart';
+
+final ditoSdk = DitoSdk();
+await ditoSdk.initialize(appKey: 'your-key', appSecret: 'your-secret');
+
+ditoSdk.setNotificationOptions(
+  DitoNotificationOptions(
+    smallIconResId: 'ic_notification', // Android only
+    soundResourceName: 'alert',        // Android: sem extensão; iOS: com extensão (ex: alert.aiff)
+    accentColor: 0xFF6200EE,           // Android only
+    badgeEnabled: true,
+  ),
+);
+```
+
+| Campo | Plataforma | Descrição |
+|---|---|---|
+| `smallIconResId` | Android | Nome do drawable para ícone pequeno da notificação |
+| `largeIconResId` | Android | Nome do drawable para ícone grande da notificação |
+| `soundResourceName` | Android + iOS | Nome do arquivo de som (Android: sem extensão; iOS: com extensão) |
+| `accentColor` | Android | Cor de destaque em formato ARGB (ex: `0xFF6200EE`) |
+| `badgeEnabled` | Android + iOS | Exibir badge no ícone do app |
 
 ### Configuração Básica (Flutter)
 

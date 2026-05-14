@@ -45,6 +45,10 @@ class SampleAppState {
   final TextEditingController userCountryController = TextEditingController();
   final TextEditingController eventNameController = TextEditingController();
   final TextEditingController tokenController = TextEditingController();
+  final TextEditingController smallIconController = TextEditingController();
+  final TextEditingController largeIconController = TextEditingController();
+  final TextEditingController soundController = TextEditingController();
+  final TextEditingController accentColorController = TextEditingController();
 
   String fcmDebugStatus = 'Checking...';
   int fcmPushReceivedCount = 0;
@@ -91,8 +95,8 @@ class SampleAppState {
       } else {
         _setState(() => fcmDebugStatus = 'Waiting for FCM token');
       }
-      tokenRefreshSubscription = FirebaseMessaging.instance.onTokenRefresh
-          .listen((newToken) {
+      tokenRefreshSubscription =
+          FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         if (newToken.isNotEmpty) {
           _setState(() {
             tokenController.text = newToken;
@@ -154,7 +158,7 @@ class SampleAppState {
       final country = userCountryController.text.trim();
       if (country.isNotEmpty) customData['country'] = country;
 
-      await ditoSdk.identify(
+      final result = await ditoSdk.identify(
         id: userId,
         name: userNameController.text.trim().isEmpty
             ? null
@@ -162,11 +166,17 @@ class SampleAppState {
         email: email.isEmpty ? null : email,
         customData: customData.isEmpty ? null : customData,
       );
-      _log('identify success: $userId');
-      _showSnackBar('User identified successfully');
+      _showOperationFeedback(
+        operation: _SampleOperation.identify,
+        context: userId,
+        feedback: _operationFeedback(_SampleOperation.identify, result),
+      );
     } on PlatformException catch (e) {
-      _log('identify error: ${e.code} ${e.message}');
-      _showSnackBar('Error: ${e.message}', isError: true);
+      _showOperationFeedback(
+        operation: _SampleOperation.identify,
+        context: userId,
+        feedback: _platformExceptionFeedback(_SampleOperation.identify, e),
+      );
     }
   }
 
@@ -182,18 +192,24 @@ class SampleAppState {
     }
     try {
       _log('track start: $eventName');
-      await ditoSdk.track(
+      final result = await ditoSdk.track(
         action: eventName,
         data: {
           'timestamp': DateTime.now().toIso8601String(),
           'platform': platformVersion,
         },
       );
-      _log('track success: $eventName');
-      _showSnackBar('Event tracked successfully');
+      _showOperationFeedback(
+        operation: _SampleOperation.track,
+        context: eventName,
+        feedback: _operationFeedback(_SampleOperation.track, result),
+      );
     } on PlatformException catch (e) {
-      _log('track error: ${e.code} ${e.message}');
-      _showSnackBar('Error: ${e.message}', isError: true);
+      _showOperationFeedback(
+        operation: _SampleOperation.track,
+        context: eventName,
+        feedback: _platformExceptionFeedback(_SampleOperation.track, e),
+      );
     }
   }
 
@@ -209,12 +225,32 @@ class SampleAppState {
     }
     try {
       _log('register token start');
-      await ditoSdk.registerDeviceToken(token);
-      _log('register token success');
-      _showSnackBar('Device token registered successfully');
+      final result = await ditoSdk.registerDeviceToken(token);
+      _showOperationFeedback(
+        operation: _SampleOperation.registerToken,
+        feedback: _operationFeedback(_SampleOperation.registerToken, result),
+      );
     } on PlatformException catch (e) {
-      _log('register token error: ${e.code} ${e.message}');
-      _showSnackBar('Error: ${e.message}', isError: true);
+      _showOperationFeedback(
+        operation: _SampleOperation.registerToken,
+        feedback: _platformExceptionFeedback(_SampleOperation.registerToken, e),
+      );
+    }
+  }
+
+  Future<void> applyNotificationOptions() async {
+    try {
+      final options = DitoNotificationOptions(
+        accentColor: int.tryParse(accentColorController.text),
+        largeIconResId: int.tryParse(largeIconController.text),
+        smallIconResId: int.tryParse(smallIconController.text),
+        soundResourceName:
+            soundController.text.isEmpty ? null : soundController.text,
+      );
+      await ditoSdk.setNotificationOptions(options);
+      _showSnackBar('Notification Options aplicadas');
+    } catch (e) {
+      _showSnackBar('Error: $e', isError: true);
     }
   }
 
@@ -230,12 +266,16 @@ class SampleAppState {
     }
     try {
       _log('unregister token start');
-      await ditoSdk.unregisterDeviceToken(token);
-      _log('unregister token success');
-      _showSnackBar('Device token unregistered successfully');
+      final result = await ditoSdk.unregisterDeviceToken(token);
+      _showOperationFeedback(
+        operation: _SampleOperation.unregisterToken,
+        feedback: _operationFeedback(_SampleOperation.unregisterToken, result),
+      );
     } on PlatformException catch (e) {
-      _log('unregister token error: ${e.code} ${e.message}');
-      _showSnackBar('Error: ${e.message}', isError: true);
+      _showOperationFeedback(
+        operation: _SampleOperation.unregisterToken,
+        feedback: _platformExceptionFeedback(_SampleOperation.unregisterToken, e),
+      );
     }
   }
 
@@ -243,14 +283,69 @@ class SampleAppState {
     debugPrint('[DitoSample] $message');
   }
 
-  void _showSnackBar(String message, {bool isError = false}) {
+  _OperationFeedback _operationFeedback(
+    _SampleOperation operation,
+    DitoOperationResult result,
+  ) {
+    switch (result.status) {
+      case DitoOperationStatus.sent:
+        return _OperationFeedback(
+          message: operation.sentMessage,
+          severity: _FeedbackSeverity.success,
+        );
+      case DitoOperationStatus.savedLocally:
+        return _OperationFeedback(
+          message: operation.savedLocallyMessage,
+          severity: _FeedbackSeverity.warning,
+        );
+    }
+  }
+
+  _OperationFeedback _platformExceptionFeedback(
+    _SampleOperation operation,
+    PlatformException exception,
+  ) {
+    final reason = exception.message ?? exception.code;
+    return _OperationFeedback(
+      message: '${operation.failureLabel} failed: $reason',
+      severity: _FeedbackSeverity.error,
+    );
+  }
+
+  void _showOperationFeedback({
+    required _SampleOperation operation,
+    required _OperationFeedback feedback,
+    String? context,
+  }) {
+    final logContext = context == null ? '' : ': $context';
+    _log('${operation.logPrefix} ${feedback.message}$logContext');
+    _showSnackBar(feedback.message, severity: feedback.severity);
+  }
+
+  void _showSnackBar(
+    String message, {
+    _FeedbackSeverity severity = _FeedbackSeverity.success,
+    bool? isError,
+  }) {
+    final effectiveSeverity = isError == true ? _FeedbackSeverity.error : severity;
     _scaffoldKey.currentState?.showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Colors.red : Colors.green,
+        backgroundColor: _snackBarColor(effectiveSeverity),
         duration: const Duration(seconds: 2),
       ),
     );
+  }
+
+  Color _snackBarColor(_FeedbackSeverity severity) {
+    switch (severity) {
+      case _FeedbackSeverity.success:
+        return Colors.green;
+      case _FeedbackSeverity.warning:
+        return Colors.orange;
+      case _FeedbackSeverity.error:
+        return Colors.red;
+    }
   }
 
   void dispose() {
@@ -268,5 +363,60 @@ class SampleAppState {
     userCountryController.dispose();
     eventNameController.dispose();
     tokenController.dispose();
+    smallIconController.dispose();
+    largeIconController.dispose();
+    soundController.dispose();
+    accentColorController.dispose();
   }
+}
+
+enum _FeedbackSeverity { success, warning, error }
+
+enum _SampleOperation {
+  identify(
+    logPrefix: 'identify',
+    sentMessage: 'Identify sent',
+    savedLocallyMessage: 'Identify saved locally',
+    failureLabel: 'Identify',
+  ),
+  track(
+    logPrefix: 'track',
+    sentMessage: 'Event sent',
+    savedLocallyMessage: 'Event saved locally',
+    failureLabel: 'Event',
+  ),
+  registerToken(
+    logPrefix: 'register token',
+    sentMessage: 'Device token sent',
+    savedLocallyMessage: 'Device token saved locally',
+    failureLabel: 'Device token registration',
+  ),
+  unregisterToken(
+    logPrefix: 'unregister token',
+    sentMessage: 'Device token removal sent',
+    savedLocallyMessage: 'Device token removal saved locally',
+    failureLabel: 'Device token removal',
+  );
+
+  const _SampleOperation({
+    required this.logPrefix,
+    required this.sentMessage,
+    required this.savedLocallyMessage,
+    required this.failureLabel,
+  });
+
+  final String logPrefix;
+  final String sentMessage;
+  final String savedLocallyMessage;
+  final String failureLabel;
+}
+
+class _OperationFeedback {
+  const _OperationFeedback({
+    required this.message,
+    required this.severity,
+  });
+
+  final String message;
+  final _FeedbackSeverity severity;
 }

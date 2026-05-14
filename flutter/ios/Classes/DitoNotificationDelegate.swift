@@ -1,4 +1,3 @@
-import DitoSDK
 import FirebaseMessaging
 import UIKit
 import UserNotifications
@@ -62,11 +61,6 @@ final class DitoNotificationDelegate: NSObject, MessagingDelegate, UNUserNotific
     return nil
   }
 
-  private func handleDitoIfNeeded(userInfo: [AnyHashable: Any], fcmToken: String) {
-    guard isDitoChannel(userInfo) else { return }
-    Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
-  }
-
   private func cacheFcmToken(_ token: String?) {
     guard let token = token, !token.isEmpty else { return }
     UserDefaults.standard.set(token, forKey: "FCMToken")
@@ -99,9 +93,8 @@ extension DitoNotificationDelegate {
   ) {
     logPush(context: "Push received (background)", userInfo: userInfo)
     notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      let token = cachedFcmToken()
-      handleDitoIfNeeded(userInfo: userInfo, fcmToken: token ?? "")
+    let token = cachedFcmToken()
+    if DitoSdkPlugin.didReceiveRemoteNotification(userInfo: userInfo, fcmToken: token ?? "") {
       if token == nil {
         fetchFcmTokenIfNeeded()
       }
@@ -119,9 +112,8 @@ extension DitoNotificationDelegate {
     let userInfo = notification.request.content.userInfo
     logPush(context: "Push received (foreground)", userInfo: userInfo)
     notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      let token = cachedFcmToken()
-      handleDitoIfNeeded(userInfo: userInfo, fcmToken: token ?? "")
+    let token = cachedFcmToken()
+    if DitoSdkPlugin.didReceiveRemoteNotification(userInfo: userInfo, fcmToken: token ?? "") {
       if token == nil {
         fetchFcmTokenIfNeeded()
       }
@@ -141,11 +133,7 @@ extension DitoNotificationDelegate {
     let userInfo = response.notification.request.content.userInfo
     logPush(context: "Push tap received", userInfo: userInfo)
     notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
-        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
-      }
-    }
+    _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo)
     if let orig = originalDelegate, orig.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
       orig.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)
     } else {

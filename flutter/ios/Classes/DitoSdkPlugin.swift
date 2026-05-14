@@ -8,7 +8,10 @@ import UserNotifications
 public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private static let notificationEventsChannelName = "br.com.dito/notification_events"
   private static let notificationClickEventType = "notification_click"
+  private static let clickDedupeWindow: TimeInterval = 1.5
   private static var notificationEventSink: FlutterEventSink?
+  private static var lastClickAt: Date?
+  private static var lastClickKey: String?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "br.com.dito/dito_sdk", binaryMessenger: registrar.messenger())
@@ -27,19 +30,46 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   }
 
   private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String {
-      return ch
-    }
-    return userInfo["channel"] as? String
+    notificationData(from: userInfo)["channel"] as? String
   }
 
   private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    channelFromUserInfo(userInfo) == "DITO"
+    channelFromUserInfo(userInfo)?.uppercased() == "DITO"
+  }
+
+  private static func notificationData(from userInfo: [AnyHashable: Any]) -> [AnyHashable: Any] {
+    if let data = userInfo["data"] as? [AnyHashable: Any] {
+      return normalizedNotificationData(data)
+    }
+    if let data = userInfo["data"] as? [String: Any] {
+      var bridgedData: [AnyHashable: Any] = [:]
+      data.forEach { bridgedData[$0.key] = $0.value }
+      return normalizedNotificationData(bridgedData)
+    }
+    if let rawData = userInfo["data"] as? String,
+       let jsonData = rawData.data(using: .utf8),
+       let data = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any] {
+      var bridgedData: [AnyHashable: Any] = [:]
+      data.forEach { bridgedData[$0.key] = $0.value }
+      return normalizedNotificationData(bridgedData)
+    }
+    return normalizedNotificationData(userInfo)
+  }
+
+  private static func normalizedNotificationData(_ userInfo: [AnyHashable: Any]) -> [AnyHashable: Any] {
+    var normalized = userInfo
+    if normalized["link"] == nil, let deeplink = normalized["deeplink"] as? String {
+      normalized["link"] = deeplink
+    }
+    if normalized["deeplink"] == nil, let link = normalized["link"] as? String {
+      normalized["deeplink"] = link
+    }
+    return normalized
   }
 
   private static func processNotificationReceived(userInfo: [AnyHashable: Any], fcmToken: String?) {
-    guard let token = fcmToken else { return }
-    Dito.notificationReceived(userInfo: userInfo, token: token)
+    let token = fcmToken ?? ""
+    Dito.notificationReceived(userInfo: notificationData(from: userInfo), token: token)
   }
 
   @objc public static func didReceiveNotificationRequest(
@@ -65,14 +95,35 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard isDitoChannel(userInfo) else { return false }
-    Dito.notificationClick(userInfo: userInfo, callback: callback)
+    let source = notificationData(from: userInfo)
+    guard isDitoChannel(source) else { return false }
+    if isDuplicateClick(source) {
+      return true
+    }
+    Dito.notificationClick(userInfo: source) { deeplink in
+      callback?(deeplink)
+      emitNotificationClickEvent(userInfo: source, deeplink: deeplink)
+    }
     return true
+  }
+
+  private static func isDuplicateClick(_ userInfo: [AnyHashable: Any]) -> Bool {
+    let key = [
+      userInfo["notification"] as? String ?? "",
+      userInfo["reference"] as? String ?? "",
+      userInfo["log_id"] as? String ?? "",
+      userInfo["deeplink"] as? String ?? userInfo["link"] as? String ?? ""
+    ].joined(separator: "|")
+    let now = Date()
+    let duplicate = key == lastClickKey && lastClickAt.map { now.timeIntervalSince($0) < clickDedupeWindow } == true
+    lastClickKey = key
+    lastClickAt = now
+    return duplicate
   }
 
   internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
     guard let sink = notificationEventSink else { return }
-    let source: [AnyHashable: Any] = (userInfo["data"] as? [AnyHashable: Any]) ?? userInfo
+    let source = notificationData(from: userInfo)
 
     var payload: [String: Any] = [:]
     payload["type"] = notificationClickEventType
@@ -116,6 +167,20 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         return
       }
       Dito.enableDebugMode(enabled)
+      result(nil)
+    case "initializeWithApiKey":
+      guard let args = call.arguments as? [String: Any],
+            let apiKey = args["apiKey"] as? String,
+            let bundleId = args["bundleId"] as? String,
+            !apiKey.isEmpty, !bundleId.isEmpty else {
+        result(FlutterError(
+          code: "INVALID_CREDENTIALS",
+          message: "apiKey and bundleId are required and cannot be empty",
+          details: nil
+        ))
+        return
+      }
+      Dito.configure(apiKey: apiKey, bundleId: bundleId)
       result(nil)
     case "initialize":
       guard let args = call.arguments as? [String: Any],
@@ -169,8 +234,9 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         name: name,
         email: email,
         customData: customData
-      )
-      result(nil)
+      ) { operation in
+        self.completeOperationResult(operation, result: result, errorCode: "NETWORK_ERROR")
+      }
     case "track":
       guard let args = call.arguments as? [String: Any],
             let action = args["action"] as? String else {
@@ -196,7 +262,11 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       Dito.track(
         action: action,
         data: data
-      )
+      ) { operation in
+        self.completeOperationResult(operation, result: result, errorCode: "NETWORK_ERROR")
+      }
+    case "logout":
+      Dito.logout()
       result(nil)
     case "registerDeviceToken":
       guard let args = call.arguments as? [String: Any],
@@ -218,8 +288,9 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         return
       }
 
-      Dito.registerDevice(token: token)
-      result(nil)
+      Dito.registerDevice(token: token) { operation in
+        self.completeOperationResult(operation, result: result, errorCode: "NETWORK_ERROR")
+      }
     case "unregisterDeviceToken":
       guard let args = call.arguments as? [String: Any],
             let token = args["token"] as? String else {
@@ -240,8 +311,9 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         return
       }
 
-      Dito.unregisterDevice(token: token)
-      result(nil)
+      Dito.unregisterDevice(token: token) { operation in
+        self.completeOperationResult(operation, result: result, errorCode: "NETWORK_ERROR")
+      }
     case "handleNotificationClick":
       guard let args = call.arguments as? [String: Any] else {
         result(false)
@@ -251,10 +323,37 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       for (k, v) in args {
         userInfo[k] = v
       }
-      let handled = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
-        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
-      }
+      let handled = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo)
       result(handled)
+    case "setNotificationOptions":
+      let args = call.arguments as? [String: Any] ?? [:]
+      let soundResourceName = args["soundResourceName"] as? String
+      let options = DitoNotificationOptions(soundName: soundResourceName)
+      Dito.setNotificationOptions(options)
+      result(nil)
+    case "getNotifications":
+      let notifications = Dito.shared.getNotifications()
+      let maps: [[String: Any]] = notifications.map { info in
+        [
+          "id": info.id,
+          "notificationId": info.notificationId,
+          "reference": info.reference,
+          "title": info.title,
+          "message": info.message,
+          "link": info.link,
+          "receivedAt": Int64(info.receivedAt.timeIntervalSince1970 * 1000),
+          "isRead": info.isRead
+        ]
+      }
+      result(maps)
+    case "markNotificationAsRead":
+      guard let args = call.arguments as? [String: Any],
+            let id = args["id"] as? String else {
+        result(FlutterError(code: "INBOX_ERROR", message: "id argument missing", details: nil))
+        return
+      }
+      Dito.shared.markNotificationAsRead(id: id)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }
@@ -263,6 +362,34 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   public func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
     DitoSdkPlugin.notificationEventSink = events
     return nil
+  }
+
+  private func completeOperationResult(
+    _ operation: Result<DitoOperationStatus, Error>,
+    result: @escaping FlutterResult,
+    errorCode: String
+  ) {
+    DispatchQueue.main.async {
+      switch operation {
+      case .success(let status):
+        result(["status": self.rawOperationStatus(status)])
+      case .failure(let error):
+        result(FlutterError(
+          code: errorCode,
+          message: error.localizedDescription,
+          details: nil
+        ))
+      }
+    }
+  }
+
+  private func rawOperationStatus(_ status: DitoOperationStatus) -> String {
+    switch status {
+    case .sent:
+      return "sent"
+    case .savedLocally:
+      return "saved_locally"
+    }
   }
 
   public func onCancel(withArguments arguments: Any?) -> FlutterError? {
