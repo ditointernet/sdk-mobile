@@ -1,3 +1,7 @@
+### Outros
+
+- Fix/android ios event callback (#18) (b64edde)
+
 ### Correções
 
 - fix(ios): update podspec file paths for DitoSDK (fae0320)
