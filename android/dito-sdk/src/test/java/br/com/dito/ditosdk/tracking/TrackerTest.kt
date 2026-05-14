@@ -7,6 +7,7 @@ import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import com.google.common.truth.Truth.assertThat
+import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -72,13 +73,15 @@ class TrackerTest {
     @Test
     fun `identify should invoke callback on success`() = testScope.runTest {
         val identify = Identify("user123")
-        var callbackInvoked = false
-        val callback: () -> Unit = { callbackInvoked = true }
+        var receivedStatus: Tracker.OperationStatus? = null
+        val callback: (Tracker.OperationStatus?, Throwable?) -> Unit = { status, _ ->
+            receivedStatus = status
+        }
 
         tracker.identify(identify, callback)
 
         delay(500)
-        assertThat(callbackInvoked).isTrue()
+        assertThat(receivedStatus).isEqualTo(Tracker.OperationStatus.SENT)
     }
 
     @Test
@@ -122,6 +125,31 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify { mockClient.activity(any()) }
+    }
+
+    @Test
+    fun `logout should clear persisted identify`() = testScope.runTest {
+        tracker.id = "user123"
+
+        tracker.logout()
+
+        advanceUntilIdle()
+        verify { trackerOffline.deleteIdentify() }
+        assertThat(tracker.idOrNull).isNull()
+    }
+
+    @Test
+    fun `event after logout should not reuse previous identify`() = testScope.runTest {
+        tracker.id = "user123"
+        tracker.logout()
+        advanceUntilIdle()
+        clearMocks(mockClient, trackerOffline, answers = false)
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify { trackerOffline.event(any(), any()) }
     }
 
     @Test

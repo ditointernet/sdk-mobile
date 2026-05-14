@@ -22,14 +22,14 @@ internal class Tracker(
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
 
-    lateinit var id: String
+    var id: String? = null
     private var trackerRetry: TrackerRetry? = null
 
     init {
         loadIdentify()
     }
 
-    val idOrNull: String? get() = if (::id.isInitialized) id else null
+    val idOrNull: String? get() = id
 
     fun setTrackerRetry(retry: TrackerRetry) {
         this.trackerRetry = retry
@@ -46,38 +46,48 @@ internal class Tracker(
         }
     }
 
-    fun identify(identify: Identify, callback: (() -> Unit)?) {
+    enum class OperationStatus {
+        SENT,
+        SAVED_LOCALLY,
+    }
+
+    fun identify(identify: Identify, callback: ((OperationStatus?, Throwable?) -> Unit)?) {
         scope.launch {
             if (debug) Log.d("Tracker", "begin identify user: ${identify.id}")
             id = identify.id
             val activity = mapper.mapIdentify(identify)
-            val request = mapper.buildRequest(id, listOf(activity), null)
+            val request = mapper.buildRequest(identify.id, listOf(activity), null)
             try {
                 client.activity(request)
                 trackerOffline.identify(identify, send = true)
-                callback?.invoke()
+                callback?.invoke(OperationStatus.SENT, null)
                 trackerRetry?.uploadEvents()
             } catch (e: Exception) {
-                if (debug) Log.d("Tracker", "identify error: ${e.message}")
+                if (debug) Log.d("Tracker", "identify error: $e", e)
                 trackerOffline.identify(identify, send = false)
+                callback?.invoke(null, e)
             }
         }
     }
 
-    fun event(event: Event) {
+    fun event(event: Event, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             val activityId = UUID.randomUUID().toString()
-            if (!::id.isInitialized) {
+            val userId = id
+            if (userId == null) {
                 Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
                 trackerOffline.event(event, activityId)
+                callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
                 return@launch
             }
             val activity = mapper.mapTrack(event, activityId)
-            val request = mapper.buildRequest(id, listOf(activity), null)
+            val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
                 client.activity(request)
+                callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
                 handleEventError(e, event, activityId)
+                callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
             }
         }
     }
@@ -89,35 +99,52 @@ internal class Tracker(
         trackerOffline.event(event, activityId)
     }
 
-    fun registerToken(token: String) {
+    fun registerToken(token: String, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             try {
-                if (!::id.isInitialized) {
-                    Log.e("Tracker", "Antes de registrar o token é preciso identificar o usuário.")
+                val userId = id
+                if (userId == null) {
+                    val error = IllegalStateException("Antes de registrar o token é preciso identificar o usuário.")
+                    Log.e("Tracker", error.message ?: "")
+                    callback?.invoke(null, error)
                     return@launch
                 }
                 val activity = mapper.mapTokenRegister(token)
-                val request = mapper.buildRequest(id, listOf(activity), token)
+                val request = mapper.buildRequest(userId, listOf(activity), token)
                 client.activity(request)
+                callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
-                if (debug) Log.d("Tracker", "registerToken error: ${e.message}")
+                if (debug) Log.d("Tracker", "registerToken error: $e", e)
+                callback?.invoke(null, e)
             }
         }
     }
 
-    fun unregisterToken(token: String) {
+    fun unregisterToken(token: String, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             try {
-                if (!::id.isInitialized) {
-                    Log.e("Tracker", "Antes de registrar o token é preciso identificar o usuário.")
+                val userId = id
+                if (userId == null) {
+                    val error = IllegalStateException("Antes de remover o token é preciso identificar o usuário.")
+                    Log.e("Tracker", error.message ?: "")
+                    callback?.invoke(null, error)
                     return@launch
                 }
                 val activity = mapper.mapTokenUnregister(token)
-                val request = mapper.buildRequest(id, listOf(activity), token)
+                val request = mapper.buildRequest(userId, listOf(activity), token)
                 client.activity(request)
+                callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
                 Log.e("Tracker", e.message, e)
+                callback?.invoke(null, e)
             }
+        }
+    }
+
+    fun logout() {
+        id = null
+        scope.launch {
+            trackerOffline.deleteIdentify()
         }
     }
 
@@ -155,4 +182,3 @@ internal class Tracker(
         }
     }
 }
-

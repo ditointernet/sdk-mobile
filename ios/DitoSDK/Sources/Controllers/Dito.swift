@@ -1,5 +1,21 @@
 import Foundation
 
+public enum DitoOperationStatus {
+  case sent
+  case savedLocally
+}
+
+enum DitoOperationError: LocalizedError {
+  case invalidIdentifier
+
+  var errorDescription: String? {
+    switch self {
+    case .invalidIdentifier:
+      return "id is required and cannot be empty"
+    }
+  }
+}
+
 public class Dito {
   public static let shared = Dito()
   static var appKey: String = ""
@@ -101,7 +117,8 @@ public class Dito {
     id: String,
     name: String? = nil,
     email: String? = nil,
-    customData: [String: Any]? = nil
+    customData: [String: Any]? = nil,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
   ) {
     let user = createUser(name: name, email: email, customData: customData)
     DispatchQueue.main.async {
@@ -110,7 +127,7 @@ public class Dito {
       #else
       let identifyController = DitoIdentify(retry: Dito.shared.retry)
       #endif
-      identifyController.identify(id: id, data: user)
+      identifyController.identify(id: id, data: user, completion: completion)
     }
   }
 
@@ -132,15 +149,23 @@ public class Dito {
   ///   - data: DitoUser object with user data
   /// - Warning: This method is deprecated. Use `identify(id:name:email:customData:)` instead.
   @available(*, deprecated, message: "Use identify(id:name:email:customData:) instead for consistency with Android SDK")
-  nonisolated public static func identify(id: String, data: DitoUser) {
+  nonisolated public static func identify(
+    id: String,
+    data: DitoUser,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+  ) {
     DispatchQueue.main.async {
       #if DEBUG
       let dtIdentify = DitoIdentify(retry: Dito.shared.retry, client: Dito.testIdentifyTrackIngestClient)
       #else
       let dtIdentify = DitoIdentify(retry: Dito.shared.retry)
       #endif
-      dtIdentify.identify(id: id, data: data)
+      dtIdentify.identify(id: id, data: data, completion: completion)
     }
+  }
+
+  nonisolated public static func logout() {
+    DitoIdentifyOffline.shared.logout()
   }
 
   /// Tracks an event in Dito CRM with individual parameters
@@ -149,7 +174,8 @@ public class Dito {
   ///   - data: Additional event data as dictionary (optional)
   nonisolated public static func track(
     action: String,
-    data: [String: Any]? = nil
+    data: [String: Any]? = nil,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
   ) {
     let event = createEvent(action: action, customData: data)
     DispatchQueue.main.async {
@@ -158,7 +184,7 @@ public class Dito {
       #else
       let trackController = DitoTrack()
       #endif
-      trackController.track(data: event)
+      trackController.track(data: event, completion: completion)
     }
   }
 
@@ -176,34 +202,43 @@ public class Dito {
   /// - Parameter event: DitoEvent object with event data
   /// - Warning: This method is deprecated. Use `track(action:data:)` instead.
   @available(*, deprecated, message: "Use track(action:data:) instead for consistency with Android SDK")
-  nonisolated public static func track(event: DitoEvent) {
+  nonisolated public static func track(
+    event: DitoEvent,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+  ) {
     DispatchQueue.main.async {
       #if DEBUG
       let trackController = DitoTrack(client: Dito.testIdentifyTrackIngestClient)
       #else
       let trackController = DitoTrack()
       #endif
-      trackController.track(data: event)
+      trackController.track(data: event, completion: completion)
     }
   }
 
   /// Registers a Firebase Cloud Messaging (FCM) token for push notifications
   /// - Parameter token: The FCM token obtained from Firebase Messaging
-  nonisolated public static func registerDevice(token: String) {
+  nonisolated public static func registerDevice(
+    token: String,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+  ) {
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
       notificationController.options = Dito.notificationOptions
-      notificationController.registerToken(token: token)
+      notificationController.registerToken(token: token, completion: completion)
     }
   }
 
   /// Unregisters a Firebase Cloud Messaging (FCM) token
   /// - Parameter token: The FCM token to unregister
-  nonisolated public static func unregisterDevice(token: String) {
+  nonisolated public static func unregisterDevice(
+    token: String,
+    completion: ((Result<DitoOperationStatus, Error>) -> Void)? = nil
+  ) {
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
       notificationController.options = Dito.notificationOptions
-      notificationController.unregisterToken(token: token)
+      notificationController.unregisterToken(token: token, completion: completion)
     }
   }
 

@@ -20,6 +20,12 @@ class DitoIdentifyOffline {
     self.identifyDataManager.identitySaveCallback = nil
   }
 
+  func logout() {
+    UserDefaults.clearIdentityState()
+    self.identifyDataManager.identitySaveCallback = nil
+    self.identifyDataManager.clearCompletionClosures()
+  }
+
   func setIdentityCompletionClosure(_ closure: @escaping () -> Void) {
     self.identifyDataManager.addCompletionClosure(closure)
   }

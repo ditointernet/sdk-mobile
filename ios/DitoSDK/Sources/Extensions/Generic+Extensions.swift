@@ -116,6 +116,11 @@ extension UserDefaults {
       }
     }
   }
+
+  class func clearIdentityState() {
+    identify = nil
+    savingState = -1
+  }
 }
 
 extension Bundle {
