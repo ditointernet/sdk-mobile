@@ -26,6 +26,7 @@ void main() async {
   String? initError;
   try {
     await ditoSdk.setDebugMode(enabled: true);
+    print(EnvLoader.getOrEmpty('API_KEY').trim());
     await ditoSdk.initialize(
       appKey: EnvLoader.getOrEmpty('API_KEY').trim(),
       appSecret: EnvLoader.getOrEmpty('API_SECRET').trim(),

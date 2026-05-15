@@ -15,7 +15,7 @@ Dito iOS SDK Plugin for Flutter
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'DitoSDK', '3.3.1'
+  s.dependency 'DitoSDK', '3.3.2'
   s.dependency 'Firebase/Messaging'
   s.platform = :ios, '16.0'
 
