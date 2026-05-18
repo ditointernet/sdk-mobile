@@ -19,6 +19,7 @@ Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await FirebaseMessaging.instance.requestPermission();
   FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
   await EnvLoader.load();
 
@@ -26,9 +27,10 @@ void main() async {
   String? initError;
   try {
     await ditoSdk.setDebugMode(enabled: true);
+    final apiSecret = EnvLoader.get('API_SECRET')?.trim();
     await ditoSdk.initialize(
-      appKey: EnvLoader.getOrEmpty('API_KEY').trim(),
-      appSecret: EnvLoader.getOrEmpty('API_SECRET').trim(),
+      apiKey: EnvLoader.getOrEmpty('API_KEY').trim(),
+      apiSecret: (apiSecret != null && apiSecret.isNotEmpty) ? apiSecret : null,
     );
   } on PlatformException catch (e) {
     initError = e.message;
@@ -51,10 +53,14 @@ class _MyAppState extends State<MyApp> {
   final _scaffoldKey = GlobalKey<ScaffoldMessengerState>();
   StreamSubscription<DitoNotificationClick>? _notificationClickSubscription;
   StreamSubscription<RemoteMessage>? _firebaseMessageOpenedSubscription;
+  StreamSubscription<RemoteMessage>? _firebaseForegroundSubscription;
 
   @override
   void initState() {
     super.initState();
+
+    _firebaseForegroundSubscription =
+        FirebaseMessaging.onMessage.listen(_onForegroundRemoteMessage);
 
     _notificationClickSubscription =
         DitoSdk.onNotificationClick.listen((event) {
@@ -80,7 +86,17 @@ class _MyAppState extends State<MyApp> {
   void dispose() {
     _notificationClickSubscription?.cancel();
     _firebaseMessageOpenedSubscription?.cancel();
+    _firebaseForegroundSubscription?.cancel();
     super.dispose();
+  }
+
+  void _onForegroundRemoteMessage(RemoteMessage message) {
+    if (message.data['channel'] != 'DITO') return;
+    final title = (message.data['title'] ?? '').trim();
+    final body = (message.data['message'] ?? '').trim();
+    final label = title.isNotEmpty ? title : 'Dito';
+    final text = body.isNotEmpty ? '$label: $body' : label;
+    _scaffoldKey.currentState?.showSnackBar(SnackBar(content: Text(text)));
   }
 
   @override

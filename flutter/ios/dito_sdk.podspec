@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'dito_sdk'
-  s.version          = '3.1.3'
+  s.version          = '3.2.3'
   s.summary          = 'Dito iOS SDK Plugin for Flutter'
   s.description      = <<-DESC
 Dito iOS SDK Plugin for Flutter

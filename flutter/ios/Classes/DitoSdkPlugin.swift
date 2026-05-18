@@ -11,6 +11,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
   private static var notificationEventSink: FlutterEventSink?
 
   public static func register(with registrar: FlutterPluginRegistrar) {
+    _ = Dito.shared
     let channel = FlutterMethodChannel(name: "br.com.dito/dito_sdk", binaryMessenger: registrar.messenger())
     let instance = DitoSdkPlugin()
     registrar.addMethodCallDelegate(instance, channel: channel)
@@ -26,29 +27,19 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     DitoNotificationDelegate.shared.configurePush(application: UIApplication.shared)
   }
 
-  private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String {
-      return ch
-    }
-    return userInfo["channel"] as? String
-  }
-
-  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    channelFromUserInfo(userInfo) == "DITO"
-  }
-
   private static func processNotificationReceived(userInfo: [AnyHashable: Any], fcmToken: String?) {
-    guard let token = fcmToken else { return }
-    Dito.notificationReceived(userInfo: userInfo, token: token)
+    let merged = DitoPushUserInfo.merged(userInfo)
+    guard let raw = fcmToken?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { return }
+    Dito.notificationReceived(userInfo: merged, token: raw)
   }
 
   @objc public static func didReceiveNotificationRequest(
     _ request: UNNotificationRequest,
     fcmToken: String?
   ) -> Bool {
-    let userInfo = request.content.userInfo
-    guard isDitoChannel(userInfo) else { return false }
-    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
+    let merged = DitoPushUserInfo.merged(request.content.userInfo)
+    guard DitoPushUserInfo.isDitoChannel(merged) else { return false }
+    processNotificationReceived(userInfo: request.content.userInfo, fcmToken: fcmToken)
     return true
   }
 
@@ -56,7 +47,8 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     fcmToken: String?
   ) -> Bool {
-    guard isDitoChannel(userInfo) else { return false }
+    let merged = DitoPushUserInfo.merged(userInfo)
+    guard DitoPushUserInfo.isDitoChannel(merged) else { return false }
     processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
     return true
   }
@@ -65,8 +57,9 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard isDitoChannel(userInfo) else { return false }
-    Dito.notificationClick(userInfo: userInfo, callback: callback)
+    let merged = DitoPushUserInfo.merged(userInfo)
+    guard DitoPushUserInfo.isDitoChannel(merged) else { return false }
+    Dito.notificationClick(userInfo: merged, callback: callback)
     return true
   }
 
@@ -120,25 +113,22 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     case "initialize":
       guard let args = call.arguments as? [String: Any],
             let appKey = args["appKey"] as? String,
-            let appSecret = args["appSecret"] as? String else {
+            !appKey.isEmpty else {
         result(FlutterError(
           code: "INVALID_CREDENTIALS",
-          message: "appKey and appSecret are required and cannot be empty",
+          message: "apiKey is required and cannot be empty",
           details: nil
         ))
         return
       }
 
-      if appKey.isEmpty || appSecret.isEmpty {
-        result(FlutterError(
-          code: "INVALID_CREDENTIALS",
-          message: "appKey and appSecret are required and cannot be empty",
-          details: nil
-        ))
-        return
+      let appSecret = args["appSecret"] as? String ?? ""
+      if appSecret.isEmpty {
+        let bundleId = Bundle.main.bundleIdentifier ?? ""
+        Dito.configure(apiKey: appKey, bundleId: bundleId)
+      } else {
+        Dito.configure(appKey: appKey, appSecret: appSecret)
       }
-
-      Dito.configure(appKey: appKey, appSecret: appSecret)
       result(nil)
     case "identify":
       guard let args = call.arguments as? [String: Any],

@@ -174,12 +174,12 @@ class DitoSdkPlugin :
             }
             "initialize" -> {
                 val appKey = call.argument<String>("appKey")
-                val appSecret = call.argument<String>("appSecret")
+                val appSecret = call.argument<String>("appSecret") ?: ""
 
-                if (appKey.isNullOrEmpty() || appSecret.isNullOrEmpty()) {
+                if (appKey.isNullOrEmpty()) {
                     result.error(
                         "INVALID_CREDENTIALS",
-                        "appKey and appSecret are required and cannot be empty",
+                        "apiKey is required and cannot be empty",
                         null
                     )
                     return
@@ -205,7 +205,7 @@ class DitoSdkPlugin :
                         if (e.message?.contains("API_KEY e API_SECRET no AndroidManifest") == true) {
                             result.error(
                                 "INITIALIZATION_FAILED",
-                                "Dito SDK requires API_KEY and API_SECRET to be configured in AndroidManifest.xml. Please add them to your app's AndroidManifest.xml file.",
+                                "Dito SDK requires API_KEY to be configured in AndroidManifest.xml. Please add it to your app's AndroidManifest.xml file.",
                                 null
                             )
                         } else {

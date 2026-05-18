@@ -1,3 +1,4 @@
+import java.io.File
 import java.util.Properties
 
 plugins {
@@ -29,7 +30,7 @@ android {
         applicationId = "br.com.dito.example.sample_application"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 25
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -40,10 +41,19 @@ android {
             localPropertiesFile.inputStream().use { localProperties.load(it) }
         }
 
-        val ditoApiKey = System.getenv("DITO_API_KEY")
-            ?: (localProperties.getProperty("DITO_API_KEY") ?: "")
-        val ditoApiSecret = System.getenv("DITO_API_SECRET")
-            ?: (localProperties.getProperty("DITO_API_SECRET") ?: "")
+        val dotEnv = loadDotEnv(File(rootProject.projectDir.parentFile, ".env.development.local"))
+        val ditoApiKey = listOfNotNull(
+            System.getenv("DITO_API_KEY"),
+            localProperties.getProperty("DITO_API_KEY"),
+            dotEnv["DITO_API_KEY"],
+            dotEnv["API_KEY"],
+        ).firstOrNull { it.isNotBlank() }?.trim() ?: ""
+        val ditoApiSecret = listOfNotNull(
+            System.getenv("DITO_API_SECRET"),
+            localProperties.getProperty("DITO_API_SECRET"),
+            dotEnv["DITO_API_SECRET"],
+            dotEnv["API_SECRET"],
+        ).firstOrNull { it.isNotBlank() }?.trim() ?: ""
 
         manifestPlaceholders["DITO_API_KEY"] = ditoApiKey
         manifestPlaceholders["DITO_API_SECRET"] = ditoApiSecret
@@ -65,4 +75,26 @@ dependencies {
 
 flutter {
     source = "../.."
+}
+
+fun loadDotEnv(file: File): Map<String, String> {
+    if (!file.exists()) return emptyMap()
+    return buildMap {
+        file.readLines().forEach { line ->
+            val trimmed = line.trim()
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
+            val eq = trimmed.indexOf('=')
+            if (eq <= 0) return@forEach
+            val key = trimmed.substring(0, eq).trim()
+            var value = trimmed.substring(eq + 1).trim()
+            if (value.length >= 2) {
+                val q0 = value.first()
+                val q1 = value.last()
+                if ((q0 == '"' && q1 == '"') || (q0 == '\'' && q1 == '\'')) {
+                    value = value.substring(1, value.length - 1)
+                }
+            }
+            put(key, value)
+        }
+    }
 }
