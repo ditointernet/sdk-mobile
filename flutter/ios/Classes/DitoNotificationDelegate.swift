@@ -16,8 +16,8 @@ final class DitoNotificationDelegate: NSObject, MessagingDelegate, UNUserNotific
   }
 
   private func logPush(context: String, userInfo: [AnyHashable: Any]) {
-    let channel = channelFromUserInfo(userInfo) ?? "(nil)"
-    let isDito = isDitoChannel(userInfo)
+    let channel = DitoPushUserInfo.channel(from: userInfo) ?? "(nil)"
+    let isDito = DitoPushUserInfo.isDitoChannel(userInfo)
     print("\(ditoPushDebugTag) \(context) channel=\(channel) isDito=\(isDito)")
   }
 
@@ -43,39 +43,24 @@ final class DitoNotificationDelegate: NSObject, MessagingDelegate, UNUserNotific
     }
   }
 
-  private func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String {
-      return ch
-    }
-    return userInfo["channel"] as? String
-  }
-
-  private func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    channelFromUserInfo(userInfo) == "DITO"
-  }
-
   private func cachedFcmToken() -> String? {
     let cached = UserDefaults.standard.string(forKey: "FCMToken")
-    if let cached = cached, !cached.isEmpty {
+    if let cached, !cached.isEmpty {
       return cached
     }
     return nil
   }
 
   private func handleDitoIfNeeded(userInfo: [AnyHashable: Any], fcmToken: String) {
-    guard isDitoChannel(userInfo) else { return }
-    Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
+    guard DitoPushUserInfo.isDitoChannel(userInfo) else { return }
+    let trimmed = fcmToken.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty else { return }
+    Dito.notificationReceived(userInfo: userInfo, token: trimmed)
   }
 
   private func cacheFcmToken(_ token: String?) {
-    guard let token = token, !token.isEmpty else { return }
+    guard let token, !token.isEmpty else { return }
     UserDefaults.standard.set(token, forKey: "FCMToken")
-  }
-
-  private func fetchFcmTokenIfNeeded() {
-    Messaging.messaging().token { [weak self] token, _ in
-      self?.cacheFcmToken(token)
-    }
   }
 
   private func shouldCallCompletionHandler() -> Bool {
@@ -84,6 +69,49 @@ final class DitoNotificationDelegate: NSObject, MessagingDelegate, UNUserNotific
 
   private func notifyFirebase(userInfo: [AnyHashable: Any]) {
     Messaging.messaging().appDidReceiveMessage(userInfo)
+  }
+
+  private final class BackgroundTaskBox {
+    var id: UIBackgroundTaskIdentifier = .invalid
+  }
+
+  private func runWithFcmToken(
+    application: UIApplication,
+    fetchCompletionHandler completionHandler: ((UIBackgroundFetchResult) -> Void)? = nil,
+    body: @escaping (String) -> Void
+  ) {
+    if let cached = cachedFcmToken(), !cached.isEmpty {
+      body(cached)
+      if let completionHandler, shouldCallCompletionHandler() {
+        completionHandler(.newData)
+      }
+      return
+    }
+
+    let box = BackgroundTaskBox()
+    if application.applicationState != .active {
+      box.id = application.beginBackgroundTask(withName: "br.com.dito.fcm-token") {
+        if box.id != .invalid {
+          application.endBackgroundTask(box.id)
+          box.id = .invalid
+        }
+      }
+    }
+
+    Messaging.messaging().token { [weak self] token, _ in
+      self?.cacheFcmToken(token)
+      let resolved = (token ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+      if !resolved.isEmpty {
+        body(resolved)
+      }
+      if box.id != .invalid {
+        application.endBackgroundTask(box.id)
+        box.id = .invalid
+      }
+      if let completionHandler, self?.shouldCallCompletionHandler() == true {
+        completionHandler(resolved.isEmpty ? .noData : .newData)
+      }
+    }
   }
 }
 
@@ -97,17 +125,15 @@ extension DitoNotificationDelegate {
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) {
-    logPush(context: "Push received (background)", userInfo: userInfo)
+    let merged = DitoPushUserInfo.merged(userInfo)
+    logPush(context: "Push received (background)", userInfo: merged)
     notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      let token = cachedFcmToken()
-      handleDitoIfNeeded(userInfo: userInfo, fcmToken: token ?? "")
-      if token == nil {
-        fetchFcmTokenIfNeeded()
+    if DitoPushUserInfo.isDitoChannel(merged) {
+      runWithFcmToken(application: application, fetchCompletionHandler: completionHandler) { token in
+        self.handleDitoIfNeeded(userInfo: merged, fcmToken: token)
       }
-    }
-    if shouldCallCompletionHandler() {
-      completionHandler(.newData)
+    } else if shouldCallCompletionHandler() {
+      completionHandler(.noData)
     }
   }
 
@@ -116,14 +142,12 @@ extension DitoNotificationDelegate {
     willPresent notification: UNNotification,
     withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
   ) {
-    let userInfo = notification.request.content.userInfo
-    logPush(context: "Push received (foreground)", userInfo: userInfo)
-    notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      let token = cachedFcmToken()
-      handleDitoIfNeeded(userInfo: userInfo, fcmToken: token ?? "")
-      if token == nil {
-        fetchFcmTokenIfNeeded()
+    let merged = DitoPushUserInfo.merged(notification.request.content.userInfo)
+    logPush(context: "Push received (foreground)", userInfo: merged)
+    notifyFirebase(userInfo: notification.request.content.userInfo)
+    if DitoPushUserInfo.isDitoChannel(merged) {
+      runWithFcmToken(application: UIApplication.shared) { token in
+        self.handleDitoIfNeeded(userInfo: merged, fcmToken: token)
       }
     }
     if let orig = originalDelegate, orig.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:willPresent:withCompletionHandler:))) {
@@ -138,12 +162,12 @@ extension DitoNotificationDelegate {
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
   ) {
-    let userInfo = response.notification.request.content.userInfo
-    logPush(context: "Push tap received", userInfo: userInfo)
-    notifyFirebase(userInfo: userInfo)
-    if isDitoChannel(userInfo) {
-      _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
-        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
+    let merged = DitoPushUserInfo.merged(response.notification.request.content.userInfo)
+    logPush(context: "Push tap received", userInfo: merged)
+    notifyFirebase(userInfo: response.notification.request.content.userInfo)
+    if DitoPushUserInfo.isDitoChannel(merged) {
+      _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: merged) { deeplink in
+        DitoSdkPlugin.emitNotificationClickEvent(userInfo: merged, deeplink: deeplink)
       }
     }
     if let orig = originalDelegate, orig.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
@@ -151,5 +175,60 @@ extension DitoNotificationDelegate {
     } else {
       completionHandler()
     }
+  }
+}
+
+enum DitoPushUserInfo {
+  static func merged(_ userInfo: [AnyHashable: Any]) -> [AnyHashable: Any] {
+    var out: [AnyHashable: Any] = [:]
+    for (k, v) in userInfo {
+      out[k] = v
+    }
+    mergeDataField(into: &out, value: userInfo["data"])
+    return out
+  }
+
+  private static func mergeDataField(into out: inout [AnyHashable: Any], value: Any?) {
+    guard let value = value else { return }
+    if let nested = value as? [AnyHashable: Any] {
+      for (k, v) in nested where out[k] == nil {
+        out[k] = v
+      }
+      return
+    }
+    if let nested = value as? [String: Any] {
+      for (k, v) in nested {
+        let key = k as AnyHashable
+        if out[key] == nil { out[key] = v }
+      }
+      return
+    }
+    guard let string = value as? String,
+          let data = string.data(using: .utf8),
+          let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+      return
+    }
+    for (k, v) in obj {
+      let key = k as AnyHashable
+      if out[key] == nil { out[key] = v }
+    }
+  }
+
+  static func channel(from userInfo: [AnyHashable: Any]) -> String? {
+    if let ch = userInfo["channel"] as? String { return ch }
+    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String { return ch }
+    if let data = userInfo["data"] as? [String: Any], let ch = data["channel"] as? String { return ch }
+    if let dataStr = userInfo["data"] as? String,
+       let d = dataStr.data(using: .utf8),
+       let obj = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+       let ch = obj["channel"] as? String {
+      return ch
+    }
+    return nil
+  }
+
+  static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
+    let ch = channel(from: userInfo) ?? ""
+    return ch == "DITO" || ch.caseInsensitiveCompare("Dito") == .orderedSame
   }
 }

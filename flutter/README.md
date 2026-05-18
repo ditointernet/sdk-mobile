@@ -49,6 +49,56 @@ flutter pub get
 
 #### Android
 
+**Permissão de notificações (Android 13+)**
+
+Adicione a permissão no `AndroidManifest.xml`:
+
+```xml
+<manifest>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    ...
+</manifest>
+```
+
+No Android 13+ (API 33+) a permissão precisa ser solicitada em tempo de execução. Adicione a lógica no seu `MainActivity`:
+
+```kotlin
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+import io.flutter.embedding.android.FlutterActivity
+
+class MainActivity : FlutterActivity() {
+
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestPostNotificationsIfNeeded()
+    }
+
+    private fun requestPostNotificationsIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
+        ) return
+        ActivityCompat.requestPermissions(
+            this,
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            REQUEST_POST_NOTIFICATIONS,
+        )
+    }
+
+    companion object {
+        private const val REQUEST_POST_NOTIFICATIONS = 1001
+    }
+}
+```
+
+**Credenciais para tracking em background**
+
 Para tracking de notificações em background, é necessário adicionar as credenciais no `AndroidManifest.xml` do seu app:
 
 ```xml
@@ -93,6 +143,28 @@ de alterar o `AppDelegate`. Ainda assim, algumas configurações continuam obrig
 - Habilitar Push Notifications e Background Modes (Remote notifications) no Xcode
 - Configurar APNs no Firebase (chave ou certificados)
 
+**Chaves obrigatórias no `Info.plist`**
+
+Adicione as seguintes entradas no `Info.plist` do seu app iOS:
+
+```xml
+<!-- Habilita recebimento de notificações em background -->
+<key>UIBackgroundModes</key>
+<array>
+    <string>remote-notification</string>
+</array>
+
+<!-- Impede que o Firebase intercepte automaticamente o AppDelegate,
+     necessário para compatibilidade com FlutterImplicitEngineDelegate -->
+<key>FirebaseAppDelegateProxyEnabled</key>
+<false/>
+
+<!-- Desabilita a inicialização automática do FCM para que o Flutter
+     controle o ciclo de vida das mensagens via firebase_messaging -->
+<key>FirebaseMessagingAutoInitEnabled</key>
+<false/>
+```
+
 **Configuração Opcional - Credenciais no Info.plist**
 
 Para tracking de notificações em background (similar ao Android), você pode adicionar as credenciais no `Info.plist` do seu app iOS:
@@ -107,6 +179,29 @@ Para tracking de notificações em background (similar ao Android), você pode a
 **Por quê?** Se uma notificação chegar em background antes do app ter sido inicializado explicitamente, o SDK nativo iOS poderá carregar as credenciais do `Info.plist` para fazer tracking do evento `"receive-ios-notification"`.
 
 **Nota:** Se você inicializar o SDK com `ditoSdk.initialize(...)` no `main()`, as credenciais passadas via código terão prioridade sobre as do `Info.plist`.
+
+**Configuração do AppDelegate**
+
+O plugin funciona sem alterações no `AppDelegate`. Porém, se o seu projeto usa o padrão `FlutterImplicitEngineDelegate` (necessário quando `FirebaseAppDelegateProxyEnabled` está desabilitado), configure o `AppDelegate.swift` assim:
+
+```swift
+import Flutter
+import UIKit
+
+@main
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+    override func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+    ) -> Bool {
+        return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+
+    func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+        GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    }
+}
+```
 
 ## ⚙️ Configuração Inicial
 
@@ -134,6 +229,34 @@ void main() async {
 ```
 
 ## 📖 Métodos Disponíveis
+
+### setDebugMode
+
+**Descrição**: Habilita ou desabilita o modo de debug do SDK. Quando ativo, o SDK emite logs detalhados no console.
+
+**Assinatura**:
+```dart
+Future<void> setDebugMode({required bool enabled})
+```
+
+**Parâmetros**:
+| Nome | Tipo | Obrigatório | Descrição |
+|------|------|-------------|-----------|
+| enabled | bool | Sim | `true` para ativar logs de debug, `false` para desativar |
+
+**Retorno**: `Future<void>`
+
+**Exemplo**:
+```dart
+final ditoSdk = DitoSdk();
+await ditoSdk.setDebugMode(enabled: true);
+```
+
+**Notas**:
+- Recomendado chamar antes de `initialize` para capturar logs de inicialização
+- Não usar em produção
+
+---
 
 ### initialize
 
@@ -210,8 +333,10 @@ Future<void> identify({
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 try {
-  await DitoSdk.identify(
+  await ditoSdk.identify(
     id: 'user123',
     name: 'João Silva',
     email: 'joao@example.com',
@@ -257,8 +382,10 @@ Future<void> track({
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 try {
-  await DitoSdk.track(
+  await ditoSdk.track(
     action: 'purchase',
     data: {
       'product': 'item123',
@@ -301,13 +428,13 @@ Future<void> registerDeviceToken(String token)
 ```dart
 import 'package:firebase_messaging/firebase_messaging.dart';
 
-final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
+final ditoSdk = DitoSdk();
 
 Future<void> registerDevice() async {
   try {
-    final token = await _firebaseMessaging.getToken();
+    final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
-      await DitoSdk.registerDeviceToken(token);
+      await ditoSdk.registerDeviceToken(token);
     }
   } on PlatformException catch (e) {
     print('Error: ${e.message}');
@@ -343,11 +470,13 @@ Future<void> unregisterDeviceToken(String token)
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 Future<void> unregisterDevice() async {
   try {
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
-      await DitoSdk.unregisterDeviceToken(token);
+      await ditoSdk.unregisterDeviceToken(token);
     }
   } on PlatformException catch (e) {
     print('Error: ${e.message}');
@@ -362,7 +491,7 @@ Future<void> unregisterDevice() async {
 
 ## 🔔 Push Notifications
 
-Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
+As seções abaixo cobrem a configuração completa de Push Notifications no Flutter.
 
 ### 🔗 Click em notificação e deeplink (callback no Dart)
 
@@ -539,7 +668,7 @@ void main() async {
 
 ```yaml
 dependencies:
-  firebase_messaging: ^14.0.0
+  firebase_messaging: ^16.0.0
 ```
 
 3. Configure o tratamento de notificações no Dart (se aplicavel ao seu app)
@@ -775,4 +904,4 @@ melos run format       # Formatar código
 melos run check        # Executar todos os checks
 ```
 
-Para mais informações, consulte o [Guia Melos](./MELOS.md).
+Para mais informações sobre Melos, consulte a [documentação oficial](https://melos.invertase.dev/).

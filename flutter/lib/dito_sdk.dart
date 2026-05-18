@@ -31,38 +31,23 @@ class DitoSdk {
 
   /// Initializes the Dito SDK with the provided API credentials.
   ///
-  /// This method must be called before using any other SDK methods.
-  /// It configures the SDK with the provided [apiKey] and [apiSecret].
+  /// Supports two authentication modes:
+  /// - **X-Api-Key (new accounts):** pass only [apiKey]; omit or leave [apiSecret] empty.
+  /// - **Legacy:** pass both [apiKey] and [apiSecret].
   ///
-  /// Throws [PlatformException] with code [DitoError.invalidParameters] if
-  /// [apiKey] or [apiSecret] are null or empty.
-  ///
+  /// Throws [PlatformException] with code [DitoError.invalidParameters] if [apiKey] is empty.
   /// Throws [PlatformException] with code [DitoError.initializationFailed] or
   /// [DitoError.invalidCredentials] if the SDK fails to initialize.
-  ///
-  /// Example:
-  /// ```dart
-  /// try {
-  ///   await DitoSdk.initialize(
-  ///     apiKey: 'your-api-key',
-  ///     apiSecret: 'your-api-secret',
-  ///   );
-  ///   print('SDK initialized successfully');
-  /// } on PlatformException catch (e) {
-  ///   print('Failed to initialize: ${e.message}');
-  /// }
-  /// ```
   Future<void> initialize({
-    required String appKey,
-    required String appSecret,
+    required String apiKey,
+    String? apiSecret,
   }) async {
-    validateAppKey(appKey);
-    validateAppSecret(appSecret);
+    validateAppKey(apiKey);
 
     try {
       await DitoSdkPlatform.instance.initialize(
-        appKey: appKey,
-        appSecret: appSecret
+        appKey: apiKey,
+        appSecret: apiSecret ?? '',
       );
       _isInitialized = true;
     } on PlatformException catch (e) {

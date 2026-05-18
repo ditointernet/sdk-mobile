@@ -9,14 +9,6 @@ void validateAppKey(String? appKey) {
   }
 }
 
-void validateAppSecret(String? appSecret) {
-  if (appSecret == null || appSecret.isEmpty) {
-    throw createError(
-      DitoError.invalidParameters,
-      'appSecret is required and cannot be empty',
-    );
-  }
-}
 
 void validateId(String? id) {
   if (id == null || id.isEmpty) {

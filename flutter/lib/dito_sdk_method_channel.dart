@@ -32,14 +32,14 @@ class MethodChannelDitoSdk extends DitoSdkPlatform {
   @override
   Future<void> initialize({
     required String appKey,
-    required String appSecret,
+    String appSecret = '',
   }) async {
     try {
       await methodChannel.invokeMethod<void>(
         'initialize',
         {
-        'appKey': appKey,
-        'appSecret': appSecret,
+          'appKey': appKey,
+          'appSecret': appSecret,
         },
       );
     } on PlatformException {

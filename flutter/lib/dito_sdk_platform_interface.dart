@@ -32,7 +32,8 @@ abstract class DitoSdkPlatform extends PlatformInterface {
   }
 
   Future<void> initialize({
-    required String appKey, required String appSecret,
+    required String appKey,
+    String appSecret = '',
   }) {
     throw UnimplementedError('initialize() has not been implemented.');
   }
