@@ -24,6 +24,16 @@ class TestHelpers {
             _ = notificationReadDataManager.delete(with: notification.objectID)
         }
 
+        let notificationReceiveDataManager = DitoNotificationReceiveDataManager()
+        let receiveRows = notificationReceiveDataManager.fetchAll
+        for row in receiveRows {
+            _ = notificationReceiveDataManager.delete(with: row.objectID)
+        }
+
+        #if DEBUG
+        DitoNotificationReceiveTracker.resetForTests()
+        #endif
+
         let notificationRegisterDataManager = DitoNotificationRegisterDataManager()
         if let register = notificationRegisterDataManager.fetch {
             _ = notificationRegisterDataManager.delete()

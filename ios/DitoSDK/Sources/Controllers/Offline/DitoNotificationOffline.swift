@@ -6,10 +6,12 @@ struct DitoNotificationOffline {
   private var notificationRegisterDataManager: DitoNotificationRegisterDataManager
   private var notificationUnregisterDataManager: DitoNotificationUnregisterDataManager
   private var notificationDataManager: DitoNotificationReadDataManager
+  private var notificationReceiveDataManager: DitoNotificationReceiveDataManager
   private let identifyOffline: DitoIdentifyOffline
 
   init(
     notificationReadDataManager: DitoNotificationReadDataManager = .init(),
+    notificationReceiveDataManager: DitoNotificationReceiveDataManager = .init(),
     notificationRegisterDataManager: DitoNotificationRegisterDataManager =
       .init(),
     notificationUnregisterDataManager:
@@ -21,6 +23,7 @@ struct DitoNotificationOffline {
       notificationUnregisterDataManager
     self.notificationRegisterDataManager = notificationRegisterDataManager
     self.notificationDataManager = notificationReadDataManager
+    self.notificationReceiveDataManager = notificationReceiveDataManager
     self.identifyOffline = identifyOffline
   }
 
@@ -41,6 +44,24 @@ struct DitoNotificationOffline {
     DitoLogger.debug(notification)
     let json = notification.toString
     self.notificationDataManager.save(with: json)
+  }
+
+  func notificationReceive(_ pending: DitoNotificationReceivePending) {
+    DitoLogger.information("Notification receive - salvando receive-ios-notification em offline")
+    let json = pending.toString
+    notificationReceiveDataManager.save(with: json)
+  }
+
+  var getNotificationReceive: [NotificationReceive] {
+    notificationReceiveDataManager.fetchAll
+  }
+
+  func updateReceive(id: NSManagedObjectID, retry: Int16) {
+    notificationReceiveDataManager.update(id: id, retry: retry)
+  }
+
+  func deleteReceive(id: NSManagedObjectID) {
+    notificationReceiveDataManager.delete(with: id)
   }
 
   func setRegisterAsCompletion(_ completion: @escaping () -> Void) {

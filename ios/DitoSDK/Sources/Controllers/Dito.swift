@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 public enum DitoOperationStatus {
   case sent
@@ -248,10 +249,11 @@ public class Dito {
   ///   - token: FCM token for the device
   nonisolated public static func notificationReceived(
     userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
     let received = createNotificationReceived(from: userInfo)
-    sendNotificationReceivedActivities(received, token: token)
+    sendNotificationReceivedActivities(received, token: token, completion: completion)
     Dito.notificationReceivedListener?(userInfo)
   }
 
@@ -263,11 +265,10 @@ public class Dito {
   @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead for consistency")
   nonisolated public static func notificationReceived(
     with userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
-    let received = createNotificationReceived(from: userInfo)
-    sendNotificationReceivedActivities(received, token: token)
-    Dito.notificationReceivedListener?(userInfo)
+    notificationReceived(userInfo: userInfo, token: token, completion: completion)
   }
 
   /// Called when a notification arrives (before click) - DEPRECATED
@@ -278,9 +279,10 @@ public class Dito {
   @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead. The name 'notificationRead' is inconsistent with Android's 'notificationReceived'.")
   nonisolated public static func notificationRead(
     userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
-    notificationReceived(userInfo: userInfo, token: token)
+    notificationReceived(userInfo: userInfo, token: token, completion: completion)
   }
 
   /// Called when a notification arrives (before click) - DEPRECATED
@@ -291,31 +293,29 @@ public class Dito {
   @available(*, deprecated, message: "Use notificationReceived(userInfo:token:) instead. The name 'notificationRead' is inconsistent with Android's 'notificationReceived'.")
   nonisolated public static func notificationRead(
     with userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
-    notificationReceived(with: userInfo, token: token)
+    notificationReceived(userInfo: userInfo, token: token, completion: completion)
   }
 
   private static func createNotificationReceived(from userInfo: [AnyHashable: Any]) -> DitoNotificationReceived {
     DitoNotificationReceived(with: userInfo)
   }
 
-  private static func sendNotificationReceivedActivities(_ received: DitoNotificationReceived, token: String) {
-    if !received.userId.isEmpty {
-      Task {
-        let mapper = ActivityMapper()
-        #if DEBUG
-        let ingestClient: MobileIngestClientProtocol =
-          Dito.testNotificationReceivedIngestClient ?? MobileIngestClient.buildFromDitoConfig()
-        #else
-        let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
-        #endif
-        let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
-        let trackActivity = mapper.mapFromDitoEvent(createNotificationTrackEvent(received, token: token))
-        let request = mapper.buildRequest(userId: received.userId, activities: [identifyActivity, trackActivity])
-        try? await ingestClient.activity(request)
-      }
-    }
+  public static func shouldDeliverReceiveNotification(
+    notification: String,
+    logId: String
+  ) -> Bool {
+    !DitoNotificationReceiveTracker.wasDelivered(notification: notification, logId: logId)
+  }
+
+  private static func sendNotificationReceivedActivities(
+    _ received: DitoNotificationReceived,
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
+  ) {
+    Dito.shared.configure()
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: received.notification,
@@ -324,6 +324,99 @@ public class Dito {
       message: received.message,
       link: received.deeplink
     )
+
+    guard !received.userId.isEmpty else {
+      DitoLogger.warning(
+        "receive-ios-notification não enviado: user_id ausente no payload (topo ou data)"
+      )
+      completion?(.success(()))
+      return
+    }
+
+    if !shouldDeliverReceiveNotification(
+      notification: received.notification,
+      logId: received.logId
+    ) {
+      #if DEBUG
+      DitoLogger.debug("receive-ios-notification já entregue para notification=\(received.notification)")
+      #endif
+      completion?(.success(()))
+      return
+    }
+
+    Task {
+      await deliverNotificationReceivedActivities(
+        received: received,
+        token: token,
+        completion: completion
+      )
+    }
+  }
+
+  private static func deliverNotificationReceivedActivities(
+    received: DitoNotificationReceived,
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
+  ) async {
+    var backgroundTask: UIBackgroundTaskIdentifier = .invalid
+    let isRunningUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    if !isRunningUnitTests {
+      await MainActor.run {
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "DitoReceiveNotification") {
+          if backgroundTask != .invalid {
+            UIApplication.shared.endBackgroundTask(backgroundTask)
+            backgroundTask = .invalid
+          }
+        }
+      }
+    }
+
+    defer {
+      if backgroundTask != .invalid {
+        Task { @MainActor in
+          UIApplication.shared.endBackgroundTask(backgroundTask)
+        }
+      }
+    }
+
+    let mapper = ActivityMapper()
+    #if DEBUG
+    let ingestClient: MobileIngestClientProtocol =
+      Dito.testNotificationReceivedIngestClient ?? MobileIngestClient.buildFromDitoConfig()
+    #else
+    let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
+    #endif
+    let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
+    let trackActivity = mapper.mapFromDitoEvent(createNotificationTrackEvent(received, token: token))
+    let request = mapper.buildRequest(
+      userId: received.userId,
+      activities: [identifyActivity, trackActivity]
+    )
+
+    do {
+      try await ingestClient.activity(request)
+      DitoNotificationReceiveTracker.markDelivered(
+        notification: received.notification,
+        logId: received.logId
+      )
+      DitoLogger.information("✅ [NOTIFICATION RECEIVED] receive-ios-notification enviado")
+      completion?(.success(()))
+    } catch {
+      DitoLogger.error(error.localizedDescription)
+      let pending = DitoNotificationReceivePending(
+        userId: received.userId,
+        token: token,
+        notification: received.notification,
+        reference: received.reference,
+        logId: received.logId,
+        notificationName: received.notificationName
+      )
+      DitoNotificationOffline().notificationReceive(pending)
+      if !isRunningUnitTests {
+        Dito.shared.retry.loadOffline()
+      }
+      completion?(.success(()))
+    }
   }
 
   public func getNotifications() -> [DitoNotificationInfo] {
@@ -345,7 +438,7 @@ public class Dito {
     DitoNotificationCoreDataManager.shared.markAsRead(id: id)
   }
 
-  private static func createNotificationTrackEvent(_ notificationReceived: DitoNotificationReceived, token: String) -> DitoEvent {
+  static func createNotificationTrackEvent(_ notificationReceived: DitoNotificationReceived, token: String) -> DitoEvent {
     DitoEvent(
       action: "receive-ios-notification",
       customData: [
@@ -427,6 +520,26 @@ extension Dito {
 
 #if DEBUG
 extension Dito {
+  static func awaitNotificationReceivedDelivery(
+    userInfo: [AnyHashable: Any],
+    token: String
+  ) async {
+    let received = createNotificationReceived(from: userInfo)
+    _ = DitoCoreDataManager.shared.persistentContainer
+    DitoNotificationCoreDataManager.shared.insert(
+      notificationId: received.notification,
+      reference: received.reference,
+      title: received.title,
+      message: received.message,
+      link: received.deeplink
+    )
+    await deliverNotificationReceivedActivities(received: received, token: token)
+  }
+
+  static func invalidateRetryCacheForTests() {
+    shared.backingRetry = nil
+  }
+
   static func resetFacadeIsolationState() {
     NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
     shared.reachability.stopNotifier()

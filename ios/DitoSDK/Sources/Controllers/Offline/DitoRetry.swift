@@ -38,6 +38,7 @@ class DitoRetry {
     }
 
     internal func runLoadOffline() async {
+        await checkNotificationReceive()
         let identifySuccess = await checkIdentify()
         if identifySuccess {
             await withTaskGroup(of: Void.self) { group in
@@ -136,6 +137,69 @@ class DitoRetry {
                 trackOffline.update(id: item.id, event: item.request, retry: item.retry + 1)
             }
             DitoLogger.error(error.localizedDescription)
+        }
+    }
+
+    private func checkNotificationReceive() async {
+        let pendingRows = notificationReadOffline.getNotificationReceive
+
+        #if DEBUG
+        if !pendingRows.isEmpty {
+            DitoLogger.debug(
+                "🔄 [RETRY] Verificando \(pendingRows.count) receive-ios-notification offline para reenvio"
+            )
+        }
+        #endif
+
+        for row in pendingRows {
+            let rowId = row.objectID
+            let rowRetry = row.retry
+            guard let jsonData = row.json,
+                  let pending = jsonData.convertToObject(type: DitoNotificationReceivePending.self)
+            else { continue }
+
+            if rowRetry >= DitoRetry.maxRetries {
+                notificationReadOffline.deleteReceive(id: rowId)
+                DitoLogger.warning(
+                    "⚠️ [RETRY] receive-ios-notification descartado após \(DitoRetry.maxRetries) tentativas"
+                )
+                continue
+            }
+
+            let received = DitoNotificationReceived(with: [
+                "notification": pending.notification,
+                "reference": pending.reference,
+                "log_id": pending.logId,
+                "notification_name": pending.notificationName,
+                "user_id": pending.userId,
+            ])
+            let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: pending.userId)
+            let trackActivity = mapper.mapFromDitoEvent(
+                Dito.createNotificationTrackEvent(received, token: pending.token)
+            )
+            let request = mapper.buildRequest(
+                userId: pending.userId,
+                activities: [identifyActivity, trackActivity]
+            )
+
+            do {
+                #if DEBUG
+                let ingestClient: MobileIngestClientProtocol =
+                    Dito.testNotificationReceivedIngestClient ?? client
+                #else
+                let ingestClient: MobileIngestClientProtocol = client
+                #endif
+                try await ingestClient.activity(request)
+                notificationReadOffline.deleteReceive(id: rowId)
+                DitoNotificationReceiveTracker.markDelivered(
+                    notification: pending.notification,
+                    logId: pending.logId
+                )
+                DitoLogger.information("✅ [RETRY] receive-ios-notification enviado")
+            } catch {
+                notificationReadOffline.updateReceive(id: rowId, retry: rowRetry + 1)
+                DitoLogger.error(error.localizedDescription)
+            }
         }
     }
 

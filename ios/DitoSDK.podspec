@@ -1,7 +1,7 @@
 
 Pod::Spec.new do |s|
   s.name             = 'DitoSDK'
-  s.version          = '3.3.2'
+  s.version          = '3.3.3'
   s.summary          = 'SDK iOS para rastrear eventos, identificar usuários e sincronizar dados com o Dito CRM'
   s.homepage         = 'https://github.com/ditointernet/sdk-mobile'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '16.0'
   s.pod_target_xcconfig = { 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
   s.dependency 'Connect-Swift', '~> 0.14.0'
-  s.source_files = 'ios/DitoSDK/Sources/**/*', 'ios/DitoSDK/Persistence/*.{swift}'
-  s.resources = 'ios/DitoSDK/Persistence/*.{xcdatamodeld}'
-  s.exclude_files = 'ios/DitoSDK/Sources/Info.plist'
+  s.source_files = 'DitoSDK/Sources/**/*', 'DitoSDK/Persistence/*.{swift}'
+  s.resources = 'DitoSDK/Persistence/*.{xcdatamodeld}'
+  s.exclude_files = 'DitoSDK/Sources/Info.plist'
 end

@@ -307,7 +307,7 @@ didReceive() chamado
 didReceiveRemoteNotification() chamado
 ```
 
-#### 3️⃣ App Encerrado
+#### 3️⃣ App Encerrado (push só com alert, sem content-available)
 
 ```
 Notificação Chega
@@ -318,19 +318,27 @@ Usuário clica no banner
     ↓
 App inicia
     ↓
-didReceive() chamado
+didReceive() chamado → receive-ios-notification (no toque)
 ```
 
-#### 4️⃣ Silent Notification (content-available)
+#### 4️⃣ App encerrado/background com content-available (recomendado)
 
 ```
-Notificação Chega (sem UI)
+Notificação Chega (aps.content-available: 1)
     ↓
 didReceiveRemoteNotification() chamado
     ↓
-Seu código executa em background
+Dito.notificationReceived → receive-ios-notification (sem abrir o app)
+```
+
+#### 5️⃣ Silent Notification (sem UI)
+
+```
+Notificação Chega (sem alert)
     ↓
-App pode atualizar dados
+didReceiveRemoteNotification() chamado
+    ↓
+SDK envia receive-ios-notification
 ```
 
 ### Métodos de Notificação do Dito
@@ -341,7 +349,7 @@ App pode atualizar dados
 
 Deve ser chamado quando a notificação chega, ANTES do clique do usuário.
 
-O envio do track automático `receive-ios-notification` ao ingest **requer** `user_id` no `userInfo` (chave no topo do dicionário, valor string). Sem isso, o SDK pode ainda persistir a notificação na inbox local (`Dito.shared.getNotifications()`).
+O envio do track automático `receive-ios-notification` ao ingest **requer** `user_id` ou `userId` no `userInfo` (topo, `data` ou `gcm`; string ou número). Sem isso, o SDK persiste na inbox local (`Dito.shared.getNotifications()`). Opcional: `completion` em `notificationReceived` para aguardar o fim do ingest antes de `fetchCompletionHandler`.
 
 #### Parâmetros
 
