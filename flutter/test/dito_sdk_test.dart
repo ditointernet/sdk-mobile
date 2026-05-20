@@ -303,35 +303,11 @@ void main() {
           .setMockMethodCallHandler(channel, null);
     });
 
-    test('should invoke setNotificationOptions with correct arguments', () async {
-      // Arrange
-      final ditoSdk = DitoSdk();
-      const options = DitoNotificationOptions(badgeEnabled: false);
-
-      // Act
-      await ditoSdk.setNotificationOptions(options);
-
-      // Assert
-      expect(capturedCall, isNotNull);
-      expect(capturedCall!.method, 'setNotificationOptions');
-      expect(capturedCall!.arguments['badgeEnabled'], false);
-    });
-
-    test('should be callable before initialize without throwing', () async {
-      // Arrange
-      final ditoSdk = DitoSdk();
-      const options = DitoNotificationOptions(badgeEnabled: true);
-
-      // Act & Assert — must not throw even though SDK is not initialized
-      await expectLater(ditoSdk.setNotificationOptions(options), completes);
-    });
-
     test('should pass all options fields to native channel', () async {
       // Arrange
       final ditoSdk = DitoSdk();
       const options = DitoNotificationOptions(
         accentColor: 0xFF0000,
-        badgeEnabled: false,
         largeIconResId: 1,
         smallIconResId: 2,
         soundResourceName: 'custom_sound',
@@ -344,7 +320,6 @@ void main() {
       expect(capturedCall!.method, 'setNotificationOptions');
       final args = capturedCall!.arguments as Map;
       expect(args['accentColor'], 0xFF0000);
-      expect(args['badgeEnabled'], false);
       expect(args['largeIconResId'], 1);
       expect(args['smallIconResId'], 2);
       expect(args['soundResourceName'], 'custom_sound');

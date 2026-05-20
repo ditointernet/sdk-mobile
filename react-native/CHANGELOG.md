@@ -14,7 +14,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `largeIconResId?: number` — resource ID do ícone grande (Android)
   - `soundResourceName?: string` — nome do recurso de som personalizado (Android/iOS)
   - `accentColor?: number` — cor de destaque ARGB da notificação (Android)
-  - `badgeEnabled?: boolean` — habilita/desabilita badge no ícone do app (Android/iOS)
 - Método `setNotificationOptions(options: DitoNotificationOptions): Promise<void>` para configurar as opções de exibição de notificações push antes de recebê-las.
 - Suporte completo em **Android** e **iOS** para personalização via camada nativa.
 

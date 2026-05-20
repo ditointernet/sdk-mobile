@@ -4,8 +4,8 @@
 
 - Adicionado `DitoNotificationOptions` para personalização de push notifications (ícone, som, badge, cor de destaque)
 - Adicionado `DitoSdk.setNotificationOptions(DitoNotificationOptions)` — chamável antes ou depois de `initialize`
-- Suporte Android: `smallIconResId`, `largeIconResId`, `soundResourceName`, `accentColor`, `badgeEnabled`
-- Suporte iOS: `soundResourceName`, `badgeEnabled`
+- Suporte Android: `smallIconResId`, `largeIconResId`, `soundResourceName`, `accentColor`
+- Suporte iOS: `soundResourceName`
 
 ### Breaking changes
 

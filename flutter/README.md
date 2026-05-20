@@ -547,7 +547,6 @@ ditoSdk.setNotificationOptions(
     smallIconResId: 'ic_notification', // Android only
     soundResourceName: 'alert',        // Android: sem extensão; iOS: com extensão (ex: alert.aiff)
     accentColor: 0xFF6200EE,           // Android only
-    badgeEnabled: true,
   ),
 );
 ```
@@ -558,7 +557,6 @@ ditoSdk.setNotificationOptions(
 | `largeIconResId` | Android | Nome do drawable para ícone grande da notificação |
 | `soundResourceName` | Android + iOS | Nome do arquivo de som (Android: sem extensão; iOS: com extensão) |
 | `accentColor` | Android | Cor de destaque em formato ARGB (ex: `0xFF6200EE`) |
-| `badgeEnabled` | Android + iOS | Exibir badge no ícone do app |
 
 ### Configuração Básica (Flutter)
 

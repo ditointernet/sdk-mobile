@@ -47,14 +47,6 @@ class NotificationOptionsSection extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             TextField(
-              controller: state.badgeEnabledController,
-              decoration: const InputDecoration(
-                labelText: 'Badge Enabled (true/false)',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
               controller: state.accentColorController,
               keyboardType: TextInputType.number,
               decoration: const InputDecoration(

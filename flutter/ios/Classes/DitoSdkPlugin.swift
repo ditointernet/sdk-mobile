@@ -272,8 +272,7 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     case "setNotificationOptions":
       let args = call.arguments as? [String: Any] ?? [:]
       let soundResourceName = args["soundResourceName"] as? String
-      let badgeEnabled = (args["badgeEnabled"] as? Bool) ?? true
-      let options = DitoNotificationOptions(soundName: soundResourceName, badgeEnabled: badgeEnabled)
+      let options = DitoNotificationOptions(soundName: soundResourceName)
       Dito.setNotificationOptions(options)
       result(nil)
     case "getNotifications":

@@ -276,7 +276,6 @@ class DitoSdk {
   ): Promise<void> {
     try {
       await DitoSdkModule.setNotificationOptions({
-        badgeEnabled: true,
         ...options,
       });
     } catch (error: any) {

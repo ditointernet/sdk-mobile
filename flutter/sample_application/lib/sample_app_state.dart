@@ -48,7 +48,6 @@ class SampleAppState {
   final TextEditingController smallIconController = TextEditingController();
   final TextEditingController largeIconController = TextEditingController();
   final TextEditingController soundController = TextEditingController();
-  final TextEditingController badgeEnabledController = TextEditingController();
   final TextEditingController accentColorController = TextEditingController();
 
   String fcmDebugStatus = 'Checking...';
@@ -225,12 +224,10 @@ class SampleAppState {
 
   Future<void> applyNotificationOptions() async {
     try {
-      final badgeEnabledText = badgeEnabledController.text.trim().toLowerCase();
       final options = DitoNotificationOptions(
         smallIconResId: int.tryParse(smallIconController.text),
         largeIconResId: int.tryParse(largeIconController.text),
         soundResourceName: soundController.text.isEmpty ? null : soundController.text,
-        badgeEnabled: badgeEnabledText == 'false' ? false : true,
         accentColor: int.tryParse(accentColorController.text),
       );
       await ditoSdk.setNotificationOptions(options);
@@ -293,7 +290,6 @@ class SampleAppState {
     smallIconController.dispose();
     largeIconController.dispose();
     soundController.dispose();
-    badgeEnabledController.dispose();
     accentColorController.dispose();
   }
 }

@@ -599,11 +599,8 @@ O DitoSDK permite personalizar o comportamento das notificações push via `Dito
 // Configure após Dito.shared.configure()
 Dito.setNotificationOptions(DitoNotificationOptions(
     soundName: "custom_sound.aiff", // nil = som padrão do sistema
-    badgeEnabled: true               // false = SDK não gerencia badge
 ))
 ```
-
-**Badge**: O SDK gerencia o badge automaticamente ao receber e ao clicar em notificações. Para desativar, passe `badgeEnabled: false`.
 
 > **Limitação APNs — som em notificações remotas**: A personalização de som via `DitoNotificationOptions` afeta apenas notificações construídas localmente pelo SDK (ex.: reapresentação offline). Para notificações entregues diretamente pelo APNs, o som é definido no payload enviado pelo servidor. Se precisar modificar o conteúdo de notificações APNs no dispositivo (som, badge, attachments), é necessário implementar uma `UNNotificationServiceExtension` no app — o SDK não tem acesso ao content delivery feito pelo APNs.
 

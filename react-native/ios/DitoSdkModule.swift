@@ -178,8 +178,7 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
   @objc
   func setNotificationOptions(_ optionsDict: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
     let soundResourceName = optionsDict["soundResourceName"] as? String
-    let badgeEnabled = optionsDict["badgeEnabled"] as? Bool ?? true
-    let options = DitoNotificationOptions(soundName: soundResourceName, badgeEnabled: badgeEnabled)
+    let options = DitoNotificationOptions(soundName: soundResourceName)
     Dito.setNotificationOptions(options)
     resolve(nil)
   }

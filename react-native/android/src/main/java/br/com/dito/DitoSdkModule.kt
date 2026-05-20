@@ -300,14 +300,12 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
             val largeIconResId = if (optionsMap.hasKey("largeIconResId") && !optionsMap.isNull("largeIconResId")) optionsMap.getInt("largeIconResId") else null
             val soundResourceName = if (optionsMap.hasKey("soundResourceName") && !optionsMap.isNull("soundResourceName")) optionsMap.getString("soundResourceName") else null
             val accentColor = if (optionsMap.hasKey("accentColor") && !optionsMap.isNull("accentColor")) optionsMap.getInt("accentColor") else null
-            val badgeEnabled = if (optionsMap.hasKey("badgeEnabled")) optionsMap.getBoolean("badgeEnabled") else true
 
             val options = DitoNotificationOptions(
                 smallIconResId = smallIconResId,
                 largeIconResId = largeIconResId,
                 soundResourceName = soundResourceName,
-                accentColor = accentColor,
-                badgeEnabled = badgeEnabled
+                accentColor = accentColor
             )
 
             Dito.setNotificationOptions(options)

@@ -390,8 +390,7 @@ class DitoSdkPlugin :
                     smallIconResId = (args["smallIconResId"] as? Number)?.toInt(),
                     largeIconResId = (args["largeIconResId"] as? Number)?.toInt(),
                     soundResourceName = args["soundResourceName"] as? String,
-                    accentColor = (args["accentColor"] as? Number)?.toInt(),
-                    badgeEnabled = (args["badgeEnabled"] as? Boolean) ?: true
+                    accentColor = (args["accentColor"] as? Number)?.toInt()
                 )
                 Dito.setNotificationOptions(options)
                 result.success(null)

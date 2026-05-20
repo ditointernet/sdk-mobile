@@ -320,7 +320,6 @@ static async setNotificationOptions(options: DitoNotificationOptions): Promise<v
 | `largeIconResId` | `number?` | Android | Resource ID do ícone grande na notificação expandida |
 | `soundResourceName` | `string?` | Android/iOS | Nome do recurso de som personalizado |
 | `accentColor` | `number?` | Android | Cor de destaque em formato ARGB (ex: `0xFF1A73E8`) |
-| `badgeEnabled` | `boolean?` | Android/iOS | Habilita badge no ícone do app (padrão: `true`) |
 
 **Exemplo**:
 ```typescript
@@ -330,7 +329,6 @@ const notificationOptions: DitoNotificationOptions = {
   smallIconResId: R.drawable.ic_notification,
   soundResourceName: 'custom_sound',
   accentColor: 0xFF1A73E8,
-  badgeEnabled: true,
 };
 
 await DitoSdk.setNotificationOptions(notificationOptions);

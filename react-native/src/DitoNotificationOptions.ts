@@ -3,5 +3,4 @@ export interface DitoNotificationOptions {
   largeIconResId?: number;
   soundResourceName?: string;
   accentColor?: number;
-  badgeEnabled?: boolean;
 }
