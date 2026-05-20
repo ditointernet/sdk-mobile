@@ -1,3 +1,7 @@
+### Correções
+
+- fix(ios): implement notification receive tracking and offline handling (#21) (bf488b7)
+
 ### Outros
 
 - Fix/android ios event callback (#18) (b64edde)
