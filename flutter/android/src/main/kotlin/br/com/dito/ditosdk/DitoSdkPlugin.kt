@@ -1,6 +1,9 @@
 package br.com.dito.ditosdk
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import br.com.dito.ditosdk.notification.DitoNotificationOptions
 import com.google.firebase.messaging.RemoteMessage
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.plugin.common.EventChannel
@@ -8,6 +11,9 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.plugin.common.MethodChannel.Result
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class DitoSdkPlugin :
     FlutterPlugin,
@@ -171,6 +177,38 @@ class DitoSdkPlugin :
                 debugEnabled = enabled
                 Dito.options = Options().apply { debug = enabled }
                 result.success(null)
+            }
+            "initializeWithApiKey" -> {
+                val apiKey = call.argument<String>("apiKey")
+                val bundleId = call.argument<String>("bundleId")
+                if (apiKey.isNullOrEmpty() || bundleId.isNullOrEmpty()) {
+                    result.error(
+                        "INVALID_CREDENTIALS",
+                        "apiKey and bundleId are required and cannot be empty",
+                        null
+                    )
+                    return
+                }
+                val ctx = context
+                if (ctx == null) {
+                    result.error(
+                        "INITIALIZATION_FAILED",
+                        "Context is not available",
+                        null
+                    )
+                    return
+                }
+                try {
+                    Dito.initWithApiKey(ctx, apiKey, bundleId, Options().apply { debug = debugEnabled })
+                    ditoInitialized = true
+                    result.success(null)
+                } catch (e: Exception) {
+                    result.error(
+                        "INITIALIZATION_FAILED",
+                        "Failed to initialize Dito SDK: ${e.message}",
+                        null
+                    )
+                }
             }
             "initialize" -> {
                 val appKey = call.argument<String>("appKey")
@@ -342,6 +380,59 @@ class DitoSdkPlugin :
                     userInfo[key.toString()] = value?.toString() ?: ""
                 }
                 result.success(handleNotificationClick(ctx, userInfo))
+            }
+            "setNotificationOptions" -> {
+                val args = call.arguments as? Map<*, *> ?: run {
+                    result.success(null)
+                    return
+                }
+                val options = DitoNotificationOptions(
+                    smallIconResId = (args["smallIconResId"] as? Number)?.toInt(),
+                    largeIconResId = (args["largeIconResId"] as? Number)?.toInt(),
+                    soundResourceName = args["soundResourceName"] as? String,
+                    accentColor = (args["accentColor"] as? Number)?.toInt(),
+                    badgeEnabled = (args["badgeEnabled"] as? Boolean) ?: true
+                )
+                Dito.setNotificationOptions(options)
+                result.success(null)
+            }
+            "getNotifications" -> {
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        val records = Dito.getNotifications()
+                        val maps = records.map { info ->
+                            mapOf(
+                                "id" to info.id,
+                                "notificationId" to info.notificationId,
+                                "reference" to info.reference,
+                                "title" to info.title,
+                                "message" to info.message,
+                                "link" to info.link,
+                                "receivedAt" to info.receivedAt,
+                                "isRead" to info.isRead
+                            )
+                        }
+                        Handler(Looper.getMainLooper()).post { result.success(maps) }
+                    } catch (e: Exception) {
+                        Handler(Looper.getMainLooper()).post { result.error("INBOX_ERROR", e.message, null) }
+                    }
+                }
+            }
+            "markNotificationAsRead" -> {
+                val args = call.arguments as? Map<*, *>
+                val id = args?.get("id") as? String
+                if (id == null) {
+                    result.error("INBOX_ERROR", "id argument missing", null)
+                    return
+                }
+                CoroutineScope(Dispatchers.IO).launch {
+                    try {
+                        Dito.markNotificationAsRead(id)
+                        Handler(Looper.getMainLooper()).post { result.success(null) }
+                    } catch (e: Exception) {
+                        Handler(Looper.getMainLooper()).post { result.error("INBOX_ERROR", e.message, null) }
+                    }
+                }
             }
             else -> {
                 result.notImplemented()

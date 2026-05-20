@@ -1,3 +1,16 @@
+## 4.0.0
+
+### Novas funcionalidades
+
+- Adicionado `DitoNotificationOptions` para personalização de push notifications (ícone, som, badge, cor de destaque)
+- Adicionado `DitoSdk.setNotificationOptions(DitoNotificationOptions)` — chamável antes ou depois de `initialize`
+- Suporte Android: `smallIconResId`, `largeIconResId`, `soundResourceName`, `accentColor`, `badgeEnabled`
+- Suporte iOS: `soundResourceName`, `badgeEnabled`
+
+### Breaking changes
+
+- Versão major incrementada; comportamento de notificações sem `setNotificationOptions` permanece idêntico ao anterior (nenhuma regressão de defaults)
+
 ### Outros
 
 - chore(release): flutter 3.2.3 (81f78d7)

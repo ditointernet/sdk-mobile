@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
+import 'package:dito_sdk/dito_notification_options.dart';
 import 'package:dito_sdk/dito_sdk.dart';
 import 'package:dito_sdk/dito_sdk_platform_interface.dart';
 import 'package:dito_sdk/dito_sdk_method_channel.dart';
@@ -16,6 +17,14 @@ class MockDitoSdkPlatform
   @override
   Future<void> initialize({required String appKey, required String appSecret}) {
     throw UnimplementedError('initialize() has not been implemented.');
+  }
+
+  @override
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) {
+    throw UnimplementedError('initializeWithApiKey() has not been implemented.');
   }
 
   @override
@@ -58,6 +67,10 @@ class MockDitoSdkPlatform
     throw UnimplementedError(
         'handleNotificationClick() has not been implemented.');
   }
+
+  @override
+  Future<void> setNotificationOptions(DitoNotificationOptions options) =>
+      Future.value();
 }
 
 void main() {
@@ -269,6 +282,72 @@ void main() {
       await ditoSdk.registerDeviceToken('test-device-token');
 
       expect(ditoSdk.isInitialized, isTrue);
+    });
+  });
+
+  group('setNotificationOptions', () {
+    const MethodChannel channel = MethodChannel('br.com.dito/dito_sdk');
+    MethodCall? capturedCall;
+
+    setUp(() {
+      capturedCall = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        capturedCall = methodCall;
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('should invoke setNotificationOptions with correct arguments', () async {
+      // Arrange
+      final ditoSdk = DitoSdk();
+      const options = DitoNotificationOptions(badgeEnabled: false);
+
+      // Act
+      await ditoSdk.setNotificationOptions(options);
+
+      // Assert
+      expect(capturedCall, isNotNull);
+      expect(capturedCall!.method, 'setNotificationOptions');
+      expect(capturedCall!.arguments['badgeEnabled'], false);
+    });
+
+    test('should be callable before initialize without throwing', () async {
+      // Arrange
+      final ditoSdk = DitoSdk();
+      const options = DitoNotificationOptions(badgeEnabled: true);
+
+      // Act & Assert — must not throw even though SDK is not initialized
+      await expectLater(ditoSdk.setNotificationOptions(options), completes);
+    });
+
+    test('should pass all options fields to native channel', () async {
+      // Arrange
+      final ditoSdk = DitoSdk();
+      const options = DitoNotificationOptions(
+        accentColor: 0xFF0000,
+        badgeEnabled: false,
+        largeIconResId: 1,
+        smallIconResId: 2,
+        soundResourceName: 'custom_sound',
+      );
+
+      // Act
+      await ditoSdk.setNotificationOptions(options);
+
+      // Assert
+      expect(capturedCall!.method, 'setNotificationOptions');
+      final args = capturedCall!.arguments as Map;
+      expect(args['accentColor'], 0xFF0000);
+      expect(args['badgeEnabled'], false);
+      expect(args['largeIconResId'], 1);
+      expect(args['smallIconResId'], 2);
+      expect(args['soundResourceName'], 'custom_sound');
     });
   });
 

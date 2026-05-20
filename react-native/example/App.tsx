@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  Alert,
+  FlatList,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -7,9 +9,10 @@ import {
   TextInput,
   TouchableOpacity,
   View,
-  Alert,
 } from 'react-native';
 import DitoSdk from '../src/index';
+import type { DitoNotificationInfo } from '../src/index';
+import type { DitoNotificationOptions } from '../src/DitoNotificationOptions';
 
 export default function App() {
   const [status, setStatus] = useState('Not initialized');
@@ -21,6 +24,34 @@ export default function App() {
   const [userEmail, setUserEmail] = useState('john@example.com');
   const [action, setAction] = useState('purchase');
   const [token, setToken] = useState('fcm-device-token');
+  const [smallIcon, setSmallIcon] = useState('');
+  const [largeIcon, setLargeIcon] = useState('');
+  const [notifSound, setNotifSound] = useState('');
+  const [badgeCount, setBadgeCount] = useState('');
+  const [accentColor, setAccentColor] = useState('');
+  const [notifications, setNotifications] = useState<DitoNotificationInfo[]>([]);
+
+  const loadNotifications = async () => {
+    try {
+      const items = await DitoSdk.getNotifications();
+      setNotifications(items);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  useEffect(() => {
+    loadNotifications();
+  }, []);
+
+  const handleMarkAsRead = async (id: string) => {
+    try {
+      await DitoSdk.markNotificationAsRead(id);
+      await loadNotifications();
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
 
   const handleInitialize = async () => {
     try {
@@ -74,6 +105,22 @@ export default function App() {
         },
       });
       Alert.alert('Success', 'Event tracked successfully');
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleSetNotificationOptions = async () => {
+    const options: DitoNotificationOptions = {
+      smallIcon: smallIcon || undefined,
+      largeIcon: largeIcon || undefined,
+      sound: notifSound || undefined,
+      badgeCount: badgeCount ? parseInt(badgeCount, 10) : undefined,
+      accentColor: accentColor || undefined,
+    };
+    try {
+      await DitoSdk.setNotificationOptions(options);
+      Alert.alert('Success', 'Notification Options aplicadas');
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
@@ -177,6 +224,77 @@ export default function App() {
             <Text style={styles.buttonText}>Register Token</Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notification Options</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Small Icon (Android, resource name)"
+            value={smallIcon}
+            onChangeText={setSmallIcon}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Large Icon (Android, resource name)"
+            value={largeIcon}
+            onChangeText={setLargeIcon}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Sound (resource name)"
+            value={notifSound}
+            onChangeText={setNotifSound}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Badge Count (0 = limpar)"
+            value={badgeCount}
+            onChangeText={setBadgeCount}
+            keyboardType="numeric"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Accent Color (Android, #RRGGBB)"
+            value={accentColor}
+            onChangeText={setAccentColor}
+          />
+          <TouchableOpacity style={styles.button} onPress={handleSetNotificationOptions}>
+            <Text style={styles.buttonText}>Aplicar Notification Options</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Notification Inbox</Text>
+          <TouchableOpacity style={[styles.button, styles.reloadButton]} onPress={loadNotifications}>
+            <Text style={styles.buttonText}>Recarregar inbox</Text>
+          </TouchableOpacity>
+          {notifications.length === 0 ? (
+            <Text style={styles.emptyText}>Nenhuma notificação salva</Text>
+          ) : (
+            <FlatList
+              data={notifications}
+              keyExtractor={item => item.id}
+              scrollEnabled={false}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.notificationCard}
+                  onPress={() => handleMarkAsRead(item.id)}
+                >
+                  <View style={styles.notificationHeader}>
+                    <Text style={styles.notificationTitle}>{item.title}</Text>
+                    {!item.isRead && (
+                      <Text style={styles.unreadBadge}>● Não lida</Text>
+                    )}
+                  </View>
+                  <Text style={styles.notificationMessage}>{item.message}</Text>
+                  <Text style={styles.notificationDate}>
+                    {new Date(item.receivedAt).toLocaleString()}
+                  </Text>
+                </TouchableOpacity>
+              )}
+            />
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -245,5 +363,48 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+  },
+  reloadButton: {
+    marginBottom: 12,
+  },
+  emptyText: {
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 8,
+    fontSize: 14,
+  },
+  notificationCard: {
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    marginTop: 8,
+    padding: 12,
+  },
+  notificationHeader: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  notificationTitle: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  unreadBadge: {
+    color: '#e53935',
+    fontSize: 12,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  notificationMessage: {
+    color: '#444',
+    fontSize: 14,
+    marginBottom: 4,
+  },
+  notificationDate: {
+    color: '#999',
+    fontSize: 12,
   },
 });

@@ -532,6 +532,34 @@ void main() async {
 }
 ```
 
+### Personalização de notificações
+
+Use `DitoSdk.setNotificationOptions` para personalizar a aparência das notificações push. Pode ser chamado antes ou depois de `initialize`.
+
+```dart
+import 'package:dito_sdk/dito_sdk.dart';
+
+final ditoSdk = DitoSdk();
+await ditoSdk.initialize(appKey: 'your-key', appSecret: 'your-secret');
+
+ditoSdk.setNotificationOptions(
+  DitoNotificationOptions(
+    smallIconResId: 'ic_notification', // Android only
+    soundResourceName: 'alert',        // Android: sem extensão; iOS: com extensão (ex: alert.aiff)
+    accentColor: 0xFF6200EE,           // Android only
+    badgeEnabled: true,
+  ),
+);
+```
+
+| Campo | Plataforma | Descrição |
+|---|---|---|
+| `smallIconResId` | Android | Nome do drawable para ícone pequeno da notificação |
+| `largeIconResId` | Android | Nome do drawable para ícone grande da notificação |
+| `soundResourceName` | Android + iOS | Nome do arquivo de som (Android: sem extensão; iOS: com extensão) |
+| `accentColor` | Android | Cor de destaque em formato ARGB (ex: `0xFF6200EE`) |
+| `badgeEnabled` | Android + iOS | Exibir badge no ícone do app |
+
 ### Configuração Básica (Flutter)
 
 1. Configure o Firebase no seu projeto Flutter

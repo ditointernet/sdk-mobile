@@ -11,6 +11,17 @@ import { createError, mapNativeError, DitoErrorCode } from './error_handler';
 
 const { DitoSdkModule } = NativeModules;
 
+export interface DitoNotificationInfo {
+  id: string;
+  isRead: boolean;
+  link: string;
+  message: string;
+  notificationId: string;
+  receivedAt: number;
+  reference: string;
+  title: string;
+}
+
 if (!DitoSdkModule) {
   throw new Error(
     'DitoSdkModule native module is not available. Make sure you have properly linked the native module.',
@@ -49,6 +60,24 @@ class DitoSdk {
    * }
    * ```
    */
+  static async initializeWithApiKey(options: {
+    apiKey: string;
+    bundleId: string;
+  }): Promise<void> {
+    if (!options.apiKey || !options.bundleId) {
+      throw createError(
+        DitoErrorCode.INVALID_PARAMETERS,
+        'apiKey and bundleId are required and cannot be empty',
+      );
+    }
+    try {
+      await DitoSdkModule.initializeWithApiKey(options.apiKey, options.bundleId);
+      this._isInitialized = true;
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
   static async initialize(options: {
     apiKey: string;
     apiSecret: string;
@@ -242,6 +271,37 @@ class DitoSdk {
     }
   }
 
+  static async setNotificationOptions(
+    options: import('./DitoNotificationOptions').DitoNotificationOptions,
+  ): Promise<void> {
+    try {
+      await DitoSdkModule.setNotificationOptions({
+        badgeEnabled: true,
+        ...options,
+      });
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  static async getNotifications(): Promise<DitoNotificationInfo[]> {
+    this._checkInitialized();
+    try {
+      return await DitoSdkModule.getNotifications();
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  static async markNotificationAsRead(id: string): Promise<void> {
+    this._checkInitialized();
+    try {
+      return await DitoSdkModule.markNotificationAsRead(id);
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
   private static _checkInitialized(): void {
     if (!this._isInitialized) {
       throw createError(
@@ -254,3 +314,4 @@ class DitoSdk {
 
 export default DitoSdk;
 export { DitoErrorCode, type DitoError } from './error_handler';
+export type { DitoNotificationOptions } from './DitoNotificationOptions';

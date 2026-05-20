@@ -117,6 +117,20 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       }
       Dito.enableDebugMode(enabled)
       result(nil)
+    case "initializeWithApiKey":
+      guard let args = call.arguments as? [String: Any],
+            let apiKey = args["apiKey"] as? String,
+            let bundleId = args["bundleId"] as? String,
+            !apiKey.isEmpty, !bundleId.isEmpty else {
+        result(FlutterError(
+          code: "INVALID_CREDENTIALS",
+          message: "apiKey and bundleId are required and cannot be empty",
+          details: nil
+        ))
+        return
+      }
+      Dito.configure(apiKey: apiKey, bundleId: bundleId)
+      result(nil)
     case "initialize":
       guard let args = call.arguments as? [String: Any],
             let appKey = args["appKey"] as? String,
@@ -255,6 +269,36 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
       }
       result(handled)
+    case "setNotificationOptions":
+      let args = call.arguments as? [String: Any] ?? [:]
+      let soundResourceName = args["soundResourceName"] as? String
+      let badgeEnabled = (args["badgeEnabled"] as? Bool) ?? true
+      let options = DitoNotificationOptions(soundName: soundResourceName, badgeEnabled: badgeEnabled)
+      Dito.setNotificationOptions(options)
+      result(nil)
+    case "getNotifications":
+      let notifications = Dito.shared.getNotifications()
+      let maps: [[String: Any]] = notifications.map { info in
+        [
+          "id": info.id,
+          "notificationId": info.notificationId,
+          "reference": info.reference,
+          "title": info.title,
+          "message": info.message,
+          "link": info.link,
+          "receivedAt": Int64(info.receivedAt.timeIntervalSince1970 * 1000),
+          "isRead": info.isRead
+        ]
+      }
+      result(maps)
+    case "markNotificationAsRead":
+      guard let args = call.arguments as? [String: Any],
+            let id = args["id"] as? String else {
+        result(FlutterError(code: "INBOX_ERROR", message: "id argument missing", details: nil))
+        return
+      }
+      Dito.shared.markNotificationAsRead(id: id)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }

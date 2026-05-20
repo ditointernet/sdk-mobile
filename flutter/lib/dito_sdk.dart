@@ -1,8 +1,12 @@
+export 'dito_notification_info.dart';
 export 'dito_notification_listener.dart';
+export 'dito_notification_options.dart';
 
 import 'package:flutter/services.dart';
 
+import 'dito_notification_info.dart';
 import 'dito_notification_listener.dart';
+import 'dito_notification_options.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 import 'parameter_validator.dart';
@@ -63,6 +67,23 @@ class DitoSdk {
       await DitoSdkPlatform.instance.initialize(
         appKey: appKey,
         appSecret: appSecret
+      );
+      _isInitialized = true;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) async {
+    try {
+      await DitoSdkPlatform.instance.initializeWithApiKey(
+        apiKey: apiKey,
+        bundleId: bundleId,
       );
       _isInitialized = true;
     } on PlatformException catch (e) {
@@ -228,6 +249,36 @@ class DitoSdk {
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) async {
     try {
       return await DitoSdkPlatform.instance.handleNotificationClick(userInfo);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> setNotificationOptions(DitoNotificationOptions options) async {
+    try {
+      await DitoSdkPlatform.instance.setNotificationOptions(options);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<List<DitoNotificationInfo>> getNotifications() async {
+    try {
+      return await DitoSdkPlatform.instance.getNotifications();
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  Future<void> markNotificationAsRead(String id) async {
+    try {
+      await DitoSdkPlatform.instance.markNotificationAsRead(id);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {

@@ -2,6 +2,8 @@ package br.com.dito
 
 import android.content.Context
 import br.com.dito.ditosdk.Dito
+import br.com.dito.ditosdk.notification.DitoNotificationOptions
+import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
@@ -10,6 +12,10 @@ import com.facebook.react.bridge.ReadableArray
 import com.facebook.react.bridge.ReadableMap
 import com.facebook.react.bridge.ReadableType
 import com.google.firebase.messaging.RemoteMessage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class DitoSdkModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -115,6 +121,39 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
             ensureInitialized(context)
             Dito.notificationClick(userInfo)
             return true
+        }
+    }
+
+    @ReactMethod
+    fun initializeWithApiKey(apiKey: String, bundleId: String, promise: Promise) {
+        try {
+            if (apiKey.isEmpty() || bundleId.isEmpty()) {
+                promise.reject(
+                    "INVALID_CREDENTIALS",
+                    "apiKey and bundleId are required and cannot be empty",
+                    null
+                )
+                return
+            }
+
+            val context: Context? = reactApplicationContext.applicationContext
+            if (context == null) {
+                promise.reject(
+                    "INITIALIZATION_FAILED",
+                    "Context is not available",
+                    null
+                )
+                return
+            }
+
+            Dito.initWithApiKey(context, apiKey, bundleId, null)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject(
+                "INITIALIZATION_FAILED",
+                "Failed to initialize Dito SDK: ${e.message}",
+                e
+            )
         }
     }
 
@@ -255,6 +294,34 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
     }
 
     @ReactMethod
+    fun setNotificationOptions(optionsMap: ReadableMap, promise: Promise) {
+        try {
+            val smallIconResId = if (optionsMap.hasKey("smallIconResId") && !optionsMap.isNull("smallIconResId")) optionsMap.getInt("smallIconResId") else null
+            val largeIconResId = if (optionsMap.hasKey("largeIconResId") && !optionsMap.isNull("largeIconResId")) optionsMap.getInt("largeIconResId") else null
+            val soundResourceName = if (optionsMap.hasKey("soundResourceName") && !optionsMap.isNull("soundResourceName")) optionsMap.getString("soundResourceName") else null
+            val accentColor = if (optionsMap.hasKey("accentColor") && !optionsMap.isNull("accentColor")) optionsMap.getInt("accentColor") else null
+            val badgeEnabled = if (optionsMap.hasKey("badgeEnabled")) optionsMap.getBoolean("badgeEnabled") else true
+
+            val options = DitoNotificationOptions(
+                smallIconResId = smallIconResId,
+                largeIconResId = largeIconResId,
+                soundResourceName = soundResourceName,
+                accentColor = accentColor,
+                badgeEnabled = badgeEnabled
+            )
+
+            Dito.setNotificationOptions(options)
+            promise.resolve(null)
+        } catch (e: Exception) {
+            promise.reject(
+                "SET_NOTIFICATION_OPTIONS_FAILED",
+                "Failed to set notification options: ${e.message}",
+                e
+            )
+        }
+    }
+
+    @ReactMethod
     fun unregisterDeviceToken(token: String, promise: Promise) {
         try {
             if (token.isEmpty()) {
@@ -274,6 +341,43 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
                 "Failed to unregister device token: ${e.message}",
                 e
             )
+        }
+    }
+
+    @ReactMethod
+    fun getNotifications(promise: Promise) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                val records = Dito.getNotifications()
+                val array = Arguments.createArray()
+                for (info in records) {
+                    val map = Arguments.createMap()
+                    map.putString("id", info.id)
+                    map.putString("notificationId", info.notificationId)
+                    map.putString("reference", info.reference)
+                    map.putString("title", info.title)
+                    map.putString("message", info.message)
+                    map.putString("link", info.link)
+                    map.putDouble("receivedAt", info.receivedAt.toDouble())
+                    map.putBoolean("isRead", info.isRead)
+                    array.pushMap(map)
+                }
+                withContext(Dispatchers.Main) { promise.resolve(array) }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { promise.reject("INBOX_ERROR", e.message) }
+            }
+        }
+    }
+
+    @ReactMethod
+    fun markNotificationAsRead(id: String, promise: Promise) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                Dito.markNotificationAsRead(id)
+                withContext(Dispatchers.Main) { promise.resolve(null) }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { promise.reject("INBOX_ERROR", e.message) }
+            }
         }
     }
 
