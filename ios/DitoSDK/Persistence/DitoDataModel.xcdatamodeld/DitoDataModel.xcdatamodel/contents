@@ -13,6 +13,10 @@
         <attribute name="json" optional="YES" attributeType="String"/>
         <attribute name="retry" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
     </entity>
+    <entity name="NotificationReceive" representedClassName="NotificationReceive" syncable="YES" codeGenerationType="class">
+        <attribute name="json" optional="YES" attributeType="String"/>
+        <attribute name="retry" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>
+    </entity>
     <entity name="NotificationRegister" representedClassName="NotificationRegister" syncable="YES" codeGenerationType="class">
         <attribute name="json" optional="YES" attributeType="String"/>
         <attribute name="retry" optional="YES" attributeType="Integer 16" defaultValueString="0" usesScalarValueType="YES"/>

@@ -6,6 +6,10 @@ final class DitoNotificationDataTests: XCTestCase {
     override func setUp() {
         super.setUp()
         TestHelpers.resetAllState()
+        #if DEBUG
+        DitoNotificationReceiveTracker.resetForTests()
+        Dito.invalidateRetryCacheForTests()
+        #endif
         Dito.appKey = "unit-test-app-key"
         Dito.appSecret = ""
         Dito.signature = "unit-test-signature"
@@ -45,6 +49,17 @@ final class DitoNotificationDataTests: XCTestCase {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
         XCTFail("timed out waiting for \(count) ingest call(s); got \(mock.activityCallCount)")
+    }
+
+    private func waitForNotificationReceiveRows(count: Int, timeout: TimeInterval = 10) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if DitoNotificationReceiveDataManager().fetchAll.count >= count { return }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTFail(
+            "timed out waiting for \(count) NotificationReceive row(s); got \(DitoNotificationReceiveDataManager().fetchAll.count)"
+        )
     }
 
     private func waitForRegisterPendingJson(
@@ -254,6 +269,134 @@ final class DitoNotificationDataTests: XCTestCase {
         default:
             XCTFail("expected trackPushClick, got \(String(describing: a.activity))")
         }
+    }
+
+    func test_notificationReceived_userIdCamelCaseEnviaActivityIngest() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "user-camel-\(UUID().uuidString)"
+        let nid = "nid-camel-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "userId": uid,
+            "notification": nid,
+            "reference": "ref-camel",
+            "log_id": "log-camel",
+        ]
+
+        XCTAssertEqual(DitoNotificationReceived(with: userInfo).userId, uid)
+
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-camel")
+        await waitForActivityCalls(mock, count: 1)
+
+        let req = try XCTUnwrap(mock.lastActivityRequest)
+        XCTAssertEqual(req.userID, uid)
+    }
+
+    func test_notificationReceived_userIdNumericoEnviaActivityIngest() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "987654"
+        let nid = "nid-num-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "user_id": NSNumber(value: 987654),
+            "notification": nid,
+            "log_id": "log-num",
+        ]
+
+        XCTAssertEqual(DitoNotificationReceived(with: userInfo).userId, uid)
+
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-num")
+        await waitForActivityCalls(mock, count: 1)
+        XCTAssertEqual(try XCTUnwrap(mock.lastActivityRequest).userID, uid)
+    }
+
+    func test_notificationReceived_completionAposIngest() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "user-cb-\(UUID().uuidString)"
+        let nid = "nid-cb-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "user_id": uid,
+            "notification": nid,
+            "log_id": "log-cb",
+        ]
+
+        let completionExpectation = expectation(description: "receive completion")
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-cb") { result in
+            if case .success = result {
+                completionExpectation.fulfill()
+            }
+        }
+        await fulfillment(of: [completionExpectation], timeout: 10)
+        await waitForActivityCalls(mock, count: 1)
+    }
+
+    func test_notificationReceived_userIdAninhadoEmDataEnviaActivityIngest() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "user-nested-\(UUID().uuidString)"
+        let nid = "nid-nested-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "data": [
+                "channel": "DITO",
+                "user_id": uid,
+                "notification": nid,
+                "reference": "ref-nested",
+                "log_id": "log-nested",
+                "notification_name": "Nome",
+            ],
+        ]
+
+        XCTAssertEqual(DitoNotificationReceived(with: userInfo).userId, uid)
+
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-nested")
+        await waitForActivityCalls(mock, count: 1)
+
+        let req = try XCTUnwrap(mock.lastActivityRequest)
+        XCTAssertEqual(req.userID, uid)
+        let trackActivity = req.activities.first { $0.type == .activityTrack }
+        switch trackActivity?.activity {
+        case .track(let track)?:
+            XCTAssertEqual(track.event, "receive-ios-notification")
+        default:
+            XCTFail("expected receive-ios-notification track activity")
+        }
+    }
+
+    func test_notificationReceived_falhaIngestPersisteOfflineERetryEnvia() async throws {
+        let failingMock = MockMobileIngestClient()
+        failingMock.shouldSucceed = false
+        Dito.testNotificationReceivedIngestClient = failingMock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "user-offline-\(UUID().uuidString)"
+        let nid = "nid-offline-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "user_id": uid,
+            "notification": nid,
+            "reference": "ref-offline",
+            "log_id": "log-offline",
+            "notification_name": "Offline",
+        ]
+
+        await Dito.awaitNotificationReceivedDelivery(userInfo: userInfo, token: "fcm-offline")
+        await waitForNotificationReceiveRows(count: 1)
+
+        let successMock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = successMock
+        Dito.invalidateRetryCacheForTests()
+        await Dito.shared.retry.runLoadOffline()
+        await waitForActivityCalls(successMock, count: 1)
+        try await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertTrue(DitoNotificationReceiveDataManager().fetchAll.isEmpty)
     }
 
     func test_notificationClick_comIdPresenteMarcaComoLidaAposIngestAssincrono() async throws {

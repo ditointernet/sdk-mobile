@@ -176,12 +176,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
     NotificationDebugHelper.saveNotification(userInfo)
 
     let callNotificationReceived: (String) -> Void = { token in
-      // Garantir que o evento de recebimento seja disparado mesmo em background
-      Dito.notificationReceived(userInfo: userInfo, token: token)
-      // Notifica o Firebase Messaging sobre a mensagem recebida
-      Messaging.messaging().appDidReceiveMessage(userInfo)
-      // Chama o completion handler indicando que novos dados foram processados
-      completionHandler(.newData)
+      Dito.notificationReceived(userInfo: userInfo, token: token) { result in
+        Messaging.messaging().appDidReceiveMessage(userInfo)
+        switch result {
+        case .success:
+          completionHandler(.newData)
+        case .failure:
+          completionHandler(.failed)
+        }
+      }
     }
 
     let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: SamplePushStorage.fcmTokenKey)
