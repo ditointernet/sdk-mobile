@@ -1,5 +1,16 @@
 ### Correções
 
+- fix: podspec publish (#22) (1e22e21)
+- fix(ios): implement notification receive tracking and offline handling (#21) (bf488b7)
+
+### Outros
+
+- chore(release): ios 3.3.3 (a7c81d1)
+- chore(release): ios 3.3.2 (a969d08)
+- Fix/android ios event callback (#18) (b64edde)
+
+### Correções
+
 - fix(ios): implement notification receive tracking and offline handling (#21) (bf488b7)
 
 ### Outros
