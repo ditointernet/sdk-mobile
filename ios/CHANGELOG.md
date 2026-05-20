@@ -1,5 +1,9 @@
 ### Correções
 
+- fix: update pod version (65bd272)
+
+### Correções
+
 - fix: podspec publish (#22) (1e22e21)
 - fix(ios): implement notification receive tracking and offline handling (#21) (bf488b7)
 
