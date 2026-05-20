@@ -12,7 +12,7 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '16.0'
   s.pod_target_xcconfig = { 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
   s.dependency 'Connect-Swift', '~> 0.14.0'
-  s.source_files = 'DitoSDK/Sources/**/*', 'DitoSDK/Persistence/*.{swift}'
-  s.resources = 'DitoSDK/Persistence/*.{xcdatamodeld}'
-  s.exclude_files = 'DitoSDK/Sources/Info.plist'
+  s.source_files = 'ios/DitoSDK/Sources/**/*', 'ios/DitoSDK/Persistence/*.{swift}'
+  s.resources = 'ios/DitoSDK/Persistence/*.{xcdatamodeld}'
+  s.exclude_files = 'ios/DitoSDK/Sources/Info.plist'
 end
