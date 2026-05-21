@@ -23,32 +23,34 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     if FirebaseApp.app() == nil {
       FirebaseApp.configure()
     }
+    DitoNotificationDelegate.ensureDitoConfigured()
     DitoNotificationDelegate.shared.configurePush(application: UIApplication.shared)
   }
 
-  private static func channelFromUserInfo(_ userInfo: [AnyHashable: Any]) -> String? {
-    if let data = userInfo["data"] as? [AnyHashable: Any], let ch = data["channel"] as? String {
-      return ch
-    }
-    return userInfo["channel"] as? String
+  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
+    DitoNotificationDelegate.isDitoChannel(userInfo)
   }
 
-  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
-    channelFromUserInfo(userInfo) == "DITO"
+  private static func resolvedFcmToken(_ fcmToken: String?) -> String {
+    if let token = fcmToken?.trimmingCharacters(in: .whitespacesAndNewlines), !token.isEmpty {
+      return token
+    }
+    return UserDefaults.standard.string(forKey: "FCMToken") ?? ""
   }
 
   private static func processNotificationReceived(userInfo: [AnyHashable: Any], fcmToken: String?) {
-    guard let token = fcmToken else { return }
-    Dito.notificationReceived(userInfo: userInfo, token: token)
+    DitoNotificationDelegate.ensureDitoConfigured()
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
+    Dito.notificationReceived(userInfo: normalized, token: resolvedFcmToken(fcmToken))
   }
 
   @objc public static func didReceiveNotificationRequest(
     _ request: UNNotificationRequest,
     fcmToken: String?
   ) -> Bool {
-    let userInfo = request.content.userInfo
-    guard isDitoChannel(userInfo) else { return false }
-    processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(request.content.userInfo)
+    guard isDitoChannel(normalized) else { return false }
+    processNotificationReceived(userInfo: request.content.userInfo, fcmToken: fcmToken)
     return true
   }
 
@@ -56,7 +58,8 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     fcmToken: String?
   ) -> Bool {
-    guard isDitoChannel(userInfo) else { return false }
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
+    guard isDitoChannel(normalized) else { return false }
     processNotificationReceived(userInfo: userInfo, fcmToken: fcmToken)
     return true
   }
@@ -65,14 +68,16 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard isDitoChannel(userInfo) else { return false }
-    Dito.notificationClick(userInfo: userInfo, callback: callback)
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
+    guard isDitoChannel(normalized) else { return false }
+    Dito.notificationClick(userInfo: normalized, callback: callback)
     return true
   }
 
   internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
     guard let sink = notificationEventSink else { return }
-    let source: [AnyHashable: Any] = (userInfo["data"] as? [AnyHashable: Any]) ?? userInfo
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
+    let source = DitoNotificationDelegate.nestedPayload(normalized[AnyHashable("data")] ?? normalized["data"]) ?? normalized
 
     var payload: [String: Any] = [:]
     payload["type"] = notificationClickEventType
@@ -90,15 +95,28 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
   public func application(
     _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+  ) {
+    Messaging.messaging().apnsToken = deviceToken
+    Messaging.messaging().token { token, _ in
+      guard let token, !token.isEmpty else { return }
+      UserDefaults.standard.set(token, forKey: "FCMToken")
+    }
+  }
+
+  public func application(
+    _ application: UIApplication,
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
   ) -> Bool {
+    let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
+    let isDito = DitoSdkPlugin.isDitoChannel(normalized)
     DitoNotificationDelegate.shared.application(
       application,
       didReceiveRemoteNotification: userInfo,
       fetchCompletionHandler: completionHandler
     )
-    return false
+    return isDito
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
@@ -116,6 +134,20 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         return
       }
       Dito.enableDebugMode(enabled)
+      result(nil)
+    case "initializeWithApiKey":
+      guard let args = call.arguments as? [String: Any],
+            let apiKey = args["apiKey"] as? String,
+            let bundleId = args["bundleId"] as? String,
+            !apiKey.isEmpty, !bundleId.isEmpty else {
+        result(FlutterError(
+          code: "INVALID_CREDENTIALS",
+          message: "apiKey and bundleId are required and cannot be empty",
+          details: nil
+        ))
+        return
+      }
+      Dito.configure(apiKey: apiKey, bundleId: bundleId)
       result(nil)
     case "initialize":
       guard let args = call.arguments as? [String: Any],
@@ -242,6 +274,18 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
 
       Dito.unregisterDevice(token: token)
       result(nil)
+    case "handleNotificationReceived":
+      guard let args = call.arguments as? [String: Any] else {
+        result(false)
+        return
+      }
+      var userInfo: [AnyHashable: Any] = [:]
+      for (key, value) in args where key != "token" {
+        userInfo[key] = value
+      }
+      let token = args["token"] as? String
+      let handled = DitoSdkPlugin.didReceiveRemoteNotification(userInfo: userInfo, fcmToken: token)
+      result(handled)
     case "handleNotificationClick":
       guard let args = call.arguments as? [String: Any] else {
         result(false)
@@ -255,6 +299,35 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
       }
       result(handled)
+    case "setNotificationOptions":
+      let args = call.arguments as? [String: Any] ?? [:]
+      let soundResourceName = args["soundResourceName"] as? String
+      let options = DitoNotificationOptions(soundName: soundResourceName)
+      Dito.setNotificationOptions(options)
+      result(nil)
+    case "getNotifications":
+      let notifications = Dito.shared.getNotifications()
+      let maps: [[String: Any]] = notifications.map { info in
+        [
+          "id": info.id,
+          "notificationId": info.notificationId,
+          "reference": info.reference,
+          "title": info.title,
+          "message": info.message,
+          "link": info.link,
+          "receivedAt": Int64(info.receivedAt.timeIntervalSince1970 * 1000),
+          "isRead": info.isRead
+        ]
+      }
+      result(maps)
+    case "markNotificationAsRead":
+      guard let args = call.arguments as? [String: Any],
+            let id = args["id"] as? String else {
+        result(FlutterError(code: "INBOX_ERROR", message: "id argument missing", details: nil))
+        return
+      }
+      Dito.shared.markNotificationAsRead(id: id)
+      result(nil)
     default:
       result(FlutterMethodNotImplemented)
     }

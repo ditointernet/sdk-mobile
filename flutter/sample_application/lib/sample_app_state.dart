@@ -45,6 +45,10 @@ class SampleAppState {
   final TextEditingController userCountryController = TextEditingController();
   final TextEditingController eventNameController = TextEditingController();
   final TextEditingController tokenController = TextEditingController();
+  final TextEditingController smallIconController = TextEditingController();
+  final TextEditingController largeIconController = TextEditingController();
+  final TextEditingController soundController = TextEditingController();
+  final TextEditingController accentColorController = TextEditingController();
 
   String fcmDebugStatus = 'Checking...';
   int fcmPushReceivedCount = 0;
@@ -218,6 +222,21 @@ class SampleAppState {
     }
   }
 
+  Future<void> applyNotificationOptions() async {
+    try {
+      final options = DitoNotificationOptions(
+        smallIconResId: int.tryParse(smallIconController.text),
+        largeIconResId: int.tryParse(largeIconController.text),
+        soundResourceName: soundController.text.isEmpty ? null : soundController.text,
+        accentColor: int.tryParse(accentColorController.text),
+      );
+      await ditoSdk.setNotificationOptions(options);
+      _showSnackBar('Notification Options aplicadas');
+    } catch (e) {
+      _showSnackBar('Error: $e', isError: true);
+    }
+  }
+
   Future<void> unregisterToken() async {
     if (!isInitialized) {
       _showSnackBar('Please initialize SDK first', isError: true);
@@ -268,5 +287,9 @@ class SampleAppState {
     userCountryController.dispose();
     eventNameController.dispose();
     tokenController.dispose();
+    smallIconController.dispose();
+    largeIconController.dispose();
+    soundController.dispose();
+    accentColorController.dispose();
   }
 }

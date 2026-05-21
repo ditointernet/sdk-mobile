@@ -1,8 +1,12 @@
+export 'dito_notification_info.dart';
 export 'dito_notification_listener.dart';
+export 'dito_notification_options.dart';
 
 import 'package:flutter/services.dart';
 
+import 'dito_notification_info.dart';
 import 'dito_notification_listener.dart';
+import 'dito_notification_options.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 import 'parameter_validator.dart';
@@ -19,6 +23,7 @@ class DitoSdk {
     return DitoSdkPlatform.instance.getPlatformVersion();
   }
 
+  /// Enables or disables native SDK debug logging. May be called before [initialize].
   Future<void> setDebugMode({required bool enabled}) async {
     try {
       await DitoSdkPlatform.instance.setDebugMode(enabled: enabled);
@@ -29,28 +34,21 @@ class DitoSdk {
     }
   }
 
-  /// Initializes the Dito SDK with the provided API credentials.
+  /// Initializes the Dito SDK with [appKey] and [appSecret].
   ///
-  /// This method must be called before using any other SDK methods.
-  /// It configures the SDK with the provided [apiKey] and [apiSecret].
+  /// Must be called before [identify], [track], and other methods that require
+  /// [isInitialized]. Sets [isInitialized] to true on success.
   ///
-  /// Throws [PlatformException] with code [DitoError.invalidParameters] if
-  /// [apiKey] or [apiSecret] are null or empty.
-  ///
-  /// Throws [PlatformException] with code [DitoError.initializationFailed] or
-  /// [DitoError.invalidCredentials] if the SDK fails to initialize.
+  /// Throws [PlatformException] with [DitoError.invalidParameters] if
+  /// [appKey] or [appSecret] are empty.
   ///
   /// Example:
   /// ```dart
-  /// try {
-  ///   await DitoSdk.initialize(
-  ///     apiKey: 'your-api-key',
-  ///     apiSecret: 'your-api-secret',
-  ///   );
-  ///   print('SDK initialized successfully');
-  /// } on PlatformException catch (e) {
-  ///   print('Failed to initialize: ${e.message}');
-  /// }
+  /// final ditoSdk = DitoSdk();
+  /// await ditoSdk.initialize(
+  ///   appKey: 'your-app-key',
+  ///   appSecret: 'your-app-secret',
+  /// );
   /// ```
   Future<void> initialize({
     required String appKey,
@@ -72,6 +70,24 @@ class DitoSdk {
     }
   }
 
+  /// Initializes the SDK with [apiKey] and [bundleId] only (no app secret).
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) async {
+    try {
+      await DitoSdkPlatform.instance.initializeWithApiKey(
+        apiKey: apiKey,
+        bundleId: bundleId,
+      );
+      _isInitialized = true;
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
   /// Identifies a user in Dito CRM.
   ///
   /// This method must be called after [initialize].
@@ -81,7 +97,8 @@ class DitoSdk {
   ///
   /// Example:
   /// ```dart
-  /// await DitoSdk.identify(
+  /// final ditoSdk = DitoSdk();
+  /// await ditoSdk.identify(
   ///   id: 'user123',
   ///   name: 'John Doe',
   ///   email: 'john@example.com',
@@ -133,7 +150,8 @@ class DitoSdk {
   ///
   /// Example:
   /// ```dart
-  /// await DitoSdk.track(
+  /// final ditoSdk = DitoSdk();
+  /// await ditoSdk.track(
   ///   action: 'purchase',
   ///   data: {'product': 'item123', 'price': 99.99},
   /// );
@@ -176,7 +194,8 @@ class DitoSdk {
   ///
   /// Example:
   /// ```dart
-  /// await DitoSdk.registerDeviceToken('fcm-device-token');
+  /// final ditoSdk = DitoSdk();
+  /// await ditoSdk.registerDeviceToken('fcm-device-token');
   /// ```
   Future<void> registerDeviceToken(String token) async {
     _checkInitialized();
@@ -207,7 +226,8 @@ class DitoSdk {
   ///
   /// Example:
   /// ```dart
-  /// await DitoSdk.unregisterDeviceToken('fcm-device-token');
+  /// final ditoSdk = DitoSdk();
+  /// await ditoSdk.unregisterDeviceToken('fcm-device-token');
   /// ```
   Future<void> unregisterDeviceToken(String token) async {
     _checkInitialized();
@@ -225,9 +245,54 @@ class DitoSdk {
     }
   }
 
+  /// Forwards a notification payload to the native SDK. Returns true if handled (e.g. channel DITO).
+  Future<bool> handleNotificationReceived(Map<String, dynamic> userInfo) async {
+    try {
+      return await DitoSdkPlatform.instance.handleNotificationReceived(userInfo);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  /// Forwards a notification click payload to the native SDK (tracking and [onNotificationClick]).
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) async {
     try {
       return await DitoSdkPlatform.instance.handleNotificationClick(userInfo);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  /// Sets push notification display options. May be called before or after [initialize].
+  Future<void> setNotificationOptions(DitoNotificationOptions options) async {
+    try {
+      await DitoSdkPlatform.instance.setNotificationOptions(options);
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  /// Returns notifications stored in the native local inbox.
+  Future<List<DitoNotificationInfo>> getNotifications() async {
+    try {
+      return await DitoSdkPlatform.instance.getNotifications();
+    } on PlatformException catch (e) {
+      throw mapNativeError(e);
+    } catch (e) {
+      throw mapNativeError(e);
+    }
+  }
+
+  /// Marks an inbox notification as read by [id] from [DitoNotificationInfo.id].
+  Future<void> markNotificationAsRead(String id) async {
+    try {
+      await DitoSdkPlatform.instance.markNotificationAsRead(id);
     } on PlatformException catch (e) {
       throw mapNativeError(e);
     } catch (e) {

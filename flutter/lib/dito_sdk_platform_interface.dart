@@ -1,5 +1,7 @@
 import 'package:plugin_platform_interface/plugin_platform_interface.dart';
 
+import 'dito_notification_info.dart';
+import 'dito_notification_options.dart';
 import 'dito_sdk_method_channel.dart';
 
 abstract class DitoSdkPlatform extends PlatformInterface {
@@ -37,6 +39,13 @@ abstract class DitoSdkPlatform extends PlatformInterface {
     throw UnimplementedError('initialize() has not been implemented.');
   }
 
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) {
+    throw UnimplementedError('initializeWithApiKey() has not been implemented.');
+  }
+
   Future<void> identify({
     required String id,
     String? name,
@@ -61,8 +70,25 @@ abstract class DitoSdkPlatform extends PlatformInterface {
     throw UnimplementedError('unregisterDeviceToken() has not been implemented.');
   }
 
+  Future<bool> handleNotificationReceived(Map<String, dynamic> userInfo) {
+    throw UnimplementedError(
+        'handleNotificationReceived() has not been implemented.');
+  }
+
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) {
     throw UnimplementedError(
         'handleNotificationClick() has not been implemented.');
+  }
+
+  Future<void> setNotificationOptions(DitoNotificationOptions options) {
+    throw UnimplementedError('setNotificationOptions() has not been implemented.');
+  }
+
+  Future<List<DitoNotificationInfo>> getNotifications() {
+    throw UnimplementedError('getNotifications() has not been implemented.');
+  }
+
+  Future<void> markNotificationAsRead(String id) {
+    throw UnimplementedError('markNotificationAsRead() has not been implemented.');
   }
 }

@@ -19,6 +19,14 @@ class MockDitoSdkPlatform
   }
 
   @override
+  Future<void> initializeWithApiKey({
+    required String apiKey,
+    required String bundleId,
+  }) {
+    throw UnimplementedError('initializeWithApiKey() has not been implemented.');
+  }
+
+  @override
   Future<void> identify({
     required String id,
     String? name,
@@ -54,10 +62,26 @@ class MockDitoSdkPlatform
   }
 
   @override
+  Future<bool> handleNotificationReceived(Map<String, dynamic> userInfo) {
+    throw UnimplementedError(
+        'handleNotificationReceived() has not been implemented.');
+  }
+
+  @override
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) {
     throw UnimplementedError(
         'handleNotificationClick() has not been implemented.');
   }
+
+  @override
+  Future<void> setNotificationOptions(DitoNotificationOptions options) =>
+      Future.value();
+
+  @override
+  Future<List<DitoNotificationInfo>> getNotifications() => Future.value([]);
+
+  @override
+  Future<void> markNotificationAsRead(String id) => Future.value();
 }
 
 void main() {
@@ -269,6 +293,47 @@ void main() {
       await ditoSdk.registerDeviceToken('test-device-token');
 
       expect(ditoSdk.isInitialized, isTrue);
+    });
+  });
+
+  group('setNotificationOptions', () {
+    const MethodChannel channel = MethodChannel('br.com.dito/dito_sdk');
+    MethodCall? capturedCall;
+
+    setUp(() {
+      capturedCall = null;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall methodCall) async {
+        capturedCall = methodCall;
+        return null;
+      });
+    });
+
+    tearDown(() {
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null);
+    });
+
+    test('should pass all options fields to native channel', () async {
+      // Arrange
+      final ditoSdk = DitoSdk();
+      const options = DitoNotificationOptions(
+        accentColor: 0xFF0000,
+        largeIconResId: 1,
+        smallIconResId: 2,
+        soundResourceName: 'custom_sound',
+      );
+
+      // Act
+      await ditoSdk.setNotificationOptions(options);
+
+      // Assert
+      expect(capturedCall!.method, 'setNotificationOptions');
+      final args = capturedCall!.arguments as Map;
+      expect(args['accentColor'], 0xFF0000);
+      expect(args['largeIconResId'], 1);
+      expect(args['smallIconResId'], 2);
+      expect(args['soundResourceName'], 'custom_sound');
     });
   });
 

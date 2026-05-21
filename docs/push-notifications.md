@@ -47,7 +47,7 @@ Veja o exemplo completo em [iOS README](../ios/README.md#configuração-inicial)
 2. `Messaging.messaging().delegate = self`
 3. `Dito.shared.configure()`
 
-**Cold start e `receive-ios-notification`**: guarde o token FCM em `UserDefaults` na primeira obtenção e quando o Firebase o alterar (`Messaging.messaging(_:didReceiveRegistrationToken:)`), e reutilize-o em `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)` quando a propriedade em memória ainda for `nil`. O evento `receive-ios-notification` só é enviado ao ingest se o payload incluir `user_id` (string no topo do `userInfo`). A inbox do SDK (`Dito.shared.getNotifications()`) e ficheiros de debug escritos pela app são fontes independentes. Detalhes: [iOS README — secção 3.1](../ios/README.md).
+**Cold start e `receive-ios-notification`**: com app morto ou em background, o iOS só executa o SDK na **chegada** do push se o payload APNs incluir `"content-available": 1` e o app tiver **Remote notifications** em Background Modes. O plugin Flutter (`DitoNotificationDelegate`) chama o SDK nativo sem subir o Dart. Guarde o token FCM em `UserDefaults` (chave `FCMToken`) e reutilize-o quando `didReceiveRemoteNotification` rodar. O ingest exige `user_id` ou `userId` (também em `data`/`gcm`). Detalhes: [iOS README — secção 3.1](../ios/README.md).
 
 ### Android
 
@@ -93,6 +93,12 @@ void main() async {
 }
 ```
 
+#### 4. Inbox e handlers Dart (opcional)
+
+- **Inbox local**: `getNotifications()` e `markNotificationAsRead(id)` — veja [Flutter README — getNotifications](../flutter/README.md#getnotifications).
+- **Receive em background via Dart**: `handleNotificationReceived(userInfo)` em `FirebaseMessaging.onBackgroundMessage` (fallback; no iOS o plugin nativo costuma tratar cold start).
+- **Clique detectado no Dart**: `handleNotificationClick(message.data)` e/ou `DitoSdk.onNotificationClick` — detalhes em [Flutter README — Push Notifications](../flutter/README.md#-push-notifications).
+
 ### React Native
 
 #### 1. Instalar Dependências
@@ -116,6 +122,26 @@ O SDK intercepta automaticamente notificações do canal Dito quando o campo `ch
 3. Se `channel != "DITO"`, a notificação é ignorada pelo SDK e deve ser processada normalmente pelo app
 
 ### Payload Esperado
+
+**iOS (receive em tempo real com app morto):** inclua `content-available` no `aps`:
+
+```json
+{
+  "aps": {
+    "alert": { "title": "Título", "body": "Corpo" },
+    "content-available": 1
+  },
+  "channel": "DITO",
+  "notification": "notification-id",
+  "reference": "user-reference",
+  "link": "https://app.example.com/product/123",
+  "log_id": "log-id",
+  "notification_name": "Nome da Notificação",
+  "user_id": "user-id"
+}
+```
+
+Payload mínimo (campos de dados):
 
 ```json
 {

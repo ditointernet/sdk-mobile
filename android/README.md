@@ -519,7 +519,6 @@ Dito.setNotificationOptions(
         smallIconResId = R.drawable.ic_notification,
         soundResourceName = "my_sound",
         accentColor = Color.parseColor("#FF5722"),
-        badgeEnabled = true
     )
 )
 ```
@@ -529,7 +528,6 @@ Dito.setNotificationOptions(
 | `smallIconResId` | `Int?` | Recurso drawable monocromático para o ícone da notificação |
 | `soundResourceName` | `String?` | Nome do arquivo de som em `res/raw/` (sem extensão) |
 | `accentColor` | `Int?` | Cor de destaque da notificação (use `Color.parseColor(...)`) |
-| `badgeEnabled` | `Boolean` | Habilita badge no ícone do app (padrão: `true`) |
 
 > **Depreciado**: `Options.iconNotification` foi depreciado. Substitua por `DitoNotificationOptions(smallIconResId = ...)`.
 

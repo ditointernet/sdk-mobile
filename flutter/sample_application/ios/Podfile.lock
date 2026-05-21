@@ -1,9 +1,12 @@
 PODS:
-  - dito_sdk (0.0.1):
-    - DitoSDK
+  - Connect-Swift (0.14.0):
+    - SwiftProtobuf (~> 1.26.0)
+  - dito_sdk (3.4.0):
+    - DitoSDK (~> 3.4.0)
     - Firebase/Messaging
     - Flutter
-  - DitoSDK (3.0.1)
+  - DitoSDK (3.4.1):
+    - Connect-Swift (~> 0.14.0)
   - Firebase/CoreOnly (12.8.0):
     - FirebaseCore (~> 12.8.0)
   - Firebase/Messaging (12.8.0):
@@ -70,16 +73,18 @@ PODS:
   - nanopb/decode (3.30910.0)
   - nanopb/encode (3.30910.0)
   - PromisesObjC (2.4.0)
+  - SwiftProtobuf (1.26.0)
 
 DEPENDENCIES:
   - dito_sdk (from `.symlinks/plugins/dito_sdk/ios`)
+  - DitoSDK (from `/Users/igor.duarte/workspace/projects/sdk-mobile`)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - Flutter (from `Flutter`)
 
 SPEC REPOS:
   trunk:
-    - DitoSDK
+    - Connect-Swift
     - Firebase
     - FirebaseCore
     - FirebaseCoreInternal
@@ -89,10 +94,13 @@ SPEC REPOS:
     - GoogleUtilities
     - nanopb
     - PromisesObjC
+    - SwiftProtobuf
 
 EXTERNAL SOURCES:
   dito_sdk:
     :path: ".symlinks/plugins/dito_sdk/ios"
+  DitoSDK:
+    :path: "/Users/igor.duarte/workspace/projects/sdk-mobile"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   firebase_messaging:
@@ -101,11 +109,12 @@ EXTERNAL SOURCES:
     :path: Flutter
 
 SPEC CHECKSUMS:
-  dito_sdk: 92b357ee3f0ffc26c01ea496503d4bafa0c29af5
-  DitoSDK: ed75926e61a86ce21af0a9a1d3792877750cf43e
+  Connect-Swift: 6b4b5267a58ab231531935fd3331b1eeac726b45
+  dito_sdk: 526ee6aec2745e857d2d9828dc2afafe60e84e96
+  DitoSDK: 4aff210b0bbea92e07063aaa189b44844921728a
   Firebase: 9a58fdbc9d8655ed7b79a19cf9690bb007d3d46d
-  firebase_core: 8d5e24676350f15dd111aa59a88a1ae26605f9ba
-  firebase_messaging: 834cfc0887393d3108cdb19da8e57655c54fd0e4
+  firebase_core: ee30637e6744af8e0c12a6a1e8a9718506ec2398
+  firebase_messaging: 343de01a8d3e18b60df0c6d37f7174c44ae38e02
   FirebaseCore: 0dbad74bda10b8fb9ca34ad8f375fb9dd3ebef7c
   FirebaseCoreInternal: fe5fa466aeb314787093a7dce9f0beeaad5a2a21
   FirebaseInstallations: 6a14ab3d694ebd9f839c48d330da5547e9ca9dc0
@@ -115,7 +124,8 @@ SPEC CHECKSUMS:
   GoogleUtilities: 00c88b9a86066ef77f0da2fab05f65d7768ed8e1
   nanopb: fad817b59e0457d11a5dfbde799381cd727c1275
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
+  SwiftProtobuf: 5e8349171e7c2f88f5b9e683cb3cb79d1dc780b3
 
-PODFILE CHECKSUM: bd29822c3d5baf6b44b726f00ea3293a19339ef2
+PODFILE CHECKSUM: bca9c1c9fb7b9d543ff3f97eba72719ea288f71e
 
 COCOAPODS: 1.16.2

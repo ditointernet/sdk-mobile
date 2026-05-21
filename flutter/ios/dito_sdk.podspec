@@ -2,9 +2,12 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint dito_sdk.podspec` to validate before publishing.
 #
+# SDK iOS local: configurar no Podfile do app (CocoaPods não permite :path no podspec).
+# Ver flutter/sample_application/ios/Podfile.
+#
 Pod::Spec.new do |s|
   s.name             = 'dito_sdk'
-  s.version          = '3.1.3'
+  s.version          = '3.4.0'
   s.summary          = 'Dito iOS SDK Plugin for Flutter'
   s.description      = <<-DESC
 Dito iOS SDK Plugin for Flutter
@@ -15,7 +18,7 @@ Dito iOS SDK Plugin for Flutter
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'DitoSDK'
+  s.dependency 'DitoSDK', '~> 3.4.0'
   s.dependency 'Firebase/Messaging'
   s.platform = :ios, '16.0'
 
