@@ -1,3 +1,7 @@
+### Funcionalidades
+
+- feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
+
 ### Outros
 
 - Fix/android ios event callback (#18) (b64edde)
