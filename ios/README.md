@@ -142,17 +142,25 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
         let callNotificationReceived: (String) -> Void = { token in
-            Dito.notificationReceived(userInfo: userInfo, token: token)
-            Messaging.messaging().appDidReceiveMessage(userInfo)
-            completionHandler(.newData)
+            Dito.notificationReceived(userInfo: userInfo, token: token) { result in
+                Messaging.messaging().appDidReceiveMessage(userInfo)
+                switch result {
+                case .success:
+                    completionHandler(.newData)
+                case .failure:
+                    completionHandler(.failed)
+                }
+            }
         }
 
-        if let token = self.fcmToken {
+        let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+        if let token = cachedToken, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             callNotificationReceived(token)
         } else {
             Messaging.messaging().token { [weak self] token, error in
-                if let token = token {
+                if let token = token, !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     self?.fcmToken = token
+                    UserDefaults.standard.set(token, forKey: "FCMToken")
                     callNotificationReceived(token)
                 } else {
                     print("FCM token indisponível em background: \(error?.localizedDescription ?? "erro desconhecido")")
@@ -224,7 +232,8 @@ Para `Dito.notificationReceived(userInfo:token:)` em **background** ou após rei
 
 - Guarde o token FCM em `UserDefaults` na **primeira** vez que o obtiver e sempre que o Firebase devolver um valor **diferente** (incluindo `Messaging.messaging(_:didReceiveRegistrationToken:)`).
 - Opcional: após `FirebaseApp.configure()`, reatribua `fcmToken` a partir do valor persistido para o primeiro push em cold start.
-- O evento automático `receive-ios-notification` **só é enviado ao ingest** se o payload incluir `user_id` como string no topo do `userInfo` (regra do SDK).
+- O evento automático `receive-ios-notification` **só é enviado ao ingest** se o payload incluir `user_id` ou `userId` (topo, `data` ou `gcm`; `String` ou `NSNumber`). Sem isso, a inbox local grava e o ingest não recebe o track.
+- Em background, chame `fetchCompletionHandler` **após** o `completion` de `notificationReceived`, para o iOS não suspender o processo antes do ingest terminar.
 - A **inbox** (`Dito.shared.getNotifications()`, Core Data) e ficheiros de debug gravados pela app são **origens distintas**. Uma falha ao serializar o `userInfo` para JSON num ficheiro de debug não impede a inbox de ser atualizada quando `notificationReceived` corre.
 
 Referência no repositório: [`SampleApplication/AppDelegate.swift`](SampleApplication/AppDelegate.swift) e [`SampleApplication/NotificationDebugHelper.swift`](SampleApplication/NotificationDebugHelper.swift).
@@ -454,7 +463,8 @@ if let token = fcmToken {
 ```swift
 public static func notificationReceived(
     userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    completion: ((Result<Void, Error>) -> Void)? = nil
 )
 ```
 
@@ -463,6 +473,7 @@ public static func notificationReceived(
 |------|------|-------------|-----------|
 | userInfo | [AnyHashable: Any] | Sim | Dicionário com dados da notificação |
 | token | String | Sim | Token FCM do dispositivo |
+| completion | ((Result<Void, Error>) -> Void)? | Não | Chamado após ingest ou persistência offline; use em background antes de `fetchCompletionHandler` |
 
 **Retorno**: Nenhum
 
@@ -475,10 +486,19 @@ func application(
     didReceiveRemoteNotification userInfo: [AnyHashable : Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
 ) {
-    if let token = fcmToken {
-        Dito.notificationReceived(userInfo: userInfo, token: token)
+    let token = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken") ?? ""
+    guard !token.isEmpty else {
+        completionHandler(.noData)
+        return
     }
-    completionHandler(.newData)
+    Dito.notificationReceived(userInfo: userInfo, token: token) { result in
+        switch result {
+        case .success:
+            completionHandler(.newData)
+        case .failure:
+            completionHandler(.failed)
+        }
+    }
 }
 ```
 

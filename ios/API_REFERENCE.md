@@ -343,18 +343,21 @@ SDK envia receive-ios-notification
 
 ### Métodos de Notificação do Dito
 
-#### Dito.notificationRead(with:token:)
+#### Dito.notificationReceived(userInfo:token:completion:)
 
 **Registra quando uma notificação é RECEBIDA (não clicada).**
 
 Deve ser chamado quando a notificação chega, ANTES do clique do usuário.
 
-O envio do track automático `receive-ios-notification` ao ingest **requer** `user_id` ou `userId` no `userInfo` (topo, `data` ou `gcm`; string ou número). Sem isso, o SDK persiste na inbox local (`Dito.shared.getNotifications()`). Opcional: `completion` em `notificationReceived` para aguardar o fim do ingest antes de `fetchCompletionHandler`.
+O envio do track automático `receive-ios-notification` ao ingest **requer** `user_id` ou `userId` no `userInfo` (topo, `data` ou `gcm`; string ou número). Sem isso, o SDK persiste na inbox local (`Dito.shared.getNotifications()`). Em background, use o parâmetro `completion` para chamar `fetchCompletionHandler` somente após o ingest (ou persistência offline) terminar.
+
+> `notificationRead(with:token:)` permanece disponível, mas está **deprecated** — use `notificationReceived`.
 
 #### Parâmetros
 
 - `userInfo` ([AnyHashable: Any]): Dados da notificação
 - `token` (String): Token FCM do dispositivo
+- `completion` ((Result<Void, Error>) -> Void)?, opcional): Callback ao final do processamento
 
 #### Exemplos
 
@@ -368,29 +371,42 @@ func userNotificationCenter(
 ) {
     let userInfo = notification.request.content.userInfo
 
-    // Registra recebimento em foreground
-    Messaging.messaging().token { fcmToken, error in
-        if let fcmToken = fcmToken {
-            Dito.notificationRead(with: userInfo, token: fcmToken)
+    let token = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken") ?? ""
+    if !token.isEmpty {
+        Dito.notificationReceived(userInfo: userInfo, token: token)
+    } else {
+        Messaging.messaging().token { fcmToken, _ in
+            if let fcmToken = fcmToken {
+                Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
+            }
         }
     }
 
     completionHandler([[.banner, .list, .sound, .badge]])
 }
 
-// Quando notificação chega em background (silent)
+// Quando notificação chega em background (content-available)
 func application(
     _ application: UIApplication,
     didReceiveRemoteNotification userInfo: [AnyHashable: Any],
     fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
 ) {
-    if let token = self.fcmToken {
-        Dito.notificationRead(with: userInfo, token: token)
+    let token = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken") ?? ""
+    guard !token.isEmpty else {
+        completionHandler(.noData)
+        return
     }
-    completionHandler(.newData)
+    Dito.notificationReceived(userInfo: userInfo, token: token) { result in
+        switch result {
+        case .success:
+            completionHandler(.newData)
+        case .failure:
+            completionHandler(.failed)
+        }
+    }
 }
 
-// Quando usuário abre app do background (clica no banner)
+// Quando usuário clica no banner
 func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse,
@@ -398,10 +414,12 @@ func userNotificationCenter(
 ) {
     let userInfo = response.notification.request.content.userInfo
 
-    Messaging.messaging().token { fcmToken, error in
+    Messaging.messaging().token { fcmToken, _ in
         if let fcmToken = fcmToken {
-            // Registra que foi lida
-            Dito.notificationRead(with: userInfo, token: fcmToken)
+            Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
+            Dito.notificationClick(userInfo: userInfo) { deeplink in
+                // processe o deeplink
+            }
         }
     }
 
@@ -559,11 +577,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate, MessagingDelegate {
         didReceiveRemoteNotification userInfo: [AnyHashable: Any],
         fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
     ) {
-        // Silent notification
-        if let token = self.fcmToken {
-            Dito.notificationRead(with: userInfo, token: token)
+        let token = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken") ?? ""
+        guard !token.isEmpty else {
+            completionHandler(.noData)
+            return
         }
-        completionHandler(.newData)
+        Dito.notificationReceived(userInfo: userInfo, token: token) { result in
+            switch result {
+            case .success:
+                completionHandler(.newData)
+            case .failure:
+                completionHandler(.failed)
+            }
+        }
     }
 }
 
@@ -593,14 +619,11 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         // Notificação foi clicada
         Messaging.messaging().token { [weak self] fcmToken, error in
             if let fcmToken = fcmToken {
-                // Registra leitura
-                Dito.notificationRead(with: userInfo, token: fcmToken)
+                Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
 
-                // Registra clique
                 let notification = Dito.notificationClick(
-                    with: userInfo
+                    userInfo: userInfo
                 ) { deeplink in
-                    // Processe o deeplink
                     print("🔗 Deeplink: \(deeplink)")
                 }
 
