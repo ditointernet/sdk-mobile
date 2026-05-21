@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/services.dart';
-import 'package:dito_sdk/dito_notification_options.dart';
 import 'package:dito_sdk/dito_sdk.dart';
 import 'package:dito_sdk/dito_sdk_platform_interface.dart';
 import 'package:dito_sdk/dito_sdk_method_channel.dart';
@@ -63,6 +62,12 @@ class MockDitoSdkPlatform
   }
 
   @override
+  Future<bool> handleNotificationReceived(Map<String, dynamic> userInfo) {
+    throw UnimplementedError(
+        'handleNotificationReceived() has not been implemented.');
+  }
+
+  @override
   Future<bool> handleNotificationClick(Map<String, dynamic> userInfo) {
     throw UnimplementedError(
         'handleNotificationClick() has not been implemented.');
@@ -71,6 +76,12 @@ class MockDitoSdkPlatform
   @override
   Future<void> setNotificationOptions(DitoNotificationOptions options) =>
       Future.value();
+
+  @override
+  Future<List<DitoNotificationInfo>> getNotifications() => Future.value([]);
+
+  @override
+  Future<void> markNotificationAsRead(String id) => Future.value();
 }
 
 void main() {

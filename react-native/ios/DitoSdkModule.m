@@ -2,11 +2,6 @@
 
 @interface RCT_EXTERN_MODULE(DitoSdkModule, NSObject)
 
-RCT_EXTERN_METHOD(initializeWithApiKey:(NSString *)apiKey
-                  bundleId:(NSString *)bundleId
-                  resolver:(RCTPromiseResolveBlock)resolve
-                  rejecter:(RCTPromiseRejectBlock)reject)
-
 RCT_EXTERN_METHOD(initialize:(NSString *)apiKey
                   apiSecret:(NSString *)apiSecret
                   resolver:(RCTPromiseResolveBlock)resolve
@@ -31,17 +26,6 @@ RCT_EXTERN_METHOD(registerDeviceToken:(NSString *)token
 RCT_EXTERN_METHOD(unregisterDeviceToken:(NSString *)token
                   resolver:(RCTPromiseResolveBlock)resolve
                   rejecter:(RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(setNotificationOptions:(NSDictionary *)optionsDict
-                  resolve:(RCTPromiseResolveBlock)resolve
-                  reject:(RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(getNotifications: (RCTPromiseResolveBlock)resolve
-                  rejecter: (RCTPromiseRejectBlock)reject)
-
-RCT_EXTERN_METHOD(markNotificationAsRead: (NSString *)id
-                  resolver: (RCTPromiseResolveBlock)resolve
-                  rejecter: (RCTPromiseRejectBlock)reject)
 
 + (BOOL)requiresMainQueueSetup
 {

@@ -2,6 +2,9 @@
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
 # Run `pod lib lint dito_sdk.podspec` to validate before publishing.
 #
+# SDK iOS local: configurar no Podfile do app (CocoaPods não permite :path no podspec).
+# Ver flutter/sample_application/ios/Podfile.
+#
 Pod::Spec.new do |s|
   s.name             = 'dito_sdk'
   s.version          = '3.4.0'

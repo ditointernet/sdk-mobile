@@ -26,8 +26,18 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 
 flutter_ios_podfile_setup
 
+def dito_use_local_ios_sdk?
+  ENV['DITO_USE_LOCAL_IOS_SDK'] == '1' ||
+    File.exist?(File.expand_path('../../ios/.use_local_dito_ios_sdk', __dir__))
+end
+
 target 'Runner' do
   use_frameworks!
+
+  if dito_use_local_ios_sdk?
+    # Paths in DitoSDK.podspec (ios/DitoSDK/...) are relative to the repo root.
+    pod 'DitoSDK', :path => File.expand_path('../../..', __dir__)
+  end
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

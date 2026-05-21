@@ -10,10 +10,21 @@ import 'dito_sample_screen.dart';
 import 'env_loader.dart';
 import 'firebase_options.dart';
 
+// No iOS o receive-ios-notification em app morto/background é tratado pelo plugin nativo
+// (DitoNotificationDelegate + SDK). Este handler é fallback opcional (ex.: testes ou Android).
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  await EnvLoader.load();
+  final ditoSdk = DitoSdk();
+  try {
+    await ditoSdk.initialize(
+      appKey: EnvLoader.getOrEmpty('API_KEY').trim(),
+      appSecret: EnvLoader.getOrEmpty('API_SECRET').trim(),
+    );
+  } catch (_) {}
+  await ditoSdk.handleNotificationReceived(message.data);
 }
 
 void main() async {

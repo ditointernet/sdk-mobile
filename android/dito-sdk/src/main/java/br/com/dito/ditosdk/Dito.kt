@@ -134,7 +134,13 @@ object Dito {
         )
     }
 
-    private fun configureTrackerXApiKey(context: Context, options: Options?, xApiKey: String, hibridMode: String) {
+    private fun configureTrackerXApiKey(
+        context: Context,
+        options: Options?,
+        xApiKey: String,
+        hibridMode: String,
+        bundleId: String = context.packageName,
+    ) {
         if (xApiKey.isEmpty()) {
             throw RuntimeException("API_KEY é obrigatório.")
         }
@@ -144,8 +150,26 @@ object Dito {
         configureTracker(
             context,
             options,
-            MobileIngestClient.withXApiKey(xApiKey, context.packageName, options?.httpClientBuilder),
+            MobileIngestClient.withXApiKey(xApiKey, bundleId, options?.httpClientBuilder),
         )
+    }
+
+    /**
+     * Inicializa o SDK com autenticação X-Api-Key e bundleId explícito (ex.: Flutter/React Native).
+     *
+     * @param context Contexto da aplicação Android
+     * @param apiKey Valor da X-Api-Key
+     * @param bundleId Identificador do app enviado no header Bundle-Id
+     * @param options Configurações opcionais do SDK
+     */
+    fun initWithApiKey(context: Context?, apiKey: String, bundleId: String, options: Options? = null) {
+        this.options = options
+        this.notificationClickListener = options?.notificationClickListener
+        if (context == null) throw RuntimeException("Context is not available")
+        if (apiKey.isEmpty()) throw RuntimeException("API_KEY é obrigatório.")
+        if (bundleId.isEmpty()) throw RuntimeException("bundleId é obrigatório.")
+        this.applicationContext = context.applicationContext
+        configureTrackerXApiKey(context, options, apiKey, resolveHibridMode(context), bundleId)
     }
 
     private fun configureTracker(context: Context, options: Options?, client: MobileIngestClientInterface) {

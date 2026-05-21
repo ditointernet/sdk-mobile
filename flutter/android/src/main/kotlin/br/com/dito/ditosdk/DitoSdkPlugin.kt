@@ -199,7 +199,7 @@ class DitoSdkPlugin :
                     return
                 }
                 try {
-                    Dito.initWithApiKey(ctx, apiKey, bundleId, Options().apply { debug = debugEnabled })
+                    Dito.init(ctx, apiKey, "", Options().apply { debug = debugEnabled })
                     ditoInitialized = true
                     result.success(null)
                 } catch (e: Exception) {

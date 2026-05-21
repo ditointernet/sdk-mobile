@@ -17,10 +17,10 @@ Com o Dito SDK Flutter Plugin você pode:
 
 | Requisito        | Versão Mínima |
 | ---------------- | ------------- |
-| Flutter          | 3.3.0+        |
+| Flutter          | 3.24.0+       |
 | Dart             | 3.10.7+       |
 | iOS              | 16.0+         |
-| Android API      | 24+           |
+| Android API      | 26+           |
 
 ## 📦 Instalação
 
@@ -36,7 +36,7 @@ Ou se publicado no pub.dev:
 
 ```yaml
 dependencies:
-  dito_sdk: ^1.0.0
+  dito_sdk: ^3.4.0
 ```
 
 ### 2. Instale as dependências
@@ -108,6 +108,17 @@ Para tracking de notificações em background (similar ao Android), você pode a
 
 **Nota:** Se você inicializar o SDK com `ditoSdk.initialize(...)` no `main()`, as credenciais passadas via código terão prioridade sobre as do `Info.plist`.
 
+**Desenvolvimento — SDK iOS nativo local**
+
+O `:path` do CocoaPods só pode ficar no **Podfile do app** (não no podspec do plugin). No sample:
+
+```bash
+DITO_USE_LOCAL_IOS_SDK=1 flutter run
+# ou: touch flutter/ios/.use_local_dito_ios_sdk && flutter run
+```
+
+Exemplo no `flutter/sample_application/ios/Podfile`: declarar `pod 'DitoSDK', :path => ...` antes de `flutter_install_all_ios_pods` quando estiver em modo local.
+
 ## ⚙️ Configuração Inicial
 
 ### 1. Inicialize o SDK
@@ -134,6 +145,12 @@ void main() async {
 ```
 
 ## 📖 Métodos Disponíveis
+
+Crie uma instância de `DitoSdk` e reutilize-a no app. O único membro estático é `DitoSdk.onNotificationClick` (stream de cliques em notificações).
+
+```dart
+final ditoSdk = DitoSdk();
+```
 
 ### initialize
 
@@ -210,8 +227,10 @@ Future<void> identify({
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 try {
-  await DitoSdk.identify(
+  await ditoSdk.identify(
     id: 'user123',
     name: 'João Silva',
     email: 'joao@example.com',
@@ -257,8 +276,10 @@ Future<void> track({
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 try {
-  await DitoSdk.track(
+  await ditoSdk.track(
     action: 'purchase',
     data: {
       'product': 'item123',
@@ -301,13 +322,14 @@ Future<void> registerDeviceToken(String token)
 ```dart
 import 'package:firebase_messaging/firebase_messaging.dart';
 
+final ditoSdk = DitoSdk();
 final FirebaseMessaging _firebaseMessaging = FirebaseMessaging.instance;
 
 Future<void> registerDevice() async {
   try {
     final token = await _firebaseMessaging.getToken();
     if (token != null) {
-      await DitoSdk.registerDeviceToken(token);
+      await ditoSdk.registerDeviceToken(token);
     }
   } on PlatformException catch (e) {
     print('Error: ${e.message}');
@@ -343,11 +365,13 @@ Future<void> unregisterDeviceToken(String token)
 
 **Exemplo**:
 ```dart
+final ditoSdk = DitoSdk();
+
 Future<void> unregisterDevice() async {
   try {
     final token = await FirebaseMessaging.instance.getToken();
     if (token != null) {
-      await DitoSdk.unregisterDeviceToken(token);
+      await ditoSdk.unregisterDeviceToken(token);
     }
   } on PlatformException catch (e) {
     print('Error: ${e.message}');
@@ -356,7 +380,220 @@ Future<void> unregisterDevice() async {
 ```
 
 **Notas**:
-- Use este método quando o usuário fizer logout ou desabilitar notificações
+- Use este método quando o usuário desabilitar notificações no dispositivo (não confundir com logout de identidade no CRM — esse fluxo ainda não está exposto no plugin Flutter)
+
+---
+
+### setDebugMode
+
+**Descrição**: Habilita ou desabilita logs de debug no SDK nativo. Pode ser chamado antes de `initialize`.
+
+**Assinatura**:
+```dart
+Future<void> setDebugMode({required bool enabled})
+```
+
+**Exemplo**:
+```dart
+final ditoSdk = DitoSdk();
+await ditoSdk.setDebugMode(enabled: true);
+await ditoSdk.initialize(appKey: 'sua-api-key', appSecret: 'seu-api-secret');
+```
+
+---
+
+### initializeWithApiKey
+
+**Descrição**: Inicialização alternativa usando apenas `apiKey` e `bundleId` (sem `appSecret`). Útil em cenários onde o backend ou a configuração nativa não expõe o secret no app.
+
+**Assinatura**:
+```dart
+Future<void> initializeWithApiKey({
+  required String apiKey,
+  required String bundleId,
+})
+```
+
+**Parâmetros**:
+| Nome | Tipo | Obrigatório | Descrição |
+|------|------|-------------|-----------|
+| apiKey | String | Sim | Chave API fornecida pela Dito |
+| bundleId | String | Sim | Bundle ID / application ID do app |
+
+**Notas**:
+- Prefira `initialize(appKey:, appSecret:)` quando ambas as credenciais estiverem disponíveis
+- Marca o SDK como inicializado (`isInitialized == true`) da mesma forma que `initialize`
+
+---
+
+### isInitialized
+
+**Descrição**: Indica se `initialize` ou `initializeWithApiKey` foi concluído com sucesso nesta instância.
+
+**Assinatura**:
+```dart
+bool get isInitialized
+```
+
+---
+
+### getPlatformVersion
+
+**Descrição**: Retorna a versão da plataforma nativa (utilitário do plugin).
+
+**Assinatura**:
+```dart
+Future<String?> getPlatformVersion()
+```
+
+---
+
+### handleNotificationReceived
+
+**Descrição**: Delega o payload de uma notificação recebida ao SDK nativo (tracking, inbox). Use em handlers Dart do `firebase_messaging` quando quiser processar mensagens em background/foreground pelo canal Flutter.
+
+**Assinatura**:
+```dart
+Future<bool> handleNotificationReceived(Map<String, dynamic> userInfo)
+```
+
+**Retorno**: `true` se o SDK tratou a mensagem (ex.: `channel=DITO`), `false` caso contrário.
+
+**Exemplo** (background handler opcional):
+```dart
+@pragma('vm:entry-point')
+Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final ditoSdk = DitoSdk();
+  await ditoSdk.initialize(appKey: '...', appSecret: '...');
+  await ditoSdk.handleNotificationReceived(message.data);
+}
+```
+
+**Notas**:
+- No iOS, receive em app morto/background costuma ser tratado pelo plugin nativo sem subir o Dart; este método é fallback ou complemento (ex.: testes, Android)
+- Não exige `isInitialized` no Dart (diferente de `identify`/`track`)
+
+---
+
+### handleNotificationClick
+
+**Descrição**: Delega o payload de clique em notificação ao SDK (tracking + emissão no stream `onNotificationClick` quando aplicável).
+
+**Assinatura**:
+```dart
+Future<bool> handleNotificationClick(Map<String, dynamic> userInfo)
+```
+
+**Retorno**: `true` se o SDK tratou o clique.
+
+**Exemplo**: veja [Android: quando chamar `handleNotificationClick`](#android-quando-chamar-handlenotificationclick) na seção Push Notifications.
+
+---
+
+### setNotificationOptions
+
+**Descrição**: Personaliza aparência/sons de notificações push exibidas pelo SDK. Pode ser chamado antes ou depois de `initialize`.
+
+**Assinatura**:
+```dart
+Future<void> setNotificationOptions(DitoNotificationOptions options)
+```
+
+**Exemplo**:
+```dart
+final ditoSdk = DitoSdk();
+
+await ditoSdk.setNotificationOptions(
+  DitoNotificationOptions(
+    smallIconResId: 0x7f080123, // Android: resource ID (R.drawable.*)
+    largeIconResId: 0x7f080124,
+    soundResourceName: 'alert', // Android: sem extensão; iOS: com extensão (ex: alert.aiff)
+    accentColor: 0xFF6200EE,    // Android only (ARGB)
+  ),
+);
+```
+
+| Campo | Tipo | Plataforma | Descrição |
+|---|---|---|---|
+| `smallIconResId` | `int?` | Android | Resource ID do drawable monocromático (ícone pequeno) |
+| `largeIconResId` | `int?` | Android | Resource ID do drawable (ícone grande) |
+| `soundResourceName` | `String?` | Android + iOS | Nome do arquivo de som no bundle nativo |
+| `accentColor` | `int?` | Android | Cor de destaque ARGB (ex: `0xFF6200EE`) |
+
+**Notas**:
+- No iOS, o plugin nativo aplica apenas `soundResourceName` hoje; ícones e `accentColor` são ignorados
+- Obtenha os IDs de drawable no módulo Android (mesmo valor que `R.drawable.ic_notification`)
+
+---
+
+### getNotifications
+
+**Descrição**: Lista notificações persistidas na inbox local do SDK nativo.
+
+**Assinatura**:
+```dart
+Future<List<DitoNotificationInfo>> getNotifications()
+```
+
+**Modelo `DitoNotificationInfo`**:
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `id` | String | ID interno do registro na inbox |
+| `notificationId` | String | ID da notificação Dito |
+| `reference` | String | Referência do usuário/campanha |
+| `title` | String | Título exibido |
+| `message` | String | Corpo da mensagem |
+| `link` | String | Deeplink associado |
+| `receivedAt` | DateTime | Data/hora de recebimento |
+| `isRead` | bool | Se foi marcada como lida |
+
+**Exemplo**:
+```dart
+final ditoSdk = DitoSdk();
+final list = await ditoSdk.getNotifications();
+for (final n in list) {
+  print('${n.title} — lida: ${n.isRead}');
+}
+```
+
+---
+
+### markNotificationAsRead
+
+**Descrição**: Marca uma notificação da inbox local como lida.
+
+**Assinatura**:
+```dart
+Future<void> markNotificationAsRead(String id)
+```
+
+**Parâmetros**: `id` — valor `DitoNotificationInfo.id` retornado por `getNotifications()`.
+
+---
+
+### DitoNotificationClick (stream)
+
+**Descrição**: Evento emitido quando o usuário clica em uma notificação Dito. Único API estática além do construtor.
+
+**Stream**:
+```dart
+static Stream<DitoNotificationClick> get onNotificationClick
+```
+
+**Campos de `DitoNotificationClick`**:
+
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `deeplink` | String | URL de destino (`link` do payload) |
+| `notificationId` | String | ID da notificação |
+| `reference` | String | Referência do usuário |
+| `logId` | String | ID de log/dispatch |
+| `notificationName` | String | Nome da campanha/notificação |
+| `userId` | String | ID do usuário associado |
+
+**Exemplo**: veja a seção [Click em notificação e deeplink](#-click-em-notificação-e-deeplink-callback-no-dart).
 
 ---
 
@@ -508,55 +745,69 @@ E registre no `AndroidManifest.xml` do app:
 
 ### iOS (Flutter)
 
-O plugin cuida da configuração nativa do Firebase Messaging no iOS. Para que o fluxo funcione, o app precisa:
+O plugin configura o Firebase Messaging e encaminha pushes `channel=DITO` para o SDK nativo **sem depender do Dart**. Com app morto, o `receive-ios-notification` dispara quando o iOS acorda o processo via `didReceiveRemoteNotification` (exige `aps.content-available: 1` no payload).
 
-1. Adicionar `GoogleService-Info.plist` no target iOS
-2. Habilitar Push Notifications e Background Modes (Remote notifications)
-3. Configurar APNs no Firebase
+**Requisitos no app:**
 
-Se você usa `firebase_messaging` no Dart para tratar mensagens, mantenha a inicialização do Firebase no `main()`:
+1. `GoogleService-Info.plist` no target iOS
+2. Push Notifications + Background Modes → **Remote notifications**
+3. APNs configurado no Firebase
+4. (Recomendado) `AppKey` e `AppSecret` no `Info.plist` para cold start antes de `initialize()`
+5. Payload com `channel=DITO`, `user_id` (ou `userId`) e `aps.content-available: 1`
 
-```dart
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+**Exemplo de payload (backend):**
 
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Processar notificação em background
-}
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
-  FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  runApp(MyApp());
+```json
+{
+  "aps": {
+    "alert": { "title": "Título", "body": "Mensagem" },
+    "content-available": 1
+  },
+  "channel": "DITO",
+  "user_id": "user-123",
+  "notification": "notif-id",
+  "log_id": "dispatch-id"
 }
 ```
+
+#### Firebase com AppDelegate custom / proxy desabilitado
+
+O plugin registra automaticamente o delegate de push em [`DitoNotificationDelegate`](../flutter/ios/Classes/DitoNotificationDelegate.swift) via `configurePush` em [`DitoSdkPlugin.register`](../flutter/ios/Classes/DitoSdkPlugin.swift). Não é obrigatório alterar o `AppDelegate` do app para o receive em background funcionar. Com Firebase Messaging 12+, mensagens chegam via APNs (`didReceiveRemoteNotification`, `willPresent` e toque no banner); o `MessagingDelegate` expõe apenas atualização de token FCM.
+
+Se o app usa `FirebaseAppDelegateProxyEnabled = false` (como no [sample](../flutter/sample_application/ios/Runner/Info.plist)):
+
+1. Chame `FirebaseApp.configure()` no startup (o plugin também configura se ainda não houver instância).
+2. Não substitua `UNUserNotificationCenter.current().delegate` sem encaminhar eventos ao plugin — use o delegate instalado pelo plugin ou encaminhe manualmente.
+3. Persista o token FCM: o plugin grava em `UserDefaults` com a chave `FCMToken` em `didReceiveRegistrationToken`.
+
+Se o `AppDelegate` do app implementar `application(_:didReceiveRemoteNotification:fetchCompletionHandler:)`, encaminhe ao plugin (já registrado como `FlutterApplicationDelegate`):
+
+```swift
+override func application(
+  _ application: UIApplication,
+  didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+  fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+) {
+  let handled = (self as? FlutterAppDelegate)?.application(
+    application,
+    didReceiveRemoteNotification: userInfo,
+    fetchCompletionHandler: completionHandler
+  ) ?? false
+  if !handled {
+    completionHandler(.noData)
+  }
+}
+```
+
+Para troubleshooting de `receive-ios-notification` em app morto, veja [Evento receive-ios-notification não dispara em background / app morto](#evento-receive-ios-notification-não-dispara-em-background--app-morto).
 
 ### Personalização de notificações
 
-Use `DitoSdk.setNotificationOptions` para personalizar a aparência das notificações push. Pode ser chamado antes ou depois de `initialize`.
+Veja [`setNotificationOptions`](#setnotificationoptions) na seção Métodos Disponíveis.
 
-```dart
-import 'package:dito_sdk/dito_sdk.dart';
+### Notification Inbox
 
-final ditoSdk = DitoSdk();
-await ditoSdk.initialize(appKey: 'your-key', appSecret: 'your-secret');
-
-ditoSdk.setNotificationOptions(
-  DitoNotificationOptions(
-    smallIconResId: 'ic_notification', // Android only
-    soundResourceName: 'alert',        // Android: sem extensão; iOS: com extensão (ex: alert.aiff)
-    accentColor: 0xFF6200EE,           // Android only
-  ),
-);
-```
-
-| Campo | Plataforma | Descrição |
-|---|---|---|
-| `smallIconResId` | Android | Nome do drawable para ícone pequeno da notificação |
-| `largeIconResId` | Android | Nome do drawable para ícone grande da notificação |
-| `soundResourceName` | Android + iOS | Nome do arquivo de som (Android: sem extensão; iOS: com extensão) |
-| `accentColor` | Android | Cor de destaque em formato ARGB (ex: `0xFF6200EE`) |
+A inbox local (`getNotifications`, `markNotificationAsRead`) está documentada em [`getNotifications`](#getnotifications) e [`markNotificationAsRead`](#marknotificationasread).
 
 ### Configuração Básica (Flutter)
 
@@ -654,14 +905,22 @@ await ditoSdk.track(action: 'purchase', data: {'product': 'item123'});
 
 Veja a seção [Configure as plataformas nativas - Android](#3-configure-as-plataformas-nativas) para detalhes completos.
 
-### Evento "receive-ios-notification" não dispara em background
+### Evento "receive-ios-notification" não dispara em background / app morto
+
+**Causas comuns**:
+
+- Payload **sem** `aps.content-available: 1` → com app morto o iOS só mostra o banner e o receive só ocorre no **toque** (comportamento da plataforma).
+- `channel` diferente de `DITO`.
+- `user_id` / `userId` ausente no payload (inbox local grava, ingest não recebe o track).
+- FCM token não persistido: o plugin usa `UserDefaults` chave `FCMToken`; abra o app ao menos uma vez após instalar.
 
 **Checklist**:
 1. `GoogleService-Info.plist` no target iOS
 2. Push Notifications e Background Modes (Remote notifications) habilitados
 3. APNs configurado no Firebase
-
-**Se o problema persistir**: Adicione as credenciais no `Info.plist` para permitir tracking em background mesmo quando o app não foi inicializado explicitamente:
+4. Backend envia `content-available: 1` em todas as pushes DITO
+5. `channel=DITO` e `user_id` no payload (também aceito dentro de `data` ou `userId` em camelCase)
+6. Credenciais no `Info.plist` se o app pode receber push antes do primeiro `initialize()`:
 
 ```xml
 <key>AppKey</key>
@@ -670,9 +929,7 @@ Veja a seção [Configure as plataformas nativas - Android](#3-configure-as-plat
 <string>seu-api-secret</string>
 ```
 
-Veja a seção [Configure as plataformas nativas - iOS](#3-configure-as-plataformas-nativas) para mais detalhes.
-4. App aberto ao menos uma vez para registrar o token
-5. Notificacao enviada com `channel=DITO` no payload
+Veja [Configure as plataformas nativas - iOS](#3-configure-as-plataformas-nativas) e o [guia de push](../docs/push-notifications.md).
 
 ## 💡 Exemplos Completos
 
@@ -774,11 +1031,14 @@ Este projeto está licenciado sob uma licença proprietária. Veja [LICENSE](../
 - ❌ Proíbe modificação do código fonte
 - ❌ Proíbe cópia e redistribuição do código
 
-## 🔗 Links Úteis- 🌐 [Website Dito](https://www.dito.com.br)
+## 🔗 Links Úteis
+
+- 🌐 [Website Dito](https://www.dito.com.br)
 - 📚 [Documentação Dito](https://developers.dito.com.br)
 - 📖 [Flutter Documentation](https://docs.flutter.dev/)
 - 🎯 [Dart Documentation](https://dart.dev/guides)
 - 🔥 [Firebase Flutter Documentation](https://firebase.google.com/docs/flutter/setup)
+
 ## 🛠️ Desenvolvimento no Monorepo
 
 Este projeto usa **Melos** para gerenciamento de pacotes no monorepo.
@@ -801,4 +1061,4 @@ melos run format       # Formatar código
 melos run check        # Executar todos os checks
 ```
 
-Para mais informações, consulte o [Guia Melos](./MELOS.md).
+Para setup do monorepo, execute `./setup_melos.sh` na pasta `flutter` e use os comandos `melos` listados acima.

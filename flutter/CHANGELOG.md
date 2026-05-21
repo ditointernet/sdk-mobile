@@ -1,79 +1,29 @@
-## 4.0.0
+## 3.4.0
 
 ### Novas funcionalidades
 
-- Adicionado `DitoNotificationOptions` para personalização de push notifications (ícone, som, badge, cor de destaque)
-- Adicionado `DitoSdk.setNotificationOptions(DitoNotificationOptions)` — chamável antes ou depois de `initialize`
-- Suporte Android: `smallIconResId`, `largeIconResId`, `soundResourceName`, `accentColor`
-- Suporte iOS: `soundResourceName`
+- `DitoNotificationOptions` e `setNotificationOptions` (ícones Android como resource ID `int?`, som, cor de destaque)
+- Inbox local: `getNotifications`, `markNotificationAsRead`, modelo `DitoNotificationInfo`
+- `setDebugMode`, `initializeWithApiKey`
+- `handleNotificationReceived`, `handleNotificationClick`
+- Stream estático `DitoSdk.onNotificationClick` com `DitoNotificationClick`
+- Getter `isInitialized`
 
-### Breaking changes
+### Requisitos
 
-- Versão major incrementada; comportamento de notificações sem `setNotificationOptions` permanece idêntico ao anterior (nenhuma regressão de defaults)
-
-### Outros
-
-- chore(release): flutter 3.2.3 (81f78d7)
-
-### Correções
-
-- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
-
-### Outros
-
-- chore(release): flutter 3.2.2 (3d70657)
-- chore: update Flutter version and SDK constraints in workflows and pubspec (612f3c2)
-- chore(release): flutter 3.2.2 (36f83fd)
-- chore(release): flutter 3.2.2 (9c3d870)
-- chore: update iOS build configuration and dependencies (#13) (632a4b7)
-- chore(release): flutter 3.2.2 (6e88685)
+- Flutter `>=3.24.0`, Dart `>=3.10.7`
+- Android `minSdk` 26, iOS 16.0+
+- Dependência nativa `DitoSDK` ~> 3.4.0 (CocoaPods / Maven)
 
 ### Correções
 
-- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
+- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12)
 
 ### Outros
 
-- chore: update Flutter version and SDK constraints in workflows and pubspec (612f3c2)
-- chore(release): flutter 3.2.2 (36f83fd)
-- chore(release): flutter 3.2.2 (9c3d870)
-- chore: update iOS build configuration and dependencies (#13) (632a4b7)
-- chore(release): flutter 3.2.2 (6e88685)
-
-### Correções
-
-- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
-
-### Outros
-
-- chore(release): flutter 3.2.2 (9c3d870)
-- chore: update iOS build configuration and dependencies (#13) (632a4b7)
-- chore(release): flutter 3.2.2 (6e88685)
-
-### Correções
-
-- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
-
-### Outros
-
-- chore: update iOS build configuration and dependencies (#13) (632a4b7)
-- chore(release): flutter 3.2.2 (6e88685)
-
-### Correções
-
-- fix(ios): safe AnyHashable-to-String cast in notification userInfo handling (#12) (2f479a2)
-
-### Outros
-
-- Update last updated date in MIGRATION.md (8610b1c)
-
-### Funcionalidades
-
-- feat(notification): add global callback for notification clicks and deeplinks (8e88d08)
-
-### Outros
-
-- chore(flutter): update .pubignore and CHANGELOG (e173f66)
+- chore: update Flutter version and SDK constraints in workflows and pubspec
+- feat(notification): global callback for notification clicks and deeplinks
+- Documentação README alinhada à API de instância e novos métodos
 
 ## [3.1.3] - 2025-02-05
 

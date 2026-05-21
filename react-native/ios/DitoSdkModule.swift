@@ -73,26 +73,6 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
   }
 
   @objc
-  func initializeWithApiKey(
-    _ apiKey: String,
-    bundleId: String,
-    resolver resolve: @escaping RCTPromiseResolveBlock,
-    rejecter reject: @escaping RCTPromiseRejectBlock
-  ) {
-    if apiKey.isEmpty || bundleId.isEmpty {
-      reject(
-        "INVALID_CREDENTIALS",
-        "apiKey and bundleId are required and cannot be empty",
-        nil
-      )
-      return
-    }
-
-    Dito.configure(apiKey: apiKey, bundleId: bundleId)
-    resolve(nil)
-  }
-
-  @objc
   func initialize(_ apiKey: String, apiSecret: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
     if apiKey.isEmpty || apiSecret.isEmpty {
       reject(
@@ -172,40 +152,6 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
     }
 
     Dito.unregisterDevice(token: token)
-    resolve(nil)
-  }
-
-  @objc
-  func setNotificationOptions(_ optionsDict: [String: Any], resolve: @escaping RCTPromiseResolveBlock, reject: @escaping RCTPromiseRejectBlock) {
-    let soundResourceName = optionsDict["soundResourceName"] as? String
-    let options = DitoNotificationOptions(soundName: soundResourceName)
-    Dito.setNotificationOptions(options)
-    resolve(nil)
-  }
-
-  @objc
-  func getNotifications(_ resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-    DispatchQueue.global(qos: .background).async {
-      let records = Dito.shared.getNotifications()
-      let array: [[String: Any]] = records.map { info in
-        return [
-          "id": info.id,
-          "notificationId": info.notificationId,
-          "reference": info.reference,
-          "title": info.title,
-          "message": info.message,
-          "link": info.link,
-          "receivedAt": info.receivedAt.timeIntervalSince1970 * 1000,
-          "isRead": info.isRead
-        ]
-      }
-      resolve(array)
-    }
-  }
-
-  @objc
-  func markNotificationAsRead(_ id: String, resolver resolve: @escaping RCTPromiseResolveBlock, rejecter reject: @escaping RCTPromiseRejectBlock) {
-    Dito.shared.markNotificationAsRead(id: id)
     resolve(nil)
   }
 }

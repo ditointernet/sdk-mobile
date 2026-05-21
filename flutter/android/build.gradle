@@ -44,8 +44,8 @@ android {
     }
 
     defaultConfig {
-        minSdk = 25
-    }
+        minSdk = 26
+    }   
 
     dependencies {
         implementation("br.com.dito:ditosdk:3.4.1")
