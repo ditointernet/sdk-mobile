@@ -30,4 +30,12 @@ data class DitoNotificationRecord(
 
     @ColumnInfo(name = "is_read")
     val isRead: Boolean = false,
+
+    /** URL da imagem do push; vazio quando a campanha não tem imagem. */
+    @ColumnInfo(name = "image", defaultValue = "")
+    val image: String = "",
+
+    /** Custom data da campanha, como string JSON; vazio quando não há custom data. */
+    @ColumnInfo(name = "custom_data", defaultValue = "")
+    val customData: String = "",
 )

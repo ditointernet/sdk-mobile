@@ -2,7 +2,9 @@ package br.com.dito.ditosdk
 
 import android.content.Context
 import android.content.pm.PackageManager
+import br.com.dito.ditosdk.notification.DitoNotificationAction
 import br.com.dito.ditosdk.notification.DitoNotificationOptions
+import br.com.dito.ditosdk.notification.DitoRichPushParser
 import br.com.dito.ditosdk.notification.inbox.DitoNotificationInfo
 import br.com.dito.ditosdk.offline.DitoDatabase
 import br.com.dito.ditosdk.service.ActivityMapper
@@ -45,6 +47,14 @@ object Dito {
     var options: Options? = null
     var notificationClickListener: ((String) -> Unit)? = null
     var notificationReceivedListener: ((Map<String, String>) -> Unit)? = null
+
+    /**
+     * Listener rico de clique: recebe o [NotificationResult] completo, com custom data já decodificada
+     * e, quando o clique veio de um botão, `actionId`/`actionLabel`. Disparado junto com
+     * [notificationClickListener], que continua recebendo apenas o deeplink.
+     */
+    var notificationClickDataListener: ((NotificationResult) -> Unit)? = null
+
     var notificationOptions: DitoNotificationOptions = DitoNotificationOptions()
         private set
 
@@ -286,7 +296,12 @@ object Dito {
     fun notificationClick(userInfo: Map<String, String>) {
         val data = DitoNotificationHandler.extractReadData(userInfo)
         if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
-        tracker.notificationClick(data.notificationId, data.reference, data.userId)
+        tracker.notificationClick(
+            data.notificationId,
+            data.reference,
+            data.userId,
+            DitoNotificationHandler.extractClickData(userInfo),
+        )
         CoroutineScope(Dispatchers.IO).launch {
             DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(data.notificationId)
         }
@@ -323,6 +338,7 @@ object Dito {
      */
     fun notificationClick(userInfo: Map<String, String>, callback: ((String) -> Unit)? = null): NotificationResult {
         val result = DitoNotificationHandler.handleClick(userInfo, callback, tracker)
+        notificationClickDataListener?.invoke(result)
         if (result.notificationId.isNotEmpty()) {
             CoroutineScope(Dispatchers.IO).launch {
                 DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(result.notificationId)
@@ -330,6 +346,20 @@ object Dito {
         }
         return result
     }
+
+    /**
+     * Decodifica `custom_data` (string JSON no data map do push) para um mapa. Payload inválido volta
+     * vazio. Útil dentro de [notificationReceivedListener], que recebe o data map cru.
+     */
+    fun parseNotificationCustomData(userInfo: Map<String, String>): Map<String, String> =
+        DitoRichPushParser.parseCustomData(userInfo["custom_data"])
+
+    /**
+     * Decodifica `actions` (string JSON no data map do push) para a lista de botões. Payload inválido
+     * volta vazio. Útil dentro de [notificationReceivedListener], que recebe o data map cru.
+     */
+    fun parseNotificationActions(userInfo: Map<String, String>): List<DitoNotificationAction> =
+        DitoRichPushParser.parseActions(userInfo["actions"])
 
     /**
      * Dados de uma notificação recebida/lida para processamento pelo SDK.
@@ -353,6 +383,8 @@ object Dito {
                 link = record.link,
                 receivedAt = record.receivedAt,
                 isRead = record.isRead,
+                image = record.image,
+                customData = DitoRichPushParser.parseCustomData(record.customData),
             )
         }
 
