@@ -321,16 +321,91 @@ messaging().onMessage(async (message) => {
 | `actions` | `DitoPushAction[]` | `data.actions` (máx. 2, ordem significativa) |
 | `customData` | `Record<string, string>` | `data.custom_data`, variáveis já substituídas |
 
-> ⚠️ **Limitação conhecida — sem paridade com o Flutter.** Esta bridge não expõe stream de
-> clique nem inbox ao JavaScript; ela tem apenas helpers nativos estáticos que o app chama do
-> próprio `AppDelegate` (iOS) ou `FirebaseMessagingService` (Android). Consequência prática:
-> a SDK nativa registra o clique no botão e emite `click-notification` com `action_id`
-> corretamente, mas **o código JavaScript não é notificado do clique** e não tem como ler o
-> `action_id`. Fechar essa lacuna é trabalho próprio, ainda não feito.
-
 No iOS, imagem e botões exigem uma Notification Service Extension no app, linkando o pod
 `DitoSDKNotificationService`. Sem ela o push degrada para título e corpo. O passo a passo
 está em [`ios/README.md`](../ios/README.md).
+
+### 👆 Clique em notificação e em botão de ação
+
+`onNotificationClick` é o **único** lugar onde o JavaScript consegue distinguir um toque em
+botão de um toque no corpo da notificação. No Android o `PendingIntent` do botão aponta para
+a Activity da própria SDK, então o `onMessageOpenedApp` do `@react-native-firebase/messaging`
+não dispara para ele.
+
+```typescript
+import DitoSdk, { isActionClick } from '@ditointernet/dito-sdk';
+
+const subscription = DitoSdk.onNotificationClick((click) => {
+  if (isActionClick(click)) {
+    console.log('botão', click.actionId, '→', click.deeplink);
+  }
+  navigate(click.deeplink);
+  console.log('custom data:', click.customData);
+});
+
+// ao desmontar
+subscription.remove();
+```
+
+O `deeplink` do evento já é o destino certo: num toque em botão é o link do próprio botão,
+resolvido para o sistema operacional pelo backend; num toque no corpo é o deeplink da
+notificação. Não é preciso escolher entre destinos.
+
+#### O clique que abriu o app
+
+Um toque em notificação faz cold start do app, e o clique pode chegar ao nativo antes de
+existir listener em JavaScript. Nesse caso ele fica guardado e sai por
+`getInitialNotificationClick()`:
+
+```typescript
+const click = await DitoSdk.getInitialNotificationClick();
+if (click) {
+  navigate(click.deeplink);
+}
+```
+
+O nativo só guarda o clique enquanto não há listener, e o entrega uma única vez — então cada
+clique chega **ou** pelo stream **ou** por aqui, nunca nos dois e nunca duas vezes. Mesma
+ideia do `getInitialMessage()` das bibliotecas de Firebase.
+
+As duas APIs podem ser chamadas antes do `initialize()`, justamente porque o clique
+antecede a inicialização nesse caminho.
+
+No Android, o cold start tem uma janela anterior a essa: se a SDK nativa processar o clique
+antes de o módulo React existir, nem o buffer é alcançado. Para fechá-la, chame do
+`onCreate` da sua `Application`:
+
+```kotlin
+import br.com.dito.DitoSdkModule
+
+class MainApplication : Application(), ReactApplication {
+    override fun onCreate() {
+        super.onCreate()
+        DitoSdkModule.installNotificationClickListener(this)
+    }
+}
+```
+
+| Campo de `DitoNotificationClick` | Tipo | Observação |
+|---|---|---|
+| `deeplink` | `string` | destino já resolvido para esta interação |
+| `notificationId`, `reference` | `string` | ids da notificação |
+| `logId`, `notificationName`, `userId` | `string` | vazios quando o clique nasce na notificação nativa — o `PendingIntent` não transporta esses campos |
+| `actionId`, `actionLabel` | `string` | vazios num toque no corpo |
+| `customData` | `Record<string, string>` | custom data da campanha |
+
+### 📥 Inbox
+
+Os pushes recebidos ficam num inbox local, com imagem e custom data, o que permite
+renderizar uma campanha rica depois que a notificação do sistema já saiu da tela.
+
+```typescript
+const notifications = await DitoSdk.getNotifications();
+await DitoSdk.markNotificationAsRead(notifications[0].id);
+```
+
+`receivedAt` chega como `Date` nas duas plataformas. Diferente das APIs de clique, estas
+duas exigem `initialize()` antes.
 
 ### Configuração Básica
 

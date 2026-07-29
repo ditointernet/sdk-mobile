@@ -1,3 +1,28 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+// A :dito-sdk é um projeto Gradle do repo `android/`, e tanto o build script dela quanto o
+// deste módulo resolvem plugin e dependência pelo version catalog daquele build. Sem
+// declarar o catalog aqui, incluir a :dito-sdk falhava na compilação do próprio script com
+// "Unresolved reference: libs" — ou seja, este módulo não compilava de forma alguma.
+dependencyResolutionManagement {
+    versionCatalogs {
+        create('libs') {
+            from(files('../../android/gradle/libs.versions.toml'))
+        }
+    }
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://jitpack.io' }
+    }
+}
+
 include ':dito-sdk'
 project(':dito-sdk').projectDir = new File('../../android/dito-sdk')
 

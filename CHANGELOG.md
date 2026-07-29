@@ -19,9 +19,9 @@ Versões mínimas por recurso:
 
 | Recurso | Android | iOS | Flutter | React Native |
 |---|---|---|---|---|
-| Imagem | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | parsing do payload |
-| Botões de ação | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | parsing do payload |
-| Custom data | 4.1.0 | 3.6.0 | 3.4.0 | parsing do payload |
+| Imagem | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | 1.1.0 |
+| Botões de ação | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | 1.1.0 |
+| Custom data | 4.1.0 | 3.6.0 | 3.4.0 | 1.1.0 |
 
 - **Android SDK**: imagem via `BigPictureStyle`, botões via `addAction`, custom data no
   listener de recebimento e de clique. Novo `DitoNotificationActionReceiver`, já registrado
@@ -36,8 +36,12 @@ Versões mínimas por recurso:
   `DitoNotificationInfo` ganhou `image` e `customData`. O clique agora chega ao Dart também
   quando nasce na notificação nativa — antes só o clique roteado por
   `handleNotificationClick` era emitido, e um toque em botão nunca passa por lá.
-- **React Native**: `parsePushPayload` e `hasRichContent` em TypeScript. Veja a limitação
-  registrada abaixo.
+- **React Native**: `parsePushPayload` e `hasRichContent` em TypeScript, e a bridge de
+  notificação que o pacote não tinha: `DitoSdk.onNotificationClick`,
+  `DitoSdk.getInitialNotificationClick`, `DitoSdk.getNotifications` e
+  `DitoSdk.markNotificationAsRead`, com os modelos `DitoNotificationClick` e
+  `DitoNotificationInfo`. `onNotificationClick` é o único ponto onde o JavaScript distingue
+  toque em botão de toque no corpo.
 - Clique em botão **reusa** o evento `click-notification`, com `action_id` e `action_label`
   na custom data do evento. Consequência aceita: o CTR soma corpo e botão; a segmentação por
   `action_id` é o que separa os dois nos relatórios.
@@ -54,6 +58,17 @@ Versões mínimas por recurso:
   bridge React Native. No iOS havia um segundo problema no mesmo lugar: a chave era lida só
   no topo do payload, e num push real ela vive dentro de `data`. A comparação agora é
   insensível a caixa e o lookup cobre os dois níveis, como o plugin Flutter já fazia.
+- `handleNotificationClick` chamava a sobrecarga de um argumento de
+  `Dito.notificationClick`, que **não** invoca o `notificationClickDataListener` — nenhum
+  clique era observável, nem pela bridge nem por um listener do app host. Agora usa a
+  sobrecarga que invoca, e garante a chave `deeplink` a partir de `link` (a única que a SDK
+  lê), como o plugin Flutter já fazia.
+- O build do módulo Android **não compilava**: o `settings.gradle` inclui a `:dito-sdk`, cujo
+  script resolve tudo pelo version catalog do build `android/`, e o catalog não era
+  declarado; o `buildscript` fixava AGP 8.5.2 e Kotlin 1.9.0 contra os 8.7.0 e 2.0.0 que a
+  `:dito-sdk` pede; não havia `gradle.properties`, então `android.useAndroidX` faltava; e a
+  dependência `com.facebook.react:react-native:+` resolvia a 0.20.1, última publicada com
+  esse nome no Maven Central. Agora `./gradlew :compileDebugKotlin` roda.
 
 ### Alterado
 
