@@ -1,6 +1,10 @@
 import Foundation
 
-class DitoNotificationService: DitoServiceManager {
+/// Legacy REST notification endpoints, superseded by `MobileIngestClient`.
+///
+/// Renamed from `DitoNotificationService` to free that name for the public
+/// Notification Service Extension base class in `DitoSDKNotificationService`.
+class DitoNotificationAPIService: DitoServiceManager {
 
   func register(
     reference: String, data: DitoTokenRequest,
