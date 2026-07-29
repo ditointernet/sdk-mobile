@@ -39,6 +39,23 @@ fi
 FAILED_PROJECTS=()
 SUCCESSFUL_PROJECTS=()
 
+# Pushes a podspec to trunk, treating an already-published version as success so a
+# re-run of a partially completed release is not fatal.
+push_pod() {
+    local spec="$1"
+    local out
+    if out="$(pod trunk push "$spec" --allow-warnings 2>&1)"; then
+        echo "$out"
+        return 0
+    fi
+    echo "$out"
+    if echo "$out" | grep -qi "duplicate entry"; then
+        echo "$spec already published at this version, continuing"
+        return 0
+    fi
+    return 1
+}
+
 if [ "$PUBLISH_IOS" = true ]; then
     echo "🍎 Publishing iOS SDK to CocoaPods..."
     if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
@@ -46,7 +63,9 @@ if [ "$PUBLISH_IOS" = true ]; then
         FAILED_PROJECTS+=("ios")
     else
         cd ios
-        if pod trunk push DitoSDK.podspec --allow-warnings; then
+        # DitoSDK depends on DitoSDKNotificationService at an exact version, so the
+        # extension-safe pod has to reach trunk first or DitoSDK cannot even lint.
+        if push_pod DitoSDKNotificationService.podspec && push_pod DitoSDK.podspec; then
             SUCCESSFUL_PROJECTS+=("ios")
             echo "✅ iOS SDK published successfully"
         else

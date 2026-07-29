@@ -92,7 +92,6 @@ final class DitoFacadeTests: XCTestCase {
     let notificationId = "facade-logout-notification"
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: notificationId,
-      reference: userId,
       title: "Logout inbox",
       message: "Inbox deve permanecer",
       link: "https://example.test/logout"

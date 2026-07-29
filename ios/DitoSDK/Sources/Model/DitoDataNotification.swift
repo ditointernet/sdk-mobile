@@ -40,14 +40,17 @@ struct DitoDataNotification: Codable {
     /// `action_id` / `action_label`, so `sdk-service` needs no change.
     var clickCustomData: [String: String] {
         var result = customData
-        if !actionId.isEmpty { result["action_id"] = actionId }
-        if !actionLabel.isEmpty { result["action_label"] = actionLabel }
+        if !actionId.isEmpty { result[DitoRichPushKeys.actionId] = actionId }
+        if !actionLabel.isEmpty { result[DitoRichPushKeys.actionLabel] = actionLabel }
         return result
     }
 
     init(from userInfo: [AnyHashable: Any], actionId: String = "", actionLabel: String = "") {
         self.identifier = (userInfo["user_id"] as? String) ?? ""
-        self.reference = (userInfo["reference"] as? String) ?? ""
+        // `reference` is no longer read from the payload: the field is being
+        // retired and attribution anchors on `user_id`. Kept as an empty value so
+        // the persisted offline-queue format does not change shape.
+        self.reference = ""
         self.notification = (userInfo["notification"] as? String) ?? ""
         self.notificationLogId = (userInfo["log_id"] as? String) ?? ""
         self.userId = (userInfo["user_id"] as? String) ?? ""

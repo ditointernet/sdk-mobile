@@ -177,8 +177,29 @@ jobs:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: |
           cd ios
-          if [ -n "$COCOAPODS_TRUNK_TOKEN" ]; then
-            pod trunk push DitoSDK.podspec --allow-warnings
-          else
+          if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
             echo "COCOAPODS_TRUNK_TOKEN not set, skipping CocoaPods publish"
+            exit 0
           fi
+
+          # DitoSDK depends on DitoSDKNotificationService at an exact version, so
+          # the extension-safe pod has to exist on trunk before DitoSDK is even
+          # linted. Order here is load-bearing, not cosmetic.
+          push_pod() {
+            local spec="$1"
+            local out
+            if out="$(pod trunk push "$spec" --allow-warnings 2>&1)"; then
+              echo "$out"
+              return 0
+            fi
+            echo "$out"
+            # Re-running a release must not fail on an already-published version.
+            if echo "$out" | grep -qi "duplicate entry"; then
+              echo "$spec already published at this version, continuing"
+              return 0
+            fi
+            return 1
+          }
+
+          push_pod DitoSDKNotificationService.podspec
+          push_pod DitoSDK.podspec

@@ -168,7 +168,6 @@ class DitoRetry {
 
             let received = DitoNotificationReceived(with: [
                 "notification": pending.notification,
-                "reference": pending.reference,
                 "log_id": pending.logId,
                 "notification_name": pending.notificationName,
                 "user_id": pending.userId,

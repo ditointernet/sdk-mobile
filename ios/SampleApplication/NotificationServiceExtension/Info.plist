@@ -20,9 +20,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<!-- Emite o dump DITO_PUSH_PAYLOAD a partir do processo da extensão. -->
+	<!-- Emite o dump DITO_PUSH_PAYLOAD a partir do processo da extensão.
+	     Fica desligado por omissão de propósito: o dump vai para o log unificado
+	     do aparelho, que é persistido e viaja num sysdiagnose. Ligue apenas
+	     durante uma investigação. -->
 	<key>DitoPushDebugLog</key>
-	<true/>
+	<false/>
 	<key>NSExtension</key>
 	<dict>
 		<key>NSExtensionPointIdentifier</key>

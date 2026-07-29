@@ -11,9 +11,14 @@ fi
 
 case "$project" in
   ios)
-    sed -i.bak -E "s/(s\\.version[[:space:]]*=[[:space:]]*')[^']+(')/\\1${version}\\2/" ios/DitoSDK.podspec
-    sed -i.bak -E "s/(:tag[[:space:]]*=>[[:space:]]*')[^']+(' \\+ s\\.version\\.to_s)/\\1ios-v\\2/" ios/DitoSDK.podspec
-    rm -f ios/DitoSDK.podspec.bak
+    # Both podspecs must move together: DitoSDK depends on
+    # DitoSDKNotificationService at an exact version, so a bump that touches only
+    # one of them produces a dependency that was never published.
+    for spec in ios/DitoSDK.podspec ios/DitoSDKNotificationService.podspec; do
+      sed -i.bak -E "s/(s\\.version[[:space:]]*=[[:space:]]*')[^']+(')/\\1${version}\\2/" "$spec"
+      sed -i.bak -E "s/(:tag[[:space:]]*=>[[:space:]]*')[^']+(' \\+ s\\.version\\.to_s)/\\1ios-v\\2/" "$spec"
+      rm -f "$spec.bak"
+    done
     ;;
   flutter)
     sed -i.bak -E "s/^version:[[:space:]]+.*/version: ${version}/" flutter/pubspec.yaml

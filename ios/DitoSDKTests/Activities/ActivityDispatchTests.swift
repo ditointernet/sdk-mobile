@@ -118,7 +118,7 @@ final class ActivityDispatchTests: XCTestCase {
     func testNotificationClick_sendsTrackPushClickActivity() async throws {
         let mock = MockMobileIngestClient()
         let sut = DitoNotification(client: mock)
-        sut.notificationClick(notificationId: "nid-dispatch-1", reference: "ref-dispatch-1", identifier: "user-dispatch-1")
+        sut.notificationClick(notificationId: "nid-dispatch-1", identifier: "user-dispatch-1")
         await waitForActivityCalls(mock, count: 1)
         let req = try XCTUnwrap(mock.lastActivityRequest)
         XCTAssertEqual(req.userID, "user-dispatch-1")

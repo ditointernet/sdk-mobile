@@ -22,32 +22,38 @@ import UserNotifications
 /// notification still renders as title + body; only the image and buttons are lost.
 open class DitoNotificationService: UNNotificationServiceExtension {
 
-  private var contentHandler: ((UNNotificationContent) -> Void)?
-  private var bestAttemptContent: UNMutableNotificationContent?
-  private let hasDelivered = DitoAtomicFlag()
+  /// `didReceive`, the `DispatchGroup` completion and
+  /// `serviceExtensionTimeWillExpire` all run on different threads, so every piece
+  /// of delivery state lives behind one lock rather than in bare properties.
+  private let state = DitoDeliveryState()
 
   /// Budget for the image download. The system allows the extension ~30s in
   /// total; staying well under it leaves room to still deliver the text content.
   open var imageDownloadTimeout: TimeInterval { 15 }
 
+  /// Largest image accepted. `UNNotificationAttachment` rejects images past
+  /// roughly this size anyway, so a bigger download can only waste the
+  /// extension's time budget.
+  open var maxImageBytes: Int { 10 * 1024 * 1024 }
+
   open override func didReceive(
     _ request: UNNotificationRequest,
     withContentHandler contentHandler: @escaping (UNNotificationContent) -> Void
   ) {
-    self.contentHandler = contentHandler
+    state.begin(handler: contentHandler)
 
     let userInfo = request.content.userInfo
-    DitoPushDebugLog.dump(source: .notificationServiceExtension, userInfo: userInfo)
+    DitoPushDebugLog.dump(event: .received, source: .notificationServiceExtension, userInfo: userInfo)
 
     guard let content = request.content.mutableCopy() as? UNMutableNotificationContent else {
-      deliver(request.content)
+      state.deliver(request.content)
       return
     }
-    self.bestAttemptContent = content
+    state.setBestAttempt(content)
 
     let payload = DitoRichPushPayload(userInfo: userInfo)
     guard !payload.isEmpty else {
-      deliver(content)
+      state.deliver(content)
       return
     }
 
@@ -63,7 +69,11 @@ open class DitoNotificationService: UNNotificationServiceExtension {
 
     if let imageURL = payload.imageURL {
       group.enter()
-      Self.downloadAttachment(from: imageURL, timeout: imageDownloadTimeout) { attachment in
+      Self.downloadAttachment(
+        from: imageURL,
+        timeout: imageDownloadTimeout,
+        maxBytes: maxImageBytes
+      ) { attachment in
         attachmentBox.value = attachment
         group.leave()
       }
@@ -79,21 +89,54 @@ open class DitoNotificationService: UNNotificationServiceExtension {
       if let attachment = attachmentBox.value {
         content.attachments = [attachment]
       }
-      self.deliver(content)
+      self.state.deliver(content)
     }
   }
 
   open override func serviceExtensionTimeWillExpire() {
     // Out of time: hand back whatever we managed to build.
-    deliver(bestAttemptContent)
+    state.deliver(nil)
+  }
+}
+
+// MARK: - Delivery state
+
+/// Owns the system content handler and the best attempt built so far.
+///
+/// The handler doubles as the one-shot guard: it is cleared only when a delivery
+/// actually happens, so a call that has nothing to hand back cannot consume the
+/// single delivery and leave the notification silently dropped.
+private final class DitoDeliveryState: @unchecked Sendable {
+
+  private let lock = NSLock()
+  private var contentHandler: ((UNNotificationContent) -> Void)?
+  private var bestAttempt: UNMutableNotificationContent?
+
+  func begin(handler: @escaping (UNNotificationContent) -> Void) {
+    lock.lock()
+    defer { lock.unlock() }
+    contentHandler = handler
   }
 
-  /// Calls the system handler at most once.
-  private func deliver(_ content: UNNotificationContent?) {
-    guard hasDelivered.setIfUnset() else { return }
-    guard let handler = contentHandler, let content else { return }
+  func setBestAttempt(_ content: UNMutableNotificationContent) {
+    lock.lock()
+    defer { lock.unlock() }
+    bestAttempt = content
+  }
+
+  /// Delivers `content`, falling back to the best attempt so far when it is nil.
+  /// Only the first effective call reaches the system handler.
+  func deliver(_ content: UNNotificationContent?) {
+    lock.lock()
+    guard let handler = contentHandler, let delivered = content ?? bestAttempt else {
+      lock.unlock()
+      return
+    }
     contentHandler = nil
-    handler(content)
+    lock.unlock()
+    // Called outside the lock: the system handler is not ours and must not run
+    // with a lock held.
+    handler(delivered)
   }
 }
 
@@ -101,36 +144,68 @@ open class DitoNotificationService: UNNotificationServiceExtension {
 
 extension DitoNotificationService {
 
+  /// Prefix owned by the SDK. Categories registered by the host app never carry
+  /// it and are therefore never touched.
+  static let categoryPrefix = "dito.actions."
+
   /// Registers (or refreshes) the category carrying this push's buttons.
   ///
-  /// Existing categories are preserved: the app may register its own, and
-  /// `setNotificationCategories` replaces the whole set.
+  /// Three things have to be true when `completion` runs:
+  ///
+  /// - categories the host app registered itself survive — `setNotificationCategories`
+  ///   replaces the whole set, so the existing set is read and merged;
+  /// - SDK categories that no delivered notification still references are dropped,
+  ///   so the set does not grow once per campaign forever;
+  /// - the daemon has actually stored the category. `setNotificationCategories`
+  ///   is asynchronous and offers no completion handler, so a second
+  ///   `getNotificationCategories` is used as a round-trip barrier: it is served
+  ///   by the same connection and therefore lands after the write. Delivering
+  ///   without it renders the push with no buttons.
   static func registerCategory(
     identifier: String,
     actions: [DitoPushAction],
     completion: @escaping () -> Void
   ) {
     let center = UNUserNotificationCenter.current()
-    let notificationActions = actions.map { action in
-      UNNotificationAction(
-        identifier: action.id,
-        title: action.label,
-        // `.foreground` so the app is brought up to handle the button's deeplink.
-        options: [.foreground]
-      )
-    }
     let category = UNNotificationCategory(
       identifier: identifier,
-      actions: notificationActions,
+      actions: actions.map { action in
+        UNNotificationAction(
+          identifier: action.id,
+          title: action.label,
+          // `.foreground` so the app is brought up to handle the button's deeplink.
+          options: [.foreground]
+        )
+      },
       intentIdentifiers: [],
       options: []
     )
 
-    center.getNotificationCategories { existing in
-      var merged = existing.filter { $0.identifier != identifier }
-      merged.insert(category)
-      center.setNotificationCategories(merged)
-      completion()
+    center.getDeliveredNotifications { delivered in
+      let stillOnScreen = Set(delivered.map { $0.request.content.categoryIdentifier })
+      center.getNotificationCategories { existing in
+        var merged = prune(existing, refreshing: identifier, stillOnScreen: stillOnScreen)
+        merged.insert(category)
+        center.setNotificationCategories(merged)
+        center.getNotificationCategories { _ in completion() }
+      }
+    }
+  }
+
+  /// Drops the SDK's own stale categories, keeping everything else untouched.
+  ///
+  /// A category is stale when it belongs to the SDK, is not the one being
+  /// refreshed, and no notification currently in Notification Center uses it —
+  /// pruning one that is still on screen would strip that notification's buttons.
+  static func prune(
+    _ existing: Set<UNNotificationCategory>,
+    refreshing identifier: String,
+    stillOnScreen: Set<String>
+  ) -> Set<UNNotificationCategory> {
+    existing.filter { category in
+      guard category.identifier.hasPrefix(categoryPrefix) else { return true }
+      guard category.identifier != identifier else { return false }
+      return stillOnScreen.contains(category.identifier)
     }
   }
 }
@@ -142,10 +217,13 @@ extension DitoNotificationService {
   static func downloadAttachment(
     from url: URL,
     timeout: TimeInterval,
+    maxBytes: Int,
     completion: @escaping (UNNotificationAttachment?) -> Void
   ) {
     let configuration = URLSessionConfiguration.ephemeral
     configuration.timeoutIntervalForRequest = timeout
+    // Also bounds how much can be transferred: an oversized image runs out of
+    // time here rather than eating the extension's whole budget.
     configuration.timeoutIntervalForResource = timeout
     let session = URLSession(configuration: configuration)
 
@@ -159,18 +237,24 @@ extension DitoNotificationService {
         completion(nil)
         return
       }
-      completion(makeAttachment(from: location, url: url, response: response))
+      completion(makeAttachment(from: location, url: url, response: response, maxBytes: maxBytes))
     }
     task.resume()
   }
 
   /// `UNNotificationAttachment` validates by file extension, so the downloaded
   /// temp file has to be renamed to something the system recognises.
-  private static func makeAttachment(
+  static func makeAttachment(
     from location: URL,
     url: URL,
-    response: URLResponse?
+    response: URLResponse?,
+    maxBytes: Int
   ) -> UNNotificationAttachment? {
+    guard fileSize(at: location).map({ $0 <= maxBytes }) ?? true else {
+      try? FileManager.default.removeItem(at: location)
+      return nil
+    }
+
     let fileExtension = resolveFileExtension(url: url, response: response)
     let destination = FileManager.default.temporaryDirectory
       .appendingPathComponent("dito-push-\(UUID().uuidString)")
@@ -185,7 +269,12 @@ extension DitoNotificationService {
     }
   }
 
-  private static func resolveFileExtension(url: URL, response: URLResponse?) -> String {
+  /// Resolves the extension `UNNotificationAttachment` will validate against.
+  ///
+  /// The URL's own extension wins when it names an image type; otherwise the
+  /// response's MIME type decides; `png` is the last resort, since an attachment
+  /// with no usable extension is rejected outright.
+  static func resolveFileExtension(url: URL, response: URLResponse?) -> String {
     let pathExtension = url.pathExtension.lowercased()
     if !pathExtension.isEmpty, UTType(filenameExtension: pathExtension)?.conforms(to: .image) == true {
       return pathExtension
@@ -197,26 +286,13 @@ extension DitoNotificationService {
     }
     return "png"
   }
+
+  private static func fileSize(at url: URL) -> Int? {
+    (try? FileManager.default.attributesOfItem(atPath: url.path)[.size]) as? Int
+  }
 }
 
 // MARK: - Small concurrency helpers
-
-/// One-shot flag guarding against calling the content handler twice
-/// (`didReceive` finishing and `serviceExtensionTimeWillExpire` racing).
-final class DitoAtomicFlag: @unchecked Sendable {
-
-  private let lock = NSLock()
-  private var isSet = false
-
-  /// Sets the flag, returning `true` only for the first caller.
-  func setIfUnset() -> Bool {
-    lock.lock()
-    defer { lock.unlock() }
-    if isSet { return false }
-    isSet = true
-    return true
-  }
-}
 
 /// Transfers the downloaded attachment between the download callback and
 /// `DispatchGroup.notify`.

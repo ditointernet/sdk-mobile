@@ -3,7 +3,6 @@ import Foundation
 
 public struct DitoNotificationReceived: Sendable {
 
-  var reference: String = ""
   var identifier: String = ""
   var notification: String = ""
   var notificationLogId: String = ""
@@ -43,18 +42,24 @@ public struct DitoNotificationReceived: Sendable {
   /// Custom data map carried by the `click-notification` event.
   ///
   /// Per D-03 a button tap reuses the existing click event and merely adds
-  /// `action_id` / `action_label`, so `sdk-service` needs no change.
+  /// `action_id` / `action_label`, so `sdk-service` needs no change. Those two
+  /// keys cannot collide with campaign data: `DitoRichPushPayload` strips them
+  /// while parsing `custom_data`.
   public var clickCustomData: [String: String] {
     var result = customData
-    if !actionId.isEmpty { result["action_id"] = actionId }
-    if !actionLabel.isEmpty { result["action_label"] = actionLabel }
+    if !actionId.isEmpty { result[DitoRichPushKeys.actionId] = actionId }
+    if !actionLabel.isEmpty { result[DitoRichPushKeys.actionLabel] = actionLabel }
     return result
   }
 
+  /// Builds the model from a push payload.
+  ///
+  /// `reference` is deliberately not read. The field is being retired from Dito
+  /// payloads and attribution anchors on `user_id`, so nothing downstream may
+  /// depend on it — a payload that still carries the key is simply ignored.
   init(with userInfo: [AnyHashable: Any]) {
     self.notification = Self.stringValue(userInfo, keys: "notification")
     self.deeplink = Self.stringValue(userInfo, keys: "link")
-    self.reference = Self.stringValue(userInfo, keys: "reference")
     let userIdValue = Self.stringValue(userInfo, keys: "user_id", "userId")
     self.identifier = userIdValue
     self.userId = userIdValue

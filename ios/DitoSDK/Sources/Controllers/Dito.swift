@@ -321,7 +321,6 @@ public class Dito {
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: received.notification,
-      reference: received.reference,
       title: received.title,
       message: received.message,
       link: received.deeplink,
@@ -411,7 +410,6 @@ public class Dito {
         userId: received.userId,
         token: token,
         notification: received.notification,
-        reference: received.reference,
         logId: received.logId,
         notificationName: received.notificationName
       )
@@ -428,7 +426,6 @@ public class Dito {
       DitoNotificationInfo(
         id: record.id ?? "",
         notificationId: record.notificationId ?? "",
-        reference: record.reference ?? "",
         title: record.title ?? "",
         message: record.message ?? "",
         link: record.link ?? "",
@@ -475,7 +472,7 @@ public class Dito {
     notificationReceived.actionId = tappedAction?.id ?? ""
     notificationReceived.actionLabel = tappedAction?.label ?? ""
 
-    DitoPushDebugLog.dump(source: .app, userInfo: userInfo)
+    DitoPushDebugLog.dump(event: .clicked, source: .app, userInfo: userInfo)
 
     let clickData = notificationReceived.clickCustomData
     DispatchQueue.main.async {
@@ -483,7 +480,6 @@ public class Dito {
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
-        reference: notificationReceived.reference,
         identifier: notificationReceived.identifier,
         data: clickData
       )
@@ -534,27 +530,17 @@ public class Dito {
   ///   - callback: Optional callback with deeplink
   /// - Returns: DitoNotificationReceived object with notification data
   /// - Warning: This method is deprecated. Use `notificationClick(userInfo:callback:)` instead.
+  ///
+  /// Forwards to the current implementation instead of carrying a second body:
+  /// the duplicate had already drifted — the campaign's custom data never reached
+  /// the click event through this path.
   @available(*, deprecated, message: "Use notificationClick(userInfo:callback:) instead for consistency")
   @discardableResult
   nonisolated public static func notificationClick(
     with userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> DitoNotificationReceived {
-    let notificationReceived = DitoNotificationReceived(with: userInfo)
-    DispatchQueue.main.async {
-      let notificationController = DitoNotification()
-      notificationController.options = Dito.notificationOptions
-      notificationController.notificationClick(
-        notificationId: notificationReceived.notification,
-        reference: notificationReceived.reference,
-        identifier: notificationReceived.identifier
-      )
-    }
-    if !notificationReceived.notification.isEmpty {
-      DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
-    }
-    callback?(notificationReceived.deeplink)
-    return notificationReceived
+    notificationClick(userInfo: userInfo, callback: callback)
   }
 }
 
@@ -579,7 +565,6 @@ extension Dito {
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: received.notification,
-      reference: received.reference,
       title: received.title,
       message: received.message,
       link: received.deeplink,
