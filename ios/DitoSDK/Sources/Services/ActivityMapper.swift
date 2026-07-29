@@ -74,25 +74,55 @@ struct ActivityMapper {
     }
 
     func mapFromNotificationOpen(_ req: DitoNotificationOpenRequest) -> Mobileingest_V1_Activity {
-        buildPushClickActivity(notificationId: req.data.notification, identifier: req.data.identifier)
+        buildPushClickActivity(
+            notificationId: req.data.notification,
+            identifier: req.data.identifier,
+            data: req.data.clickCustomData
+        )
     }
 
-    func mapNotificationClick(notificationId: String, identifier: String) -> Mobileingest_V1_Activity {
-        buildPushClickActivity(notificationId: notificationId, identifier: identifier)
+    func mapNotificationClick(
+        notificationId: String,
+        identifier: String,
+        data: [String: String] = [:]
+    ) -> Mobileingest_V1_Activity {
+        buildPushClickActivity(notificationId: notificationId, identifier: identifier, data: data)
     }
 
-    private func buildPushClickActivity(notificationId: String, identifier: String) -> Mobileingest_V1_Activity {
+    /// Builds the `click-notification` activity.
+    ///
+    /// Per D-03 an action-button tap is *not* a new event: it reuses this same
+    /// activity with `action_id` / `action_label` merged into `data`, so no
+    /// `sdk-service` change is required.
+    private func buildPushClickActivity(
+        notificationId: String,
+        identifier: String,
+        data: [String: String] = [:]
+    ) -> Mobileingest_V1_Activity {
         var notifInfo = Mobileingest_V1_NotificationInfo()
         notifInfo.notificationID = notificationId
         notifInfo.identifier = identifier
         var click = Mobileingest_V1_Activity.TrackPushClickActivity()
         click.notification = notifInfo
+        click.data = customDataFromStrings(data)
         var activity = Mobileingest_V1_Activity()
         activity.id = UUID().uuidString
         activity.type = .activityTrack
         activity.trackPushClick = click
         activity.timestamp = nowTimestamp()
         return activity
+    }
+
+    private func customDataFromStrings(_ values: [String: String]) -> [String: Mobileingest_V1_CustomData] {
+        var result: [String: Mobileingest_V1_CustomData] = [:]
+        for (key, value) in values {
+            var cdValue = Mobileingest_V1_CustomDataValue()
+            cdValue.stringValue = value
+            var cd = Mobileingest_V1_CustomData()
+            cd.single = cdValue
+            result[key] = cd
+        }
+        return result
     }
 
     func buildRequest(userId: String, activities: [Mobileingest_V1_Activity]) -> Mobileingest_V1_Request {

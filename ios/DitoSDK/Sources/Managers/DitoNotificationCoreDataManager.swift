@@ -13,7 +13,15 @@ class DitoNotificationCoreDataManager {
         self.container?.viewContext.automaticallyMergesChangesFromParent = true
     }
 
-    func insert(notificationId: String, reference: String, title: String, message: String, link: String) {
+    func insert(
+        notificationId: String,
+        reference: String,
+        title: String,
+        message: String,
+        link: String,
+        image: String = "",
+        customData: [String: String] = [:]
+    ) {
         guard let container = container else { return }
         let context = container.newBackgroundContext()
         context.undoManager = nil
@@ -25,6 +33,8 @@ class DitoNotificationCoreDataManager {
             record.title = title
             record.message = message
             record.link = link
+            record.image = image.isEmpty ? nil : image
+            record.customData = Self.encode(customData)
             record.receivedAt = Date()
             record.isRead = false
             do {
@@ -85,5 +95,20 @@ class DitoNotificationCoreDataManager {
                 os_log("DitoNotificationCoreDataManager markAsReadByNotificationId error: %@", type: .error, error.localizedDescription)
             }
         }
+    }
+
+    /// Custom data is stored as a JSON string, matching how the other entities
+    /// in this model persist structured payloads.
+    static func encode(_ customData: [String: String]) -> String? {
+        guard !customData.isEmpty else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: customData, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func decode(_ json: String?) -> [String: String] {
+        guard let json, !json.isEmpty, let data = json.data(using: .utf8) else { return [:] }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: String] ?? [:]
     }
 }

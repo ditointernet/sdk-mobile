@@ -1,5 +1,7 @@
+import DitoSDKNotificationService
 import Foundation
 import UIKit
+import UserNotifications
 
 public enum DitoOperationStatus {
   case sent
@@ -322,7 +324,9 @@ public class Dito {
       reference: received.reference,
       title: received.title,
       message: received.message,
-      link: received.deeplink
+      link: received.deeplink,
+      image: received.image,
+      customData: received.customData
     )
 
     guard !received.userId.isEmpty else {
@@ -429,7 +433,9 @@ public class Dito {
         message: record.message ?? "",
         link: record.link ?? "",
         receivedAt: record.receivedAt ?? Date(),
-        isRead: record.isRead
+        isRead: record.isRead,
+        image: record.image ?? "",
+        customData: DitoNotificationCoreDataManager.decode(record.customData)
       )
     }
   }
@@ -453,28 +459,73 @@ public class Dito {
   /// Called when a notification is clicked
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
-  ///   - callback: Optional callback with deeplink
+  ///   - actionIdentifier: `UNNotificationResponse.actionIdentifier` when an action
+  ///     button was tapped. The system's default/dismiss identifiers are ignored.
+  ///   - callback: Optional callback with the deeplink to open. For a button tap
+  ///     this is the button's own already-iOS-resolved link.
   /// - Returns: DitoNotificationReceived object with notification data
   @discardableResult
   nonisolated public static func notificationClick(
     userInfo: [AnyHashable: Any],
+    actionIdentifier: String? = nil,
     callback: ((String) -> Void)? = nil
   ) -> DitoNotificationReceived {
-    let notificationReceived = DitoNotificationReceived(with: userInfo)
+    var notificationReceived = DitoNotificationReceived(with: userInfo)
+    let tappedAction = resolveTappedAction(actionIdentifier, in: notificationReceived)
+    notificationReceived.actionId = tappedAction?.id ?? ""
+    notificationReceived.actionLabel = tappedAction?.label ?? ""
+
+    DitoPushDebugLog.dump(source: .app, userInfo: userInfo)
+
+    let clickData = notificationReceived.clickCustomData
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
         reference: notificationReceived.reference,
-        identifier: notificationReceived.identifier
+        identifier: notificationReceived.identifier,
+        data: clickData
       )
     }
     if !notificationReceived.notification.isEmpty {
       DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
     }
-    callback?(notificationReceived.deeplink)
+    callback?(notificationReceived.resolvedLink)
     return notificationReceived
+  }
+
+  /// Called when a notification is clicked, taking the response straight from
+  /// `userNotificationCenter(_:didReceive:withCompletionHandler:)`.
+  ///
+  /// This is the recommended entry point: it maps `response.actionIdentifier`
+  /// back to the button declared by the payload.
+  @discardableResult
+  nonisolated public static func notificationClick(
+    response: UNNotificationResponse,
+    callback: ((String) -> Void)? = nil
+  ) -> DitoNotificationReceived {
+    notificationClick(
+      userInfo: response.notification.request.content.userInfo,
+      actionIdentifier: response.actionIdentifier,
+      callback: callback
+    )
+  }
+
+  /// Maps a raw `actionIdentifier` onto a button from the payload.
+  ///
+  /// Returns `nil` for a tap on the notification body or a dismissal, so those
+  /// keep reporting a plain click with no action in the data map.
+  nonisolated private static func resolveTappedAction(
+    _ actionIdentifier: String?,
+    in notificationReceived: DitoNotificationReceived
+  ) -> DitoPushAction? {
+    guard
+      let actionIdentifier,
+      actionIdentifier != UNNotificationDefaultActionIdentifier,
+      actionIdentifier != UNNotificationDismissActionIdentifier
+    else { return nil }
+    return notificationReceived.actions.first { $0.id == actionIdentifier }
   }
 
   /// Called when a notification is clicked
@@ -531,7 +582,9 @@ extension Dito {
       reference: received.reference,
       title: received.title,
       message: received.message,
-      link: received.deeplink
+      link: received.deeplink,
+      image: received.image,
+      customData: received.customData
     )
     await deliverNotificationReceivedActivities(received: received, token: token)
   }
