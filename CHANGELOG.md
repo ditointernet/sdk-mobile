@@ -27,6 +27,13 @@ Versões mínimas por recurso:
   listener de recebimento e de clique. Novo `DitoNotificationActionReceiver`, já registrado
   no manifest da SDK — o app integrador não declara nada. Migração Room `2 → 3` persiste
   imagem e custom data na inbox.
+- **Android SDK**: o Intent que abre o app num toque de notificação passou a carregar o toque
+  inteiro, e não só o deeplink: `Dito.DITO_ACTION_ID`, `Dito.DITO_ACTION_LABEL` e
+  `Dito.DITO_CUSTOM_DATA` são novas constantes públicas. Isso dá ao app um segundo caminho
+  para tratar o toque — ler os extras na Activity — além do `notificationClickDataListener`.
+  Reforçando o contrato, que valia antes e continua valendo: **o SDK não abre link nenhum**,
+  nem deeplink, nem link de botão, nem URL externa. Ele abre o app e entrega o toque; o
+  roteamento é do app. O mesmo vale no iOS.
 - **iOS SDK**: novo produto **`DitoSDKNotificationService`**, extension-safe, para a
   Notification Service Extension do app. Imagem como attachment e botões via
   `UNNotificationCategory` registrada dinamicamente. **Sem a NSE, imagem e botões não
@@ -51,6 +58,13 @@ Versões mínimas por recurso:
 - O logout não remove configuração da SDK, opções de notificação, inbox de notificações, tokens de push ou dados remotos no backend.
 
 ### Corrigido
+
+#### Android SDK
+- `getTargetIntent` gravava os extras **dentro do `Options.contentIntent`** configurado pelo
+  app, que é um objeto só, criado uma vez. Os extras acumulavam entre cliques, então um toque
+  no corpo depois de um toque em botão abria o app ainda com o `action_id` do botão anterior
+  grudado no Intent. Agora o `contentIntent` é copiado antes de receber os extras, e todas as
+  chaves são escritas em todo toque — inclusive vazias.
 
 #### React Native SDK
 - O gate de canal comparava `channel` com `"Dito"` de forma exata, nas duas plataformas,

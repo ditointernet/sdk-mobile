@@ -543,6 +543,40 @@ Apps que preferirem observar o broadcast diretamente podem declarar o mesmo `int
 (`br.com.dito.ditosdk.notification.NOTIFICATION_ACTION_CLICK`); ele é restrito ao próprio
 pacote via `setPackage`.
 
+#### O SDK não abre link nenhum
+
+Vale para os dois toques, corpo e botão, e vale igual no iOS: **o SDK não abre o deeplink, não
+abre o link do botão e não abre URL externa.** Um `https://` num botão não vai para o
+navegador sozinho. O que o SDK faz é abrir o app — o `contentIntent` que você configurou, ou a
+launch activity — e entregar o toque inteiro como extras desse Intent. Quem roteia é o app.
+
+Por isso existem dois caminhos, e você escolhe um:
+
+| Caminho | Quando usar |
+|---|---|
+| `notificationClickDataListener` | O normal. Recebe o `NotificationResult` completo assim que o toque acontece |
+| Extras do Intent | Quando o roteamento vive na sua Activity, e não num listener global |
+
+```kotlin
+// onCreate / onNewIntent da activity que o push abre
+val deeplink = intent.getStringExtra(Dito.DITO_DEEP_LINK) ?: ""
+val actionId = intent.getStringExtra(Dito.DITO_ACTION_ID) ?: ""   // "" = toque no corpo
+if (deeplink.isNotEmpty()) {
+    if (actionId.isNotEmpty()) Log.d("App", "veio do botão $actionId")
+    rotear(deeplink)   // abrir no navegador, navegar interno — decisão sua
+}
+```
+
+O Intent carrega o toque completo, não só o deeplink:
+
+| Extra | Conteúdo |
+|---|---|
+| `Dito.DITO_DEEP_LINK` | Link do toque. Num toque em botão, é o link **daquele** botão |
+| `Dito.DITO_ACTION_ID` | Id do botão, ou `""` quando o toque foi no corpo |
+| `Dito.DITO_ACTION_LABEL` | Rótulo do botão, ou `""` |
+| `Dito.DITO_CUSTOM_DATA` | Custom data da campanha, como string JSON |
+| `Dito.DITO_NOTIFICATION_ID` / `DITO_NOTIFICATION_REFERENCE` / `DITO_USER_ID` | Identificação da notificação |
+
 #### API nova
 
 | Membro | Descrição |
@@ -552,6 +586,7 @@ pacote via `setPackage`.
 | `Dito.parseNotificationActions(userInfo)` | Decodifica `actions` do data map |
 | `Dito.parseNotificationCustomData(userInfo)` | Decodifica `custom_data` do data map |
 | `NotificationResult.actionId` / `.actionLabel` / `.customData` | Contexto do clique |
+| `Dito.DITO_ACTION_ID` / `.DITO_ACTION_LABEL` / `.DITO_CUSTOM_DATA` | Extras do Intent que abre o app |
 | `DitoNotificationInfo.image` / `.customData` | Campos ricos persistidos na inbox |
 
 #### Quando o botão não aparece
