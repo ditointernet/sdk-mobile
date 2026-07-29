@@ -292,6 +292,46 @@ if (token) {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### 🖼️ Push rico: imagem, botões de ação e custom data
+
+Uma campanha pode trazer uma imagem, até dois botões de ação e custom data. As SDKs nativas
+(Android 4.1.0, iOS 3.6.0) renderizam esses campos; do lado JavaScript, o que existe hoje é
+o parsing do payload:
+
+```typescript
+import messaging from '@react-native-firebase/messaging';
+import { parsePushPayload, hasRichContent } from '@ditointernet/dito-sdk';
+
+messaging().onMessage(async (message) => {
+  const payload = parsePushPayload(message.data);
+  if (hasRichContent(payload)) {
+    console.log('imagem:', payload.image);
+    payload.actions.forEach((a) => console.log(a.id, a.label, a.link));
+    console.log('custom data:', payload.customData);
+  }
+});
+```
+
+`actions` e `custom_data` viajam como **strings JSON** dentro do data map. `parsePushPayload`
+é puro TypeScript e leniente: payload malformado devolve o campo vazio em vez de lançar.
+
+| Campo de `DitoPushPayload` | Tipo | Origem |
+|---|---|---|
+| `image` | `string` | `data.image` |
+| `actions` | `DitoPushAction[]` | `data.actions` (máx. 2, ordem significativa) |
+| `customData` | `Record<string, string>` | `data.custom_data`, variáveis já substituídas |
+
+> ⚠️ **Limitação conhecida — sem paridade com o Flutter.** Esta bridge não expõe stream de
+> clique nem inbox ao JavaScript; ela tem apenas helpers nativos estáticos que o app chama do
+> próprio `AppDelegate` (iOS) ou `FirebaseMessagingService` (Android). Consequência prática:
+> a SDK nativa registra o clique no botão e emite `click-notification` com `action_id`
+> corretamente, mas **o código JavaScript não é notificado do clique** e não tem como ler o
+> `action_id`. Fechar essa lacuna é trabalho próprio, ainda não feito.
+
+No iOS, imagem e botões exigem uma Notification Service Extension no app, linkando o pod
+`DitoSDKNotificationService`. Sem ela o push degrada para título e corpo. O passo a passo
+está em [`ios/README.md`](../ios/README.md).
+
 ### Configuração Básica
 
 1. Configure o Firebase no seu projeto React Native

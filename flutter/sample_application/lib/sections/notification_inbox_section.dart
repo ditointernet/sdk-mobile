@@ -112,6 +112,33 @@ class _NotificationInboxSectionState extends State<NotificationInboxSection> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(n.message),
+                        // Campos ricos persistidos no inbox: prova que a imagem e a
+                        // custom data sobreviveram à migração de schema, não só à
+                        // exibição da notificação.
+                        if (n.image.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(4),
+                              child: Image.network(
+                                n.image,
+                                height: 80,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Text(
+                                  'imagem: ${n.image}',
+                                  style: const TextStyle(fontSize: 11, color: Colors.red),
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (n.customData.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Text(
+                              'custom data: ${n.customData}',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                          ),
                         Text(
                           n.receivedAt.toLocal().toString().substring(0, 16),
                           style: const TextStyle(fontSize: 11, color: Colors.grey),

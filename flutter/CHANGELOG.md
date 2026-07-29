@@ -2,6 +2,33 @@
 
 - feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
 
+### Push rico: imagem, botões de ação e custom data
+
+Requer SDK nativa nova nas duas plataformas: **Android 4.1.0** e **iOS 3.6.0**. Com uma
+versão anterior as chaves chegam no payload mas nada as renderiza.
+
+- `DitoSdk.parsePushPayload(data)` e o modelo `DitoPushPayload` / `DitoPushAction`, para ler
+  imagem, botões e custom data de um `RemoteMessage.data`. É parsing puro: roda em background
+  handler e em teste.
+- `DitoNotificationClick` ganhou `actionId`, `actionLabel`, `customData` e `isActionClick`.
+  Num clique em botão, `deeplink` já é o link do próprio botão.
+- `DitoNotificationInfo` ganhou `image` e `customData`.
+- O clique agora chega ao stream `onNotificationClick` **também quando nasce na notificação
+  nativa**. Antes só o clique roteado por `handleNotificationClick` era emitido, e o toque em
+  botão nunca passa por lá — o `PendingIntent` do botão vai para a Activity do SDK, então o
+  `FirebaseMessaging.onMessageOpenedApp` não dispara.
+- **iOS**: imagem e botões exigem uma Notification Service Extension no app, linkando o pod
+  `DitoSDKNotificationService`. Sem ela o push degrada para título e corpo. Passo a passo no
+  README.
+- Sample app: nova seção "Último push recebido", com o payload cru e o parseado na tela.
+
+### Toolchain
+
+- Versão de Flutter fixada no CI (`3.44.5`) em vez de só `channel: stable`.
+- `environment` coerente: `flutter: '>=3.38.0'` com `sdk: '>=3.10.7'`. O par anterior
+  (`flutter: '>=3.24.0'`) descrevia uma combinação que não existe, já que Flutter 3.24 ship
+  Dart 3.5. Não sobe o piso: o `sdk:` já o fixava em Dart 3.10.7.
+
 ## 3.4.0
 
 ### Novas funcionalidades

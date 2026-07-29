@@ -9,9 +9,72 @@ e este projeto adere ao [Semantic Versioning](https://semver.org/lang/pt-BR/).
 
 ### Adicionado
 
+#### Push rico (imagem, botões de ação e custom data)
+
+Uma campanha pode trazer imagem, até dois botões de ação e custom data. As chaves no payload
+FCM são **aditivas e condicionais** — só aparecem quando a campanha usa o recurso — então um
+app com SDK anterior continua recebendo e renderizando push exatamente como antes.
+
+Versões mínimas por recurso:
+
+| Recurso | Android | iOS | Flutter | React Native |
+|---|---|---|---|---|
+| Imagem | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | parsing do payload |
+| Botões de ação | 4.1.0 | 3.6.0 (requer NSE) | 3.4.0 | parsing do payload |
+| Custom data | 4.1.0 | 3.6.0 | 3.4.0 | parsing do payload |
+
+- **Android SDK**: imagem via `BigPictureStyle`, botões via `addAction`, custom data no
+  listener de recebimento e de clique. Novo `DitoNotificationActionReceiver`, já registrado
+  no manifest da SDK — o app integrador não declara nada. Migração Room `2 → 3` persiste
+  imagem e custom data na inbox.
+- **iOS SDK**: novo produto **`DitoSDKNotificationService`**, extension-safe, para a
+  Notification Service Extension do app. Imagem como attachment e botões via
+  `UNNotificationCategory` registrada dinamicamente. **Sem a NSE, imagem e botões não
+  aparecem** e o push degrada para título e corpo. Releases publicam dois pods em lockstep.
+- **Flutter**: `DitoSdk.parsePushPayload` e o modelo `DitoPushPayload`/`DitoPushAction`;
+  `DitoNotificationClick` ganhou `actionId`, `actionLabel`, `customData` e `isActionClick`;
+  `DitoNotificationInfo` ganhou `image` e `customData`. O clique agora chega ao Dart também
+  quando nasce na notificação nativa — antes só o clique roteado por
+  `handleNotificationClick` era emitido, e um toque em botão nunca passa por lá.
+- **React Native**: `parsePushPayload` e `hasRichContent` em TypeScript. Veja a limitação
+  registrada abaixo.
+- Clique em botão **reusa** o evento `click-notification`, com `action_id` e `action_label`
+  na custom data do evento. Consequência aceita: o CTR soma corpo e botão; a segmentação por
+  `action_id` é o que separa os dois nos relatórios.
+
 #### Cross-Platform
 - Método público `logout` nas SDKs Flutter e React Native para limpar localmente dados persistidos por `identify` e a identidade local usada por tracking.
 - O logout não remove configuração da SDK, opções de notificação, inbox de notificações, tokens de push ou dados remotos no backend.
+
+### Corrigido
+
+#### React Native SDK
+- O gate de canal comparava `channel` com `"Dito"` de forma exata, nas duas plataformas,
+  enquanto o backend emite `"DITO"`. Na prática **nenhum** push da Dito era processado pela
+  bridge React Native. No iOS havia um segundo problema no mesmo lugar: a chave era lida só
+  no topo do payload, e num push real ela vive dentro de `data`. A comparação agora é
+  insensível a caixa e o lookup cobre os dois níveis, como o plugin Flutter já fazia.
+
+### Alterado
+
+#### Flutter
+- CI com versão de Flutter fixada (`3.44.5`) em vez de só `channel: stable`, para build
+  reproduzível.
+- `environment` do pubspec passou a declarar um par coerente: `flutter: '>=3.38.0'` com
+  `sdk: '>=3.10.7'`. O par anterior (`flutter: '>=3.24.0'`) descrevia uma combinação
+  inexistente, já que Flutter 3.24 ship Dart 3.5. **Não sobe o piso de compatibilidade** — o
+  `sdk:`, que é o que o pub aplica, já o fixava em Dart 3.10.7.
+
+### Limitações conhecidas
+
+- **React Native não tem bridge de notificação exposta ao JS.** Não há stream de clique nem
+  inbox no lado JavaScript; só helpers nativos estáticos que o app chama do próprio
+  AppDelegate/Service. Então o push rico chega até a SDK nativa e é renderizado, mas o app
+  RN não recebe o clique com `action_id` em JS. Alcançar a paridade com Flutter exige
+  construir essa bridge, que é trabalho próprio e não faz parte desta entrega.
+- **Validação de renderização em device ainda não foi feita** em nenhuma plataforma. Imagem
+  aparecendo, botão aparecendo, ordem preservada e degradação sem NSE dependem de push real
+  em device.
 
 ## [3.0.1] - 2026-02-04
 

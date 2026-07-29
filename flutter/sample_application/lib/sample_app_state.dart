@@ -54,6 +54,28 @@ class SampleAppState {
   int fcmPushReceivedCount = 0;
   StreamSubscription<String>? tokenRefreshSubscription;
 
+  // MARK: Último push recebido (etapas 5 e 6 do E9)
+  //
+  // Guarda o payload cru e o já parseado do último push, mais o último clique. É o que
+  // permite conferir estrutura e renderização num print só, em vez de cruzar logcat com
+  // a tela. Só cobre push que chega no Dart com o app em **foreground**
+  // (`FirebaseMessaging.onMessage`); com o app em background quem tem o payload é o log
+  // nativo do T9.1. O clique, ao contrário, chega em qualquer estado.
+
+  Map<String, dynamic>? lastPushData;
+  DitoPushPayload? lastPushPayload;
+  DateTime? lastPushAt;
+
+  DitoNotificationClick? lastClick;
+
+  /// Horário do clique, arquivado junto do print por causa do T9.10: o evento chega na
+  /// ficha do perfil de forma assíncrona, e sem esta referência não se distingue atraso
+  /// de perda.
+  DateTime? lastClickAt;
+
+  StreamSubscription<RemoteMessage>? foregroundMessageSubscription;
+  StreamSubscription<DitoNotificationClick>? notificationClickSubscription;
+
   void loadEnvValues() {
     final identifyName = EnvLoader.getOrEmpty('IDENTIFY_NAME');
     final identifyEmail = EnvLoader.getOrEmpty('IDENTIFY_EMAIL');
@@ -111,13 +133,35 @@ class SampleAppState {
   }
 
   void setupFcmMessageListeners(void Function() onPushReceived) {
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    foregroundMessageSubscription =
+        FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       if (kDebugMode) {
         debugPrint(
           '[PushDebug] Push reached Dart (foreground): messageId=${message.messageId} dataKeys=${message.data.keys.toList()}',
         );
       }
+      recordPush(message);
       onPushReceived();
+    });
+
+    notificationClickSubscription =
+        DitoSdk.onNotificationClick.listen(recordClick);
+  }
+
+  /// Arquiva o último push recebido, cru e parseado.
+  void recordPush(RemoteMessage message) {
+    _setState(() {
+      lastPushData = Map<String, dynamic>.from(message.data);
+      lastPushPayload = DitoSdk.parsePushPayload(message.data);
+      lastPushAt = DateTime.now();
+    });
+  }
+
+  /// Arquiva o último clique, inclusive qual botão foi tocado.
+  void recordClick(DitoNotificationClick click) {
+    _setState(() {
+      lastClick = click;
+      lastClickAt = DateTime.now();
     });
   }
 
@@ -274,6 +318,8 @@ class SampleAppState {
 
   void dispose() {
     tokenRefreshSubscription?.cancel();
+    foregroundMessageSubscription?.cancel();
+    notificationClickSubscription?.cancel();
     apiKeyController.dispose();
     apiSecretController.dispose();
     userIdController.dispose();

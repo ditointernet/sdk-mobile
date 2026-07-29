@@ -18,7 +18,14 @@ Dito iOS SDK Plugin for Flutter
   s.source           = { :path => '.' }
   s.source_files = 'Classes/**/*'
   s.dependency 'Flutter'
-  s.dependency 'DitoSDK', '~> 3.4.0'
+  # 3.6.0 é a versão em que o push rico (E4) entra e **ainda não está publicada**; o
+  # `~> 3.4.0` anterior excluía até a 3.5.0 já publicada. Enquanto o pod não sair, o sample
+  # resolve pelo path local — ver flutter/sample_application/ios/Podfile e o marcador
+  # flutter/ios/.use_local_dito_ios_sdk — e isso exige ios/DitoSDK.podspec já em 3.6.0.
+  #
+  # A NSE do app integrador linka o pod separado `DitoSDKNotificationService`, no target da
+  # extension. Ele não entra aqui: uma app extension não pode linkar o Flutter.
+  s.dependency 'DitoSDK', '~> 3.6.0'
   s.dependency 'Firebase/Messaging'
   s.platform = :ios, '16.0'
 

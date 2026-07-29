@@ -498,6 +498,78 @@ Dito.init(this, options)
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### 🖼️ Push rico: imagem, botões de ação e custom data
+
+A partir da versão **4.1.0**, uma campanha pode trazer uma imagem, até dois botões de ação e
+custom data. **Não é preciso configurar nada**: a SDK detecta as chaves no payload e
+renderiza. Um push sem essas chaves renderiza exatamente como antes.
+
+- A imagem é exibida com `BigPictureStyle`; se o download falhar, cai para `BigTextStyle` e
+  a notificação aparece normalmente.
+- Os botões viram `addAction`, no máximo dois, na ordem em que a campanha os definiu.
+- O `DitoNotificationActionReceiver` **já vem declarado no manifest da SDK**. O app
+  integrador não declara receiver, não adiciona permissão e não registra nada.
+
+#### Lendo os campos no seu código
+
+```kotlin
+Dito.notificationReceivedListener = { userInfo ->
+    val image = userInfo["image"] ?: ""
+    val actions = Dito.parseNotificationActions(userInfo)   // List<DitoNotificationAction>
+    val customData = Dito.parseNotificationCustomData(userInfo)
+}
+```
+
+`actions` e `custom_data` chegam no data map como **strings JSON**; os dois helpers fazem o
+parsing de forma defensiva e devolvem vazio em payload malformado, em vez de lançar.
+
+#### Reagindo ao clique, inclusive em botão
+
+```kotlin
+Dito.notificationClickDataListener = { result ->
+    if (result.actionId.isNotEmpty()) {
+        Log.d("App", "botão ${result.actionId} (${result.actionLabel})")
+    }
+    abrirDeeplink(result.deepLink)   // já é o link do botão, quando foi um botão
+}
+```
+
+`notificationClickDataListener` é disparado junto do `notificationClickListener` já
+existente, que continua recebendo só o deeplink. O tracking é automático: o toque em botão
+emite `click-notification` com `action_id` e `action_label` na custom data do evento — não é
+um evento novo, então o CTR soma corpo e botão.
+
+Apps que preferirem observar o broadcast diretamente podem declarar o mesmo `intent-filter`
+(`br.com.dito.ditosdk.notification.NOTIFICATION_ACTION_CLICK`); ele é restrito ao próprio
+pacote via `setPackage`.
+
+#### API nova
+
+| Membro | Descrição |
+|---|---|
+| `DitoNotificationAction` | Botão: `id`, `label`, `link` |
+| `Dito.notificationClickDataListener` | Clique com `NotificationResult` completo |
+| `Dito.parseNotificationActions(userInfo)` | Decodifica `actions` do data map |
+| `Dito.parseNotificationCustomData(userInfo)` | Decodifica `custom_data` do data map |
+| `NotificationResult.actionId` / `.actionLabel` / `.customData` | Contexto do clique |
+| `DitoNotificationInfo.image` / `.customData` | Campos ricos persistidos na inbox |
+
+#### Quando o botão não aparece
+
+A renderização depende do modo de entrega configurado para o brand no backend
+(`firebase_notification_type`), não do app:
+
+| Modo | Imagem | Botões | Custom data |
+|---|---|---|---|
+| `DATA` | ✅ | ✅ | ✅ |
+| default | ✅ | ⚠️ só com o app em foreground | ✅ |
+| `NOTIFICATION` | ✅ (renderizada pelo sistema) | ❌ | ❌ |
+
+No modo default o bloco `notification` presente no payload faz o FCM exibir a notificação
+sozinho quando o app está em background — o `onMessageReceived` nem é chamado, então a SDK
+não tem como adicionar os botões. No modo `NOTIFICATION` o data map é removido do payload,
+então nem custom data chega. Nos dois casos não há nada a corrigir no app.
+
 ### ⚠️ Integração com Múltiplos Serviços
 
 Se você precisa integrar com **OneSignal, Braze, ou outros SDKs de notificação**, consulte o guia:

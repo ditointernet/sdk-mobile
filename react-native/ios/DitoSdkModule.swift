@@ -36,10 +36,25 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
     return true
   }
 
+  /// Lê `channel` no topo do payload e, se não achar, dentro do `data` aninhado.
+  ///
+  /// Dois problemas que estavam aqui e rejeitavam **todo** push da Dito, não só o rico:
+  /// o channel-senders emite `"DITO"` em maiúsculas, e num push real a chave vive dentro
+  /// de `data`, não no topo. O plugin Flutter já fazia as duas coisas certas.
+  private static func ditoChannel(_ userInfo: [AnyHashable: Any]) -> String? {
+    if let nested = userInfo["data"] as? [AnyHashable: Any],
+       let channel = nested["channel"] as? String {
+      return channel
+    }
+    return userInfo["channel"] as? String
+  }
+
+  private static func isDitoChannel(_ userInfo: [AnyHashable: Any]) -> Bool {
+    ditoChannel(userInfo)?.caseInsensitiveCompare("DITO") == .orderedSame
+  }
+
   private static func isDitoChannel(_ request: UNNotificationRequest) -> Bool {
-    let userInfo = request.content.userInfo
-    let channel = userInfo["channel"] as? String
-    return channel == "Dito"
+    isDitoChannel(request.content.userInfo)
   }
 
   private static func processNotificationRequest(_ request: UNNotificationRequest, fcmToken: String?) {
@@ -65,10 +80,26 @@ class DitoSdkModule: NSObject, RCTBridgeModule {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
-    guard let channel = userInfo["channel"] as? String, channel == "Dito" else {
+    guard isDitoChannel(userInfo) else {
       return false
     }
     Dito.notificationClick(userInfo: userInfo, callback: callback)
+    return true
+  }
+
+  /// Mesmo que acima, levando `UNNotificationResponse.actionIdentifier` para o SDK saber
+  /// qual botão foi tocado. O SDK descarta os identifiers de default/dismiss do sistema,
+  /// então um toque no corpo continua sendo tratado como clique comum.
+  @objc(didReceiveNotificationClickWithResponse:callback:)
+  @discardableResult
+  public static func didReceiveNotificationClick(
+    response: UNNotificationResponse,
+    callback: ((String) -> Void)? = nil
+  ) -> Bool {
+    guard isDitoChannel(response.notification.request.content.userInfo) else {
+      return false
+    }
+    Dito.notificationClick(response: response, callback: callback)
     return true
   }
 

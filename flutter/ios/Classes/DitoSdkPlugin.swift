@@ -68,25 +68,62 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
     userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> Bool {
+    didReceiveNotificationClick(userInfo: userInfo, actionIdentifier: nil, callback: callback)
+  }
+
+  /// Same as above, but carries `UNNotificationResponse.actionIdentifier` so a tap on
+  /// an action button reports which button was tapped.
+  ///
+  /// Kept as a separate entry point rather than a defaulted parameter on the one
+  /// above, so the existing Objective-C selector stays untouched for host apps that
+  /// already call it from an AppDelegate.
+  @objc(didReceiveNotificationClickWithUserInfo:actionIdentifier:callback:)
+  @discardableResult
+  public static func didReceiveNotificationClick(
+    userInfo: [AnyHashable: Any],
+    actionIdentifier: String?,
+    callback: ((String) -> Void)? = nil
+  ) -> Bool {
     let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
     guard isDitoChannel(normalized) else { return false }
-    Dito.notificationClick(userInfo: normalized, callback: callback)
+    let received = Dito.notificationClick(
+      userInfo: normalized,
+      actionIdentifier: actionIdentifier,
+      callback: callback
+    )
+    emitNotificationClickEvent(userInfo: normalized, received: received)
     return true
   }
 
-  internal static func emitNotificationClickEvent(userInfo: [AnyHashable: Any], deeplink: String) {
+  /// Emits the click on the Dart stream.
+  ///
+  /// The deeplink comes from `received.resolvedLink`, which is the button's own
+  /// already-iOS-resolved link for an action tap and the notification's deeplink
+  /// for a tap on the body. Everything else still comes from the raw payload:
+  /// `DitoNotificationReceived` exposes the rich-push fields publicly but keeps
+  /// `notification`, `reference`, `logId`, `notificationName` and `userId` internal,
+  /// so they are not readable from this module.
+  internal static func emitNotificationClickEvent(
+    userInfo: [AnyHashable: Any],
+    received: DitoNotificationReceived
+  ) {
     guard let sink = notificationEventSink else { return }
     let normalized = DitoNotificationDelegate.normalizedDitoUserInfo(userInfo)
     let source = DitoNotificationDelegate.nestedPayload(normalized[AnyHashable("data")] ?? normalized["data"]) ?? normalized
 
     var payload: [String: Any] = [:]
     payload["type"] = notificationClickEventType
-    payload["deeplink"] = deeplink
+    payload["deeplink"] = received.resolvedLink
     payload["notificationId"] = source["notification"] as? String ?? ""
-    payload["reference"] = source["reference"] as? String ?? ""
+    // Sempre vazio: `reference` está em retirada e a atribuição ancora em
+    // `user_id`. A chave permanece para não quebrar quem já lê este evento.
+    payload["reference"] = ""
     payload["logId"] = source["log_id"] as? String ?? ""
     payload["notificationName"] = source["notification_name"] as? String ?? ""
     payload["userId"] = source["user_id"] as? String ?? ""
+    payload["actionId"] = received.actionId
+    payload["actionLabel"] = received.actionLabel
+    payload["customData"] = received.customData
 
     DispatchQueue.main.async {
       sink(payload)
@@ -295,9 +332,11 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
       for (k, v) in args {
         userInfo[k] = v
       }
-      let handled = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
-        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
-      }
+      // A emissão no stream Dart acontece dentro de didReceiveNotificationClick.
+      let handled = DitoSdkPlugin.didReceiveNotificationClick(
+        userInfo: userInfo,
+        actionIdentifier: args["actionIdentifier"] as? String
+      )
       result(handled)
     case "setNotificationOptions":
       let args = call.arguments as? [String: Any] ?? [:]
@@ -311,12 +350,17 @@ public class DitoSdkPlugin: NSObject, FlutterPlugin, FlutterStreamHandler {
         [
           "id": info.id,
           "notificationId": info.notificationId,
-          "reference": info.reference,
+          // Sempre vazio: `reference` foi retirado do payload e a atribuição
+          // ancora em `user_id`. A chave fica no mapa para não quebrar quem
+          // já lê este evento em Dart.
+          "reference": "",
           "title": info.title,
           "message": info.message,
           "link": info.link,
           "receivedAt": Int64(info.receivedAt.timeIntervalSince1970 * 1000),
-          "isRead": info.isRead
+          "isRead": info.isRead,
+          "image": info.image,
+          "customData": info.customData
         ]
       }
       result(maps)

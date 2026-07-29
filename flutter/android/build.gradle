@@ -14,8 +14,27 @@ buildscript {
     }
 }
 
+// A bridge Flutter consome a SDK Android como artefato publicado, não como módulo do
+// repo, então recurso novo na SDK nativa só compila aqui depois de publicado. Isso
+// tornava impossível compilar ou validar em device o push rico antes de um release —
+// e a sessão do E9 roda justamente no sample do Flutter.
+//
+// O escape hatch espelha o que o iOS já tinha (ver flutter/sample_application/ios/Podfile
+// e o marcador flutter/ios/.use_local_dito_ios_sdk):
+//
+//   1. cd android && VERSION_NAME=4.1.0 ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal
+//   2. touch flutter/android/.use_local_dito_android_sdk
+//   3. export DITO_ANDROID_SDK_VERSION=4.1.0
+//
+// Sem o marcador nada muda: resolve de google()/mavenCentral() como antes.
+def useLocalDitoAndroidSdk = new File(projectDir, ".use_local_dito_android_sdk").exists()
+def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "4.1.0"
+
 allprojects {
     repositories {
+        if (useLocalDitoAndroidSdk) {
+            mavenLocal()
+        }
         google()
         mavenCentral()
     }
@@ -48,7 +67,11 @@ android {
     }   
 
     dependencies {
-        implementation("br.com.dito:ditosdk:3.4.1")
+        // 4.1.0 é a versão em que o push rico (E3) entra e **ainda não está publicada**.
+        // Até o release da SDK Android, use o escape hatch documentado no topo deste arquivo.
+        // O pin anterior era 3.4.1, um major atrás da 4.0.0 já publicada — dívida de
+        // alinhamento de versões registrada no plano, não resolvida aqui.
+        implementation("br.com.dito:ditosdk:$ditoAndroidSdkVersion")
         implementation("com.google.firebase:firebase-messaging:23.4.0")
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")

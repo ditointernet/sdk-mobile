@@ -39,9 +39,14 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
             return true
         }
 
+        /**
+         * O channel-senders emite `channel: "DITO"` em maiúsculas
+         * (`channelDITO = "DITO"`), então a comparação exata com `"Dito"` que estava aqui
+         * rejeitava **todo** push da Dito — não só o push rico. O plugin Flutter sempre
+         * aceitou as duas formas; esta é a mesma regra, agora insensível a caixa.
+         */
         private fun isDitoChannel(message: RemoteMessage): Boolean {
-            val channel = message.data["channel"]
-            return channel == "Dito"
+            return message.data["channel"].equals("DITO", ignoreCase = true)
         }
 
         private fun ensureInitialized(context: Context) {
@@ -108,11 +113,12 @@ class DitoSdkModule(reactContext: ReactApplicationContext) :
          */
         @JvmStatic
         fun handleNotificationClick(context: Context, userInfo: Map<String, String>): Boolean {
-            val channel = userInfo["channel"]
-            if (channel != "Dito") {
+            if (!userInfo["channel"].equals("DITO", ignoreCase = true)) {
                 return false
             }
             ensureInitialized(context)
+            // O userInfo inteiro é repassado, então `action_id`, `action_label` e
+            // `custom_data` — quando o caller os incluir — chegam ao SDK sem tradução.
             Dito.notificationClick(userInfo)
             return true
         }

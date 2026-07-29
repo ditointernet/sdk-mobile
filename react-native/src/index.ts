@@ -254,3 +254,10 @@ class DitoSdk {
 
 export default DitoSdk;
 export { DitoErrorCode, type DitoError } from './error_handler';
+export {
+  parsePushPayload,
+  hasRichContent,
+  MAX_PUSH_ACTIONS,
+  type DitoPushAction,
+  type DitoPushPayload,
+} from './push_payload';
