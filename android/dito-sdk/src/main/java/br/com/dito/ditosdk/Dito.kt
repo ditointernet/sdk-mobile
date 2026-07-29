@@ -44,6 +44,19 @@ object Dito {
     const val DITO_DEEP_LINK = "br.com.dito.ditosdk.DITO_DEEP_LINK"
     const val DITO_USER_ID = "br.com.dito.ditosdk.DITO_USER_ID"
 
+    /**
+     * Id do botão tocado, ou string vazia quando o toque foi no corpo da notificação. Chega no
+     * Intent que abre o app, junto com [DITO_DEEP_LINK] — o SDK **não** abre link nenhum por conta
+     * própria, quem roteia é o app.
+     */
+    const val DITO_ACTION_ID = "br.com.dito.ditosdk.DITO_ACTION_ID"
+
+    /** Rótulo do botão tocado, ou string vazia para toque no corpo. */
+    const val DITO_ACTION_LABEL = "br.com.dito.ditosdk.DITO_ACTION_LABEL"
+
+    /** Custom data da campanha, ainda como string JSON — igual ao extra do broadcast de botão. */
+    const val DITO_CUSTOM_DATA = "br.com.dito.ditosdk.DITO_CUSTOM_DATA"
+
     var options: Options? = null
     var notificationClickListener: ((String) -> Unit)? = null
     var notificationReceivedListener: ((Map<String, String>) -> Unit)? = null
