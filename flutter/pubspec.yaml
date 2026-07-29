@@ -3,9 +3,15 @@ description: Plugin Flutter para integração com o CRM Dito, fornecendo APIs un
 version: 3.3.0
 homepage: https://github.com/ditointernet/dito_sdk_flutter
 
+# O par tem que ser coerente: Flutter 3.24 ship Dart 3.5, então `flutter: '>=3.24.0'`
+# com `sdk: '>=3.10.7'` descrevia uma combinação que não existe — quem estivesse em
+# 3.24 passava no constraint do Flutter e falhava no do Dart, com erro de resolução em
+# vez de "atualize o Flutter". Dart 3.10 chega no Flutter 3.38, que é o piso real.
+# Isto não sobe o piso de compatibilidade (D-04): o `sdk:` já o fixava em Dart 3.10.7,
+# e é ele que o pub aplica. A mudança só torna o par declarado verdadeiro.
 environment:
   sdk: '>=3.10.7 <4.0.0'
-  flutter: '>=3.24.0'
+  flutter: '>=3.38.0'
 
 dependencies:
   flutter:

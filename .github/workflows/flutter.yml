@@ -6,6 +6,13 @@ on:
       - 'flutter/**'
       - '.github/workflows/flutter.yml'
 
+# Versão fixa para build reproduzível: `channel: stable` sozinho faz o CI seguir o
+# stable mais recente, então a mesma revisão do repo pode passar hoje e falhar amanhã
+# sem nenhuma mudança de código. Ao bumpar, rode `flutter analyze` e `flutter test`
+# localmente na mesma versão e confira o par `sdk:`/`flutter:` do pubspec.
+env:
+  FLUTTER_VERSION: '3.44.5'
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -50,6 +57,7 @@ jobs:
       uses: subosito/flutter-action@v2
       with:
         channel: 'stable'
+        flutter-version: ${{ env.FLUTTER_VERSION }}
 
     - name: Configure Flutter
       if: steps.check-changes.outputs.has_changes == 'true'
@@ -119,6 +127,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Install dependencies
         if: steps.check-changes.outputs.has_code_changes == 'true'

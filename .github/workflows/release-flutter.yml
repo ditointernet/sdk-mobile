@@ -9,6 +9,12 @@ on:
 permissions:
   contents: write
 
+# Precisa ser a mesma versão de `.github/workflows/flutter.yml`: publicar numa versão
+# de Flutter diferente da que validou o PR é como o pub.dev recebe um pacote que nunca
+# foi analisado na toolchain em que foi construído.
+env:
+  FLUTTER_VERSION: '3.44.5'
+
 concurrency:
   group: release-flutter-${{ github.ref_name }}
   cancel-in-progress: false
@@ -74,6 +80,7 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
+          flutter-version: ${{ env.FLUTTER_VERSION }}
 
       - name: Configure Flutter
         run: |

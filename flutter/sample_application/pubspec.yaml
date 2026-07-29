@@ -3,8 +3,11 @@ description: "A new Flutter project."
 version: 1.0.0+1
 publish_to: none
 
+# Espelha o `environment:` do plugin em `../pubspec.yaml`. Declarar 3.5.0 aqui era
+# ficção: o path dependency do dito_sdk já exigia Dart 3.10.7 na resolução.
 environment:
-  sdk: '>=3.5.0 <4.0.0'
+  sdk: '>=3.10.7 <4.0.0'
+  flutter: '>=3.38.0'
 
 dependencies:
   flutter:
