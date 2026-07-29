@@ -63,6 +63,42 @@ final class DitoRichPushTests: XCTestCase {
         XCTFail("timed out waiting for \(count) ingest call(s); got \(mock.activityCallCount)")
     }
 
+    /// Espera pela activity de clique **desta** notificação.
+    ///
+    /// Esperar por uma contagem não serve: um clique ainda em voo de um teste
+    /// anterior pode aterrar neste mock — `DitoNotification` lê o cliente de teste
+    /// no init — e satisfazer a contagem com o pedido errado.
+    private func waitForClickData(
+        _ mock: MockMobileIngestClient,
+        notificationId: String,
+        timeout: TimeInterval = 10
+    ) async -> [String: String] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if let click = clickActivity(mock, notificationId: notificationId) {
+                return click.data.mapValues { $0.single.stringValue }
+            }
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTFail("timeout à espera do clique de \(notificationId)")
+        return [:]
+    }
+
+    private func clickActivity(
+        _ mock: MockMobileIngestClient,
+        notificationId: String
+    ) -> Mobileingest_V1_Activity.TrackPushClickActivity? {
+        for request in mock.allActivityRequests {
+            for activity in request.activities {
+                guard case .trackPushClick(let click)? = activity.activity,
+                      click.notification.notificationID == notificationId
+                else { continue }
+                return click
+            }
+        }
+        return nil
+    }
+
     private func clickDataMap(_ request: Mobileingest_V1_Request) throws -> [String: String] {
         let activity = try XCTUnwrap(request.activities.first)
         guard case .trackPushClick(let click)? = activity.activity else {
@@ -263,12 +299,12 @@ final class DitoRichPushTests: XCTestCase {
         XCTAssertEqual(received.actionLabel, "Comprar agora")
         XCTAssertEqual(callbackLink, "https://loja.example/promo", "o botão abre o seu próprio link")
 
-        await waitForActivityCalls(mock, count: 1)
-        let request = try XCTUnwrap(mock.lastActivityRequest)
-        let activity = try XCTUnwrap(request.activities.first)
-        XCTAssertEqual(activity.type, .activityTrack, "D-03: continua a ser o evento de clique existente")
-
-        let data = try clickDataMap(request)
+        let data = await waitForClickData(mock, notificationId: nid)
+        let types = mock.allActivityRequests.flatMap(\.activities).map(\.type)
+        XCTAssertTrue(
+            types.contains(.activityTrack),
+            "D-03: continua a ser o evento de clique existente"
+        )
         XCTAssertEqual(data["action_id"], "comprar_agora")
         XCTAssertEqual(data["action_label"], "Comprar agora")
         XCTAssertEqual(data["nivel_programa"], "ouro", "custom data da campanha viaja junto")
@@ -288,8 +324,7 @@ final class DitoRichPushTests: XCTestCase {
             "actions": Self.actionsJson,
         ])
 
-        await waitForActivityCalls(mock, count: 1)
-        let data = try clickDataMap(try XCTUnwrap(mock.lastActivityRequest))
+        let data = await waitForClickData(mock, notificationId: nid)
         XCTAssertNil(data["action_id"])
         XCTAssertNil(data["action_label"])
     }
@@ -301,9 +336,10 @@ final class DitoRichPushTests: XCTestCase {
         DitoNotification.testMobileIngestClient = mock
         addTeardownBlock { DitoNotification.testMobileIngestClient = nil }
 
+        let nid = "nid-\(UUID().uuidString)"
         let received = Dito.notificationClick(
             userInfo: [
-                "notification": "nid-\(UUID().uuidString)",
+                "notification": nid,
                 "user_id": "user-\(UUID().uuidString)",
                 "actions": Self.actionsJson,
             ],
@@ -311,8 +347,7 @@ final class DitoRichPushTests: XCTestCase {
         )
 
         XCTAssertTrue(received.actionId.isEmpty)
-        await waitForActivityCalls(mock, count: 1)
-        let data = try clickDataMap(try XCTUnwrap(mock.lastActivityRequest))
+        let data = await waitForClickData(mock, notificationId: nid)
         XCTAssertNil(data["action_id"])
     }
 
@@ -393,7 +428,6 @@ final class DitoRichPushTests: XCTestCase {
         let nid = "nid-inbox-\(UUID().uuidString)"
         DitoNotificationCoreDataManager.shared.insert(
             notificationId: nid,
-            reference: "ref-inbox",
             title: "Título",
             message: "Corpo",
             link: "https://example.test/inbox",
@@ -413,7 +447,6 @@ final class DitoRichPushTests: XCTestCase {
         let nid = "nid-inbox-plain-\(UUID().uuidString)"
         DitoNotificationCoreDataManager.shared.insert(
             notificationId: nid,
-            reference: "ref-inbox",
             title: "Título",
             message: "Corpo",
             link: "https://example.test/inbox"
@@ -431,6 +464,7 @@ final class DitoRichPushTests: XCTestCase {
 
     func test_pushDebugLog_linha_temPrefixoEstavelECorpoJsonParseavel() throws {
         let line = DitoPushDebugLog.line(
+            event: .received,
             source: .notificationServiceExtension,
             userInfo: [
                 "notification": "nid-123",
@@ -449,6 +483,7 @@ final class DitoRichPushTests: XCTestCase {
         let object = try XCTUnwrap(
             try JSONSerialization.jsonObject(with: XCTUnwrap(json.data(using: .utf8))) as? [String: Any]
         )
+        XCTAssertEqual(object["event"] as? String, "received", "recebimento e clique têm de ser distinguíveis")
         XCTAssertEqual(object["source"] as? String, "nse")
         XCTAssertEqual(object["notification"] as? String, "nid-123")
         XCTAssertEqual(object["log_id"] as? String, "log-456")
@@ -459,6 +494,7 @@ final class DitoRichPushTests: XCTestCase {
 
     func test_pushDebugLog_comPayloadNaoSerializavel_naoQuebra() {
         let line = DitoPushDebugLog.line(
+            event: .clicked,
             source: .app,
             userInfo: ["notification": "nid", "objeto": Date()]
         )
@@ -477,5 +513,260 @@ final class DitoRichPushTests: XCTestCase {
 
         DitoPushDebugLog.resetEnabledOverride()
         XCTAssertEqual(DitoPushDebugLog.isEnabled, original)
+    }
+
+    /// A identidade do utilizador não pode sair no log: `os_log` é persistido e
+    /// viaja num sysdiagnose.
+    func test_pushDebugLog_linhaCrua_redigeIdentidadeEPreservaVazios() throws {
+        let raw = DitoPushDebugLog.rawLine(userInfo: [
+            "notification": "nid",
+            "user_id": "user-real-123",
+            "reference": "",
+            "token": "fcm-abc",
+            "data": ["identifier": "user-real-123", "custom_data": Self.customDataJson] as [String: Any],
+        ])
+
+        XCTAssertFalse(raw.contains("user-real-123"), "user_id não pode aparecer em claro")
+        XCTAssertFalse(raw.contains("fcm-abc"), "token não pode aparecer em claro")
+        XCTAssertTrue(raw.contains("<redacted>"))
+
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: XCTUnwrap(raw.data(using: .utf8))) as? [String: Any]
+        )
+        XCTAssertEqual(object["reference"] as? String, "", "campo vazio fica visível: é o sinal que se vai ler")
+        let nested = try XCTUnwrap(object["data"] as? [String: Any])
+        XCTAssertEqual(nested["identifier"] as? String, "<redacted>", "a redacção desce aos sub-dicionários")
+        XCTAssertEqual(object["notification"] as? String, "nid")
+    }
+
+    /// A linha pública não pode conter o payload cru.
+    func test_pushDebugLog_linhaPublica_naoCarregaPayloadCru() {
+        let line = DitoPushDebugLog.line(
+            event: .received,
+            source: .app,
+            userInfo: ["notification": "nid", "user_id": "user-real-123"]
+        )
+
+        XCTAssertFalse(line.contains("user-real-123"))
+        XCTAssertFalse(line.contains("\"raw\""))
+    }
+
+    // MARK: - Categoria de acções
+
+    /// Mesmos ids com labels diferentes têm de dar categorias diferentes: a
+    /// categoria é estado global e re-registá-la reescreveria os botões de
+    /// notificações que já estão na bandeja.
+    func test_categoryIdentifier_variaComOsLabels() {
+        let first = DitoRichPushPayload(
+            userInfo: ["actions": #"[{"id":"botao_1","label":"Comprar","link":"https://a"}]"#]
+        )
+        let second = DitoRichPushPayload(
+            userInfo: ["actions": #"[{"id":"botao_1","label":"Resgatar","link":"https://a"}]"#]
+        )
+        let third = DitoRichPushPayload(
+            userInfo: ["actions": #"[{"id":"botao_1","label":"Comprar","link":"https://b"}]"#]
+        )
+
+        XCTAssertNotEqual(first.categoryIdentifier, second.categoryIdentifier, "label diferente")
+        XCTAssertNotEqual(first.categoryIdentifier, third.categoryIdentifier, "link diferente")
+        XCTAssertTrue(first.categoryIdentifier?.hasPrefix("dito.actions.botao_1.") == true)
+    }
+
+    /// Cada entrega corre num processo novo, por isso o fingerprint tem de ser
+    /// estável entre processos. Fixar o valor apanha uma troca acidental por
+    /// `Hasher`, que é semeado por processo.
+    func test_categoryFingerprint_ehEstavelEntreProcessos() {
+        let actions = [DitoPushAction(id: "comprar_agora", label: "Comprar agora", link: "https://a")]
+
+        XCTAssertEqual(
+            DitoRichPushPayload.fingerprint(of: actions),
+            DitoRichPushPayload.fingerprint(of: actions)
+        )
+        XCTAssertEqual(
+            DitoRichPushPayload(userInfo: ["actions": Self.actionsJson]).categoryIdentifier,
+            "dito.actions.comprar_agora.ver_depois."
+                + DitoRichPushPayload.fingerprint(of: [
+                    DitoPushAction(id: "comprar_agora", label: "Comprar agora", link: "https://loja.example/promo"),
+                    DitoPushAction(id: "ver_depois", label: "Ver depois", link: "https://loja.example/depois"),
+                ])
+        )
+    }
+
+    /// A poda não pode apagar categorias da app hospedeira nem as que ainda
+    /// estão a ser usadas por uma notificação na bandeja.
+    func test_prune_removeApenasCategoriasDitoNaoUsadas() {
+        let appOwn = UNNotificationCategory(
+            identifier: "APP_PROPRIA", actions: [], intentIdentifiers: [], options: []
+        )
+        let ditoStale = UNNotificationCategory(
+            identifier: "dito.actions.velha.abc", actions: [], intentIdentifiers: [], options: []
+        )
+        let ditoOnScreen = UNNotificationCategory(
+            identifier: "dito.actions.na_bandeja.def", actions: [], intentIdentifiers: [], options: []
+        )
+        let ditoBeingRefreshed = UNNotificationCategory(
+            identifier: "dito.actions.actual.ghi", actions: [], intentIdentifiers: [], options: []
+        )
+
+        let kept = DitoNotificationService.prune(
+            [appOwn, ditoStale, ditoOnScreen, ditoBeingRefreshed],
+            refreshing: "dito.actions.actual.ghi",
+            stillOnScreen: ["dito.actions.na_bandeja.def"]
+        )
+        let identifiers = Set(kept.map(\.identifier))
+
+        XCTAssertTrue(identifiers.contains("APP_PROPRIA"), "categoria da app nunca é tocada")
+        XCTAssertTrue(identifiers.contains("dito.actions.na_bandeja.def"), "ainda visível: manter")
+        XCTAssertFalse(identifiers.contains("dito.actions.velha.abc"), "órfã: remover")
+        XCTAssertFalse(
+            identifiers.contains("dito.actions.actual.ghi"),
+            "a que está a ser re-registada sai daqui e é reinserida pelo chamador"
+        )
+    }
+
+    // MARK: - Extensão do anexo
+
+    /// É este método que decide se a imagem renderiza: `UNNotificationAttachment`
+    /// valida pela extensão do ficheiro.
+    func test_resolveFileExtension_matriz() {
+        let png = URL(string: "https://cdn.example/banner.png")!
+        let noExtension = URL(string: "https://cdn.example/imagem")!
+        let queryOnly = URL(string: "https://cdn.example/asset.aspx?id=1")!
+
+        XCTAssertEqual(
+            DitoNotificationService.resolveFileExtension(url: png, response: nil),
+            "png",
+            "extensão do path ganha"
+        )
+        XCTAssertEqual(
+            DitoNotificationService.resolveFileExtension(url: noExtension, response: mimeResponse("image/jpeg")),
+            "jpeg",
+            "sem extensão no path decide o mime"
+        )
+        XCTAssertEqual(
+            DitoNotificationService.resolveFileExtension(url: queryOnly, response: mimeResponse("image/gif")),
+            "gif",
+            "extensão que não é de imagem cede ao mime"
+        )
+        XCTAssertEqual(
+            DitoNotificationService.resolveFileExtension(url: noExtension, response: nil),
+            "png",
+            "sem sinal nenhum, último recurso"
+        )
+        XCTAssertEqual(
+            DitoNotificationService.resolveFileExtension(url: noExtension, response: mimeResponse("nao/existe")),
+            "png",
+            "mime desconhecido cai no último recurso em vez de gerar extensão inválida"
+        )
+    }
+
+    func test_makeAttachment_acimaDoLimite_naoAnexaEApagaOFicheiro() throws {
+        let source = FileManager.default.temporaryDirectory
+            .appendingPathComponent("dito-test-\(UUID().uuidString).png")
+        try Data(repeating: 0, count: 2048).write(to: source)
+
+        let attachment = DitoNotificationService.makeAttachment(
+            from: source,
+            url: URL(string: "https://cdn.example/grande.png")!,
+            response: nil,
+            maxBytes: 1024
+        )
+
+        XCTAssertNil(attachment, "acima do limite não vira anexo")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: source.path),
+            "o ficheiro descarregado não pode ficar para trás"
+        )
+    }
+
+    private func mimeResponse(_ mimeType: String) -> URLResponse {
+        URLResponse(
+            url: URL(string: "https://cdn.example/imagem")!,
+            mimeType: mimeType,
+            expectedContentLength: 1,
+            textEncodingName: nil
+        )
+    }
+
+    // MARK: - Chaves reservadas (D-03)
+
+    /// `action_id` passa o filtro de chave válida, por isso uma campanha pode
+    /// declará-lo — e não pode ganhar da acção realmente tocada.
+    func test_customData_comChaveReservada_descartaAChaveDaCampanha() {
+        let payload = DitoRichPushPayload(userInfo: [
+            "custom_data": #"{"action_id":"falso","action_label":"Falso","nivel_programa":"ouro"}"#,
+        ])
+
+        XCTAssertNil(payload.customData[DitoRichPushKeys.actionId])
+        XCTAssertNil(payload.customData[DitoRichPushKeys.actionLabel])
+        XCTAssertEqual(payload.customData, ["nivel_programa": "ouro"])
+    }
+
+    func test_notificationClick_comChaveReservadaNaCampanha_enviaAAccaoTocada() async throws {
+        let mock = MockMobileIngestClient()
+        DitoNotification.testMobileIngestClient = mock
+        addTeardownBlock { DitoNotification.testMobileIngestClient = nil }
+
+        let nid = "nid-\(UUID().uuidString)"
+        _ = Dito.notificationClick(
+            userInfo: [
+                "notification": nid,
+                "user_id": "user-\(UUID().uuidString)",
+                "actions": Self.actionsJson,
+                "custom_data": #"{"action_id":"falso"}"#,
+            ],
+            actionIdentifier: "comprar_agora"
+        )
+
+        let data = await waitForClickData(mock, notificationId: nid)
+        XCTAssertEqual(data["action_id"], "comprar_agora", "ganha a acção tocada, não a chave da campanha")
+    }
+
+    // MARK: - `reference` retirado do payload
+
+    /// O campo está em retirada e a atribuição ancora em `user_id`; um payload
+    /// que ainda o traga tem de ser ignorado de ponta a ponta.
+    func test_payload_comReference_naoPropagaOCampo() throws {
+        let userInfo: [AnyHashable: Any] = [
+            "notification": "nid-ref",
+            "user_id": "uid-ref",
+            "reference": "ref-que-deve-ser-ignorada",
+            "title": "t",
+            "message": "m",
+        ]
+
+        let data = DitoDataNotification(from: userInfo)
+        XCTAssertTrue(data.reference.isEmpty, "não é lido do payload")
+
+        let encoded = try JSONEncoder().encode(data)
+        let object = try XCTUnwrap(try JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(
+            object["reference"] as? String,
+            "",
+            "a chave continua no formato persistido, mas vazia"
+        )
+        XCTAssertFalse(
+            String(decoding: encoded, as: UTF8.self).contains("ref-que-deve-ser-ignorada")
+        )
+    }
+
+    func test_inbox_naoPersisteReferenceDoPayload() throws {
+        let nid = "nid-inbox-ref-\(UUID().uuidString)"
+        Dito.notificationReceived(
+            userInfo: [
+                "notification": nid,
+                "user_id": "uid-\(UUID().uuidString)",
+                "reference": "ref-ignorada",
+                "title": "Título",
+                "message": "Corpo",
+            ],
+            token: "fcm-token-teste"
+        )
+        TestHelpers.sleep(0.3)
+
+        let record = try XCTUnwrap(
+            DitoNotificationCoreDataManager.shared.getAll().first { $0.notificationId == nid }
+        )
+        XCTAssertEqual(record.reference, "", "a coluna existe mas não recebe o valor do payload")
     }
 }

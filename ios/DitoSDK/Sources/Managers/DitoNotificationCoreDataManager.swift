@@ -2,6 +2,12 @@ import CoreData
 import Foundation
 import os.log
 
+/// Inbox storage for received notifications.
+///
+/// The rich-push columns (`image`, `customData`) are optional on purpose: the
+/// `.xcdatamodel` is still unversioned, and an additive optional attribute is the
+/// case Core Data's automatic inferred mapping handles. The next *non-additive*
+/// change to this entity needs real model versioning first.
 class DitoNotificationCoreDataManager {
 
     nonisolated(unsafe) static let shared = DitoNotificationCoreDataManager()
@@ -15,7 +21,6 @@ class DitoNotificationCoreDataManager {
 
     func insert(
         notificationId: String,
-        reference: String,
         title: String,
         message: String,
         link: String,
@@ -29,7 +34,11 @@ class DitoNotificationCoreDataManager {
             let record = DitoNotificationRecord(context: context)
             record.id = UUID().uuidString
             record.notificationId = notificationId
-            record.reference = reference
+            // The model still declares `reference` as non-optional, so the column
+            // has to be written. It is intentionally empty: the field was retired
+            // from Dito payloads and the SDK no longer reads it. Dropping the
+            // attribute is a separate, migration-bearing change.
+            record.reference = ""
             record.title = title
             record.message = message
             record.link = link

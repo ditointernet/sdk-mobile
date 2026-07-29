@@ -18,7 +18,14 @@ let package = Package(
             targets: ["DitoSDKNotificationService"]
         )
     ],
-    dependencies: [],
+    // This is the manifest Xcode resolves for
+    // https://github.com/ditointernet/sdk-mobile, so it is the one integrators
+    // actually build. It must stay in step with ios/Package.swift, which exists
+    // for `Add Local...` pointing at the ios/ directory.
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-protobuf", from: "1.28.0"),
+        .package(url: "https://github.com/connectrpc/connect-swift", from: "0.14.0"),
+    ],
     targets: [
         .target(
             name: "DitoSDKNotificationService",
@@ -27,7 +34,11 @@ let package = Package(
         ),
         .target(
             name: "DitoSDK",
-            dependencies: ["DitoSDKNotificationService"],
+            dependencies: [
+                "DitoSDKNotificationService",
+                .product(name: "SwiftProtobuf", package: "swift-protobuf"),
+                .product(name: "Connect", package: "connect-swift"),
+            ],
             path: "ios/DitoSDK",
             exclude: ["Info.plist"],
             resources: [
