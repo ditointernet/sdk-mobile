@@ -20,6 +20,9 @@ class DitoNotificationHandler(private val context: Context) {
         private const val TAG = "DitoNotificationHandler"
         private const val CHANNEL_KEY = "channel"
         private const val CHANNEL_VALUE = "DITO"
+
+        /** Prefixo estável para grep do dump de payload (T9.1). */
+        private const val PAYLOAD_LOG_PREFIX = "DITO_PUSH_PAYLOAD"
     }
 
     fun canHandle(remoteMessage: RemoteMessage): Boolean {
@@ -36,6 +39,8 @@ class DitoNotificationHandler(private val context: Context) {
             return
         }
 
+        logPayload(remoteMessage)
+
         val notificationId = remoteMessage.data["notification"] ?: ""
         val reference = remoteMessage.data["reference"] ?: ""
         val deepLink = remoteMessage.data["link"] ?: ""
@@ -44,6 +49,13 @@ class DitoNotificationHandler(private val context: Context) {
         val logId = remoteMessage.data["log_id"] ?: ""
         val notificationName = remoteMessage.data["notification_name"] ?: ""
         val userId = remoteMessage.data["user_id"] ?: ""
+
+        // Campos ricos: aditivos e condicionais — só chegam quando a campanha usa o recurso.
+        // `android.notification.image` é o fallback para brands que não estão em modo DATA.
+        val imageUrl = remoteMessage.data["image"]?.takeIf { it.isNotBlank() }
+            ?: remoteMessage.notification?.imageUrl?.toString()
+        val customDataJson = remoteMessage.data["custom_data"]
+        val actions = DitoRichPushParser.parseActions(remoteMessage.data["actions"])
 
         if (notificationId.isNotEmpty() && reference.isNotEmpty()) {
             try {
@@ -76,6 +88,9 @@ class DitoNotificationHandler(private val context: Context) {
             channelDescription = getApplicationName() + " application notifications",
             userId = userId,
             options = Dito.notificationOptions,
+            imageUrl = imageUrl,
+            actions = actions,
+            customDataJson = customDataJson,
         )
 
         val record = DitoNotificationRecord(
@@ -87,6 +102,8 @@ class DitoNotificationHandler(private val context: Context) {
             link = deepLink,
             receivedAt = System.currentTimeMillis(),
             isRead = false,
+            image = imageUrl ?: "",
+            customData = customDataJson ?: "",
         )
         CoroutineScope(Dispatchers.IO).launch {
             DitoDatabase.getInstance(context).ditoNotificationDao().insert(record)
@@ -108,6 +125,25 @@ class DitoNotificationHandler(private val context: Context) {
         } catch (e: Exception) {
             Log.w(TAG, "Failed to register device token: ${e.message}")
         }
+    }
+
+    /**
+     * Dump em linha única do data map completo do FCM, com prefixo estável para grep no logcat.
+     * Só sai com `Options.debug = true` (T9.1).
+     */
+    private fun logPayload(remoteMessage: RemoteMessage) {
+        if (Dito.options?.debug != true) return
+        val data = remoteMessage.data.entries.joinToString(separator = "&") { (key, value) ->
+            "$key=${value.replace("\n", "\\n")}"
+        }
+        val notification = remoteMessage.notification
+        Log.d(
+            TAG,
+            "$PAYLOAD_LOG_PREFIX message_id=${remoteMessage.messageId ?: ""} " +
+                "from=${remoteMessage.from ?: ""} data_keys=${remoteMessage.data.keys.sorted()} " +
+                "has_notification_block=${notification != null} " +
+                "notification_image=${notification?.imageUrl ?: ""} data={$data}",
+        )
     }
 
     private fun getApplicationName(): String {

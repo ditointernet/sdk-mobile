@@ -1,6 +1,8 @@
 package br.com.dito.ditosdk.notification
 
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -43,18 +45,31 @@ class NotificationOpenedActivity : AppCompatActivity() {
             Dito.init(applicationContext, null)
         }
 
-        if (reference != null && notificationId != null) {
-            Log.d(TAG, "✅ Calling Dito.notificationClick()")
-            val userId = intent?.getStringExtra(Dito.DITO_USER_ID) ?: ""
-            val userInfo = mapOf(
-                "notification" to notificationId,
-                "reference" to reference,
-                "deeplink" to (deepLink ?: ""),
-                "user_id" to userId
-            )
+        val actionId = intent?.getStringExtra(DitoNotificationActionReceiver.EXTRA_ACTION_ID) ?: ""
+        if (actionId.isNotEmpty()) {
+            dismissNotification()
+        }
 
-            Dito.notificationClick(userInfo, Dito.notificationClickListener ?: Dito.options?.notificationClickListener)
-            Log.d(TAG, "✅ Dito.notificationClick() called successfully")
+        if (reference != null && notificationId != null) {
+            val userId = intent?.getStringExtra(Dito.DITO_USER_ID) ?: ""
+            if (actionId.isNotEmpty()) {
+                Log.d(TAG, "✅ Broadcasting notification action click: $actionId")
+                broadcastActionClick(actionId, notificationId, reference, deepLink ?: "", userId)
+            } else {
+                Log.d(TAG, "✅ Calling Dito.notificationClick()")
+                val userInfo = mapOf(
+                    "notification" to notificationId,
+                    "reference" to reference,
+                    "deeplink" to (deepLink ?: ""),
+                    "user_id" to userId,
+                    // Só alimenta NotificationResult/listeners; não entra no payload do evento.
+                    DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA to
+                        (intent?.getStringExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA) ?: ""),
+                )
+
+                Dito.notificationClick(userInfo, Dito.notificationClickListener ?: Dito.options?.notificationClickListener)
+                Log.d(TAG, "✅ Dito.notificationClick() called successfully")
+            }
         } else {
             Log.w(TAG, "❌ Cannot call notificationClick: reference=$reference, notificationId=$notificationId")
         }
@@ -68,6 +83,50 @@ class NotificationOpenedActivity : AppCompatActivity() {
         }
 
         finish()
+    }
+
+    /**
+     * Fecha a notificação ao tocar em um botão — `setAutoCancel` só vale para o corpo da notificação.
+     */
+    private fun dismissNotification() {
+        val systemNotificationId = intent?.getIntExtra(
+            DitoNotificationActionReceiver.EXTRA_SYSTEM_NOTIFICATION_ID,
+            0,
+        ) ?: 0
+        if (systemNotificationId == 0) return
+        try {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            manager.cancel(systemNotificationId)
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to dismiss notification: ${e.message}")
+        }
+    }
+
+    /**
+     * Dispara o broadcast do toque no botão, restrito ao próprio pacote. O
+     * [DitoNotificationActionReceiver] (declarado no manifest do SDK) registra o clique; apps
+     * integradores podem declarar o mesmo filtro para observar o evento.
+     */
+    private fun broadcastActionClick(
+        actionId: String,
+        notificationId: String,
+        reference: String,
+        link: String,
+        userId: String,
+    ) {
+        val actionLabel = intent?.getStringExtra(DitoNotificationActionReceiver.EXTRA_ACTION_LABEL) ?: ""
+        val customDataJson = intent?.getStringExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA) ?: ""
+        val broadcast = Intent(DitoNotificationActionReceiver.ACTION_NOTIFICATION_ACTION_CLICK).apply {
+            setPackage(packageName)
+            putExtra(DitoNotificationActionReceiver.EXTRA_ACTION_ID, actionId)
+            putExtra(DitoNotificationActionReceiver.EXTRA_ACTION_LABEL, actionLabel)
+            putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION, notificationId)
+            putExtra(DitoNotificationActionReceiver.EXTRA_REFERENCE, reference)
+            putExtra(DitoNotificationActionReceiver.EXTRA_USER_ID, userId)
+            putExtra(DitoNotificationActionReceiver.EXTRA_LINK, link)
+            putExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA, customDataJson)
+        }
+        sendBroadcast(broadcast)
     }
 
     private fun getTargetIntent(deepLink: String?): Intent? {

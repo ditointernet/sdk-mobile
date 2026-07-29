@@ -76,4 +76,10 @@ data class NotificationResult(
     val notificationId: String,
     val reference: String,
     val deepLink: String,
+    /** Id do botão tocado; vazio quando o clique foi no corpo da notificação. */
+    val actionId: String = "",
+    /** Label do botão tocado; vazio quando o clique foi no corpo da notificação. */
+    val actionLabel: String = "",
+    /** Custom data da campanha já decodificada; vazia quando a campanha não tem custom data. */
+    val customData: Map<String, String> = emptyMap(),
 )

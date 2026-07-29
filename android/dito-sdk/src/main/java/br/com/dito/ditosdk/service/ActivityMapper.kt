@@ -100,18 +100,27 @@ internal class ActivityMapper(private val context: Context) {
             .build()
     }
 
+    /**
+     * @param data Custom data extra do clique (ex.: `action_id`/`action_label` de um botão).
+     *   O backend mescla esse mapa no custom data do evento `click-notification` sem whitelist.
+     */
     fun mapNotificationClick(
         notificationId: String,
         identifier: String,
         activityId: String = UUID.randomUUID().toString(),
+        data: Map<String, String> = emptyMap(),
     ): Api.Activity {
         val ni = Api.NotificationInfo.newBuilder()
             .setNotificationId(notificationId)
             .setIdentifier(identifier)
             .build()
-        val click = Api.Activity.TrackPushClickActivity.newBuilder()
+        val clickBuilder = Api.Activity.TrackPushClickActivity.newBuilder()
             .setNotification(ni)
-            .build()
+        if (data.isNotEmpty()) {
+            val customData = CustomData().apply { data.forEach { (key, value) -> add(key, value) } }
+            clickBuilder.putAllData(customDataToProto(customData))
+        }
+        val click = clickBuilder.build()
         return Api.Activity.newBuilder()
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
