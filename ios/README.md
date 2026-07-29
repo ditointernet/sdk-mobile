@@ -622,7 +622,7 @@ Dito.setNotificationOptions(DitoNotificationOptions(
 ))
 ```
 
-> **Limitação APNs — som em notificações remotas**: A personalização de som via `DitoNotificationOptions` afeta apenas notificações construídas localmente pelo SDK (ex.: reapresentação offline). Para notificações entregues diretamente pelo APNs, o som é definido no payload enviado pelo servidor. Se precisar modificar o conteúdo de notificações APNs no dispositivo (som, badge, attachments), é necessário implementar uma `UNNotificationServiceExtension` no app — o SDK não tem acesso ao content delivery feito pelo APNs.
+> **Limitação APNs — som em notificações remotas**: A personalização de som via `DitoNotificationOptions` afeta apenas notificações construídas localmente pelo SDK (ex.: reapresentação offline). Para notificações entregues diretamente pelo APNs, o som é definido no payload enviado pelo servidor. Modificar o conteúdo de uma notificação APNs no dispositivo (som, badge, attachments) exige uma `UNNotificationServiceExtension` — e o SDK já fornece uma classe base pronta para isso: veja [Rich Push](#-rich-push-imagem-botões-e-custom-data) abaixo.
 
 ### Checklist: Notificações não aparecem?
 
@@ -634,6 +634,149 @@ Dito.setNotificationOptions(DitoNotificationOptions(
 6. ✅ Capabilities: **Push Notifications** habilitada
 7. ✅ Certificates APNs válidos no Firebase Console
 8. ✅ App não tem notificações desabilitadas em Settings
+
+---
+
+## 🖼 Rich Push (imagem, botões e custom data)
+
+Campanhas com **imagem**, **botões de ação** ou **custom data** chegam como campos
+adicionais no payload FCM. Todos são opcionais e aditivos: uma campanha sem esses
+campos continua a funcionar exactamente como antes.
+
+| Campo | Conteúdo |
+| --- | --- |
+| `data.image` | URL da imagem |
+| `data.actions` | JSON string: `[{"id":"comprar_agora","label":"Comprar agora","link":"https://…"}]` |
+| `data.custom_data` | JSON string: `{"nivel_programa":"ouro"}` |
+
+> **Sem a Notification Service Extension o push continua a funcionar** — apenas
+> aparece como título + mensagem, sem imagem e sem botões. A extensão é opcional
+> e pode ser adicionada mais tarde.
+
+### 1. Criar a Notification Service Extension
+
+No Xcode: **File → New → Target… → Notification Service Extension**. Dê um nome
+(ex.: `DitoNotificationServiceExtension`) e associe-a ao mesmo App Group / team
+do app.
+
+### 2. Linkar o módulo extension-safe
+
+O produto `DitoSDK` completo **não** pode ser linkado numa extensão: usa
+`UIApplication` e CoreData, que são API exclusivas de app. Por isso o SDK publica
+um produto separado, `DitoSDKNotificationService`, que contém apenas o que a
+extensão precisa.
+
+**Swift Package Manager** — adicione ao *target* da extensão (e **não** o `DitoSDK`):
+
+```swift
+.target(
+    name: "DitoNotificationServiceExtension",
+    dependencies: [
+        .product(name: "DitoSDKNotificationService", package: "DitoSDK")
+    ]
+)
+```
+
+**CocoaPods** — no `Podfile`:
+
+```ruby
+target 'MeuApp' do
+  pod 'DitoSDK'                       # SDK completo, como sempre
+end
+
+target 'DitoNotificationServiceExtension' do
+  pod 'DitoSDKNotificationService'    # apenas a parte extension-safe
+end
+```
+
+> O `DitoSDK` já depende de `DitoSDKNotificationService`, por isso a app não
+> precisa de o declarar — só o target da extensão é que o faz.
+
+### 3. Herdar da classe base
+
+Substitua o conteúdo do `NotificationService.swift` gerado pelo Xcode por:
+
+```swift
+import DitoSDKNotificationService
+
+class NotificationService: DitoNotificationService {}
+```
+
+Isto basta. A classe base:
+
+- descarrega `data.image` e anexa-a como `UNNotificationAttachment`;
+- regista dinamicamente uma `UNNotificationCategory` cujos `UNNotificationAction`
+  têm como identificador o `id` de cada botão, e define o `categoryIdentifier`
+  do conteúdo;
+- entrega o conteúdo original se algo falhar ou o tempo esgotar.
+
+Para ajustar o tempo máximo do download, sobreponha `imageDownloadTimeout`
+(por omissão 15s).
+
+### 4. Tratar o clique num botão
+
+No app, encaminhe a resposta para o SDK. `Dito.notificationClick(response:)` mapeia
+o `response.actionIdentifier` de volta para o botão declarado no payload:
+
+```swift
+func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+) {
+    Dito.notificationClick(response: response) { link in
+        // `link` é o link do botão tocado, ou o deeplink do push
+        // quando o utilizador tocou no corpo da notificação.
+        self.navigate(to: link)
+    }
+    completionHandler()
+}
+```
+
+O clique num botão **reutiliza o evento de clique existente**, acrescentando
+`action_id` e `action_label` ao mapa de custom data — não é um evento novo.
+
+O objecto devolvido expõe os campos rich:
+
+```swift
+let received = Dito.notificationClick(response: response)
+received.image        // String
+received.actions      // [DitoPushAction] — id, label, link
+received.customData   // [String: String]
+received.actionId     // botão tocado ("" se foi no corpo)
+received.resolvedLink // link do botão, com fallback para o deeplink do push
+```
+
+Imagem e custom data também ficam disponíveis no inbox via
+`Dito.shared.getNotifications()` (`DitoNotificationInfo.image` / `.customData`).
+
+### 5. Depurar o payload
+
+Para inspeccionar o que chegou ao dispositivo, active o dump do payload. Cada push
+produz **uma linha** com o prefixo estável `DITO_PUSH_PAYLOAD` seguida de JSON:
+
+```
+DITO_PUSH_PAYLOAD {"action_ids":["comprar_agora"],"has_image":true,"source":"nse", …}
+```
+
+Ative programaticamente no app:
+
+```swift
+DitoPushDebugLog.isEnabled = true
+```
+
+A extensão corre **noutro processo**, por isso não vê essa configuração e os seus
+logs não saem junto com os do app. Para a activar, adicione ao `Info.plist` **da
+extensão**:
+
+```xml
+<key>DitoPushDebugLog</key>
+<true/>
+```
+
+As linhas saem via `os_log` no subsistema `br.com.dito.sdk`, categoria `push`.
+No Console.app filtre por `DITO_PUSH_PAYLOAD` para ver os dois processos lado a
+lado — o campo `source` distingue `app` de `nse`.
 
 ## ⚠️ Tratamento de Erros
 

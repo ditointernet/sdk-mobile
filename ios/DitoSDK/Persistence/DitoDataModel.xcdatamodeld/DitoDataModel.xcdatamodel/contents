@@ -38,5 +38,9 @@
         <attribute name="receivedAt" optional="NO" attributeType="Date" usesScalarValueType="NO"/>
         <attribute name="reference" optional="NO" attributeType="String"/>
         <attribute name="title" optional="NO" attributeType="String"/>
+        <!-- Rich push. Optional so the change stays inferrable by lightweight
+             migration for stores created by an earlier SDK version. -->
+        <attribute name="image" optional="YES" attributeType="String"/>
+        <attribute name="customData" optional="YES" attributeType="String"/>
     </entity>
 </model>
