@@ -22,7 +22,7 @@ Dito iOS SDK Plugin for Flutter
   # fica em `~> 3.5` — major.minor, não major.minor.patch — para que um patch do SDK nativo
   # não exija uma release do plugin para ser instalável. Quem mexer aqui: a versão pedida
   # tem que existir no repositório, senão nem o modo local resolve. Isso é verificado em CI
-  # por scripts/check-ios-version-pair.sh, e `bump-version.sh` move esta linha junto com o iOS.
+  # por scripts/check-version-pins.sh, e `bump-version.sh` move esta linha junto com o iOS.
   #
   # A NSE do app integrador linka o pod separado `DitoSDKNotificationService`, no target da
   # extension. Ele não entra aqui: uma app extension não pode linkar o Flutter.

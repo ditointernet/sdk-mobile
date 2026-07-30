@@ -132,7 +132,7 @@ pod da extensão precisa estar ali explicitamente — o `DitoSDK` depende dele n
 e sem o path local o CocoaPods vai procurar essa versão no trunk.
 
 A versão que o plugin pede em `s.dependency 'DitoSDK'` tem que existir no repositório;
-`scripts/check-ios-version-pair.sh` verifica isso em CI.
+`scripts/check-version-pins.sh` verifica isso em CI.
 
 ## ⚙️ Configuração Inicial
 

@@ -39,6 +39,17 @@ case "$project" in
     node -e "const fs=require('fs');const p='react-native/package.json';const j=JSON.parse(fs.readFileSync(p,'utf8'));j.version='${version}';fs.writeFileSync(p,JSON.stringify(j,null,2)+'\\n');"
     ;;
   android)
+    # A versão real vem de VERSION_NAME na publicação, mas o default no build script é o
+    # que vale para quem compila do repositório — e é o número que o plugin Flutter fixa.
+    # Ficar de fora deste bump é o que deixou o plugin pedindo `ditosdk:4.1.0`, versão que
+    # não existia nem no Maven Central nem no repositório: nenhum `flutter build apk` do
+    # sample resolvia.
+    sed -i.bak -E "s/(^version = System\\.getenv\\(\"VERSION_NAME\"\\) \\?: \")[^\"]+(\")/\\1${version}\\2/" \
+      android/dito-sdk/build.gradle.kts
+    rm -f android/dito-sdk/build.gradle.kts.bak
+    sed -i.bak -E "s/(DITO_ANDROID_SDK_VERSION\"\\) \\?: \")[^\"]+(\")/\\1${version}\\2/" \
+      flutter/android/build.gradle
+    rm -f flutter/android/build.gradle.bak
     ;;
   *)
     exit 1

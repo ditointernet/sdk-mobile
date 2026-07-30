@@ -22,13 +22,17 @@ buildscript {
 // O escape hatch espelha o que o iOS já tinha (ver flutter/sample_application/ios/Podfile
 // e o marcador flutter/ios/.use_local_dito_ios_sdk):
 //
-//   1. cd android && VERSION_NAME=4.1.0 ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal
+//   1. cd android && VERSION_NAME=4.0.0 ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal
 //   2. touch flutter/android/.use_local_dito_android_sdk
-//   3. export DITO_ANDROID_SDK_VERSION=4.1.0
+//   3. export DITO_ANDROID_SDK_VERSION=4.0.0
 //
 // Sem o marcador nada muda: resolve de google()/mavenCentral() como antes.
+//
+// O default abaixo tem de ser a versão que existe em android/dito-sdk/build.gradle.kts —
+// scripts/check-version-pins.sh reprova o contrário. Pedir uma versão inventada quebra até
+// o modo local, porque o `mavenLocal()` também só tem o que foi publicado dali.
 def useLocalDitoAndroidSdk = new File(projectDir, ".use_local_dito_android_sdk").exists()
-def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "4.1.0"
+def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "4.0.0"
 
 allprojects {
     repositories {
@@ -67,10 +71,9 @@ android {
     }   
 
     dependencies {
-        // 4.1.0 é a versão em que o push rico (E3) entra e **ainda não está publicada**.
-        // Até o release da SDK Android, use o escape hatch documentado no topo deste arquivo.
-        // O pin anterior era 3.4.1, um major atrás da 4.0.0 já publicada — dívida de
-        // alinhamento de versões registrada no plano, não resolvida aqui.
+        // 4.0.0 é a versão do repositório, onde o push rico (E3) entra, e **ainda não está
+        // publicada** no Maven Central — que tem no máximo a 3.5.0. Até o release, use o
+        // escape hatch documentado no topo deste arquivo.
         implementation("br.com.dito:ditosdk:$ditoAndroidSdkVersion")
         implementation("com.google.firebase:firebase-messaging:23.4.0")
         testImplementation("org.jetbrains.kotlin:kotlin-test")

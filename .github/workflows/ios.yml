@@ -107,7 +107,7 @@ jobs:
     # sintoma aparece na mão de quem integra. Falhar aqui é mais barato.
     - name: Check the DitoSDK version the Flutter plugin asks for
       if: steps.check-changes.outputs.has_changes == 'true'
-      run: ./scripts/check-ios-version-pair.sh
+      run: ./scripts/check-version-pins.sh
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'

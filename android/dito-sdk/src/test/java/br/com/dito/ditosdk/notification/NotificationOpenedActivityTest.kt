@@ -32,7 +32,9 @@ class NotificationOpenedActivityTest {
         context = ApplicationProvider.getApplicationContext()
         mockkObject(Dito)
         every { Dito.isInitialized() } returns false
-        every { Dito.getHibridMode() } returns "OFF"
+        // `getHibridMode()` fica **sem stub** de propósito: era ele que lançava
+        // `UninitializedPropertyAccessException` na Activity, e um mock aqui esconderia
+        // exatamente o crash que estes testes existem para pegar.
         every { Dito.options } returns null
         every { Dito.notificationClickListener } returns null
         every { Dito.notificationClick(any(), any()) } returns

@@ -67,7 +67,7 @@ jobs:
 
     - name: Check the DitoSDK version the plugin asks for
       if: steps.check-changes.outputs.has_changes == 'true'
-      run: ./scripts/check-ios-version-pair.sh
+      run: ./scripts/check-version-pins.sh
 
     - name: Install dependencies
       if: steps.check-changes.outputs.has_changes == 'true'

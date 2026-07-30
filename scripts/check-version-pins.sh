@@ -1,12 +1,16 @@
 #!/bin/bash
 #
-# O plugin Flutter pede uma versão do DitoSDK nativo. Se essa versão não existir, nenhum
-# `pod install` no app integrador resolve — e o erro aparece só na máquina de quem tenta
+# O plugin Flutter pede uma versão do SDK nativo em cada plataforma. Se essa versão não
+# existir, nada resolve no app integrador — e o erro aparece só na máquina de quem tenta
 # instalar, não em CI, porque nada no repositório compara os dois números.
 #
-# Foi o que aconteceu: `flutter/ios/dito_sdk.podspec` pedia `DitoSDK (~> 3.6.0)` enquanto o
-# `DitoSDK.podspec` estava em 3.5.0 e o trunk do CocoaPods, em 3.2.1. Este script existe
-# para que isso falhe aqui, em segundos, em vez de na mão de quem integra.
+# Aconteceu nas duas plataformas ao mesmo tempo: `flutter/ios/dito_sdk.podspec` pedia
+# `DitoSDK (~> 3.6.0)` com o repositório em 3.5.0, e `flutter/android/build.gradle` fixava
+# `br.com.dito:ditosdk:4.1.0` com o repositório em 4.0.0 — nenhuma das duas versões existia
+# em lugar nenhum. Este script existe para que isso falhe aqui, em segundos.
+#
+# O que ele **não** verifica: se a versão já foi publicada no trunk do CocoaPods ou no Maven
+# Central. Isso depende de rede e do release, e é assunto do pipeline de publicação.
 
 set -euo pipefail
 
@@ -53,3 +57,16 @@ if [ "$satisfied" != true ]; then
 fi
 
 echo "✅ DitoSDK $ios_version satisfaz o '~> $constraint' pedido pelo plugin Flutter"
+
+# Android: o pin do Gradle é exato, então não há folga — os dois números têm de ser iguais.
+android_version="$(sed -nE 's/^version[[:space:]]*=.*\??:?[[:space:]]*"([^"]+)".*/\1/p' android/dito-sdk/build.gradle.kts | head -n 1)"
+android_pin="$(sed -nE 's/.*DITO_ANDROID_SDK_VERSION.*\?:[[:space:]]*"([^"]+)".*/\1/p' flutter/android/build.gradle | head -n 1)"
+
+[ -n "$android_version" ] || fail "não achei version em android/dito-sdk/build.gradle.kts"
+[ -n "$android_pin" ] || fail "não achei o default de DITO_ANDROID_SDK_VERSION em flutter/android/build.gradle"
+
+if [ "$android_version" != "$android_pin" ]; then
+  fail "flutter/android/build.gradle fixa br.com.dito:ditosdk:$android_pin, e o repositório está em $android_version"
+fi
+
+echo "✅ br.com.dito:ditosdk $android_pin é a versão do repositório"

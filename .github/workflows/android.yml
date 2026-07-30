@@ -45,6 +45,11 @@ jobs:
           fi
         fi
 
+    # Um bump só do Android deixa o plugin Flutter fixando uma versão que não existe, e o
+    # sintoma aparece na mão de quem compila o app. Falhar aqui é mais barato.
+    - name: Check the SDK version the Flutter plugin pins
+      run: ./scripts/check-version-pins.sh
+
     - name: Build Android SDK
       working-directory: android
       run: ./gradlew :dito-sdk:build

@@ -35,7 +35,12 @@ object Dito {
 
     private lateinit var apiKey: String
     private lateinit var apiSecret: String
-    private lateinit var hibridMode: String
+    // `"OFF"` é o default documentado de `br.com.dito.HIBRID_MODE`, e o campo tem de valer
+    // isso antes de qualquer inicialização. Como `lateinit`, `getHibridMode()` lançava
+    // `UninitializedPropertyAccessException` sempre que era lido sem init bem-sucedido — e
+    // `NotificationOpenedActivity.getTargetIntent` o lê no caminho do clique, justamente
+    // quando o app não conseguiu inicializar. Era um crash no toque da notificação.
+    private var hibridMode: String = "OFF"
     private lateinit var tracker: Tracker
     private lateinit var applicationContext: Context
 
