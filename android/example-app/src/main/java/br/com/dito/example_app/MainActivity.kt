@@ -58,6 +58,42 @@ class MainActivity : AppCompatActivity() {
         setupFcmToken()
         loadEnvValues()
         setupClickListeners()
+        logDitoIntentExtras("onCreate", intent)
+    }
+
+    /**
+     * O SDK não abre link nenhum: ele abre o app com o toque inteiro nos extras. Quando a instância
+     * já está viva, o `FLAG_ACTIVITY_CLEAR_TOP` pode entregar o Intent aqui em vez de recriar a
+     * Activity, e sem o `setIntent` o resto da tela continuaria lendo o Intent antigo.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        logDitoIntentExtras("onNewIntent", intent)
+    }
+
+    private fun logDitoIntentExtras(source: String, intent: Intent?) {
+        val extras = linkedMapOf(
+            "notificationId" to Dito.DITO_NOTIFICATION_ID,
+            "reference" to Dito.DITO_NOTIFICATION_REFERENCE,
+            "deepLink" to Dito.DITO_DEEP_LINK,
+            "userId" to Dito.DITO_USER_ID,
+            "actionId" to Dito.DITO_ACTION_ID,
+            "actionLabel" to Dito.DITO_ACTION_LABEL,
+            // Último de propósito: é JSON e pode conter espaços, o que embaralharia os campos
+            // seguintes na linha.
+            "customData" to Dito.DITO_CUSTOM_DATA,
+        ).mapValues { (_, extraKey) -> intent?.getStringExtra(extraKey) }
+
+        val values = extras.entries.joinToString(separator = " ") { (name, value) ->
+            "$name=${value?.replace("\n", "\\n")?.replace("\r", "\\r") ?: ""}"
+        }
+
+        Log.i(
+            "DitoExample",
+            "DITO_INTENT_EXTRAS source=$source " +
+                "present=${extras.filterValues { it != null }.keys} $values",
+        )
     }
 
     private fun requestNotificationPermission() {
