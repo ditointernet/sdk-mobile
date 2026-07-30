@@ -57,7 +57,11 @@ class DitoNotificationHandler(private val context: Context) {
         val customDataJson = remoteMessage.data["custom_data"]
         val actions = DitoRichPushParser.parseActions(remoteMessage.data["actions"])
 
-        if (notificationId.isNotEmpty() && reference.isNotEmpty()) {
+        // Mesmo motivo do clique: só `notificationId` é obrigatório. Com `reference` na
+        // condição, uma campanha sem o campo não registrava **nenhuma** entrega — a
+        // notificação até aparecia na tela, porque `showNotification` está fora do gate,
+        // e o evento simplesmente não existia.
+        if (notificationId.isNotEmpty()) {
             try {
                 if (!Dito.isInitialized()) {
                     Dito.init(context, null)
