@@ -494,18 +494,73 @@ git status --short
 
 Deve estar limpo. Se algo aparecer, liste no relatório.
 
-### Z-2. Relatório
+### Z-2. Capturar evidência visual durante a execução
 
-Produza exatamente esta estrutura. **Não preencha o que não observou**: escreva
-`NÃO EXECUTADO` com o motivo.
+O relatório final é uma **página HTML publicada como artifact**, com o payload e o
+print de tela de cada caso lado a lado. Isso muda o que você precisa coletar
+enquanto roda, então prepare desde o caso 1:
 
-```markdown
-# Relatório — validação local do payload de rich push
+- **Um screenshot por caso, por plataforma.** iOS:
+  `xcrun simctl io "$SIM" screenshot /tmp/dito-push/ios-case$N.png`.
+  Android: `adb exec-out screencap -p > /tmp/dito-push/and-case$N.png`.
+  Tire o print com a notificação **visível** — no iOS o banner só aparece com o
+  app fora do primeiro plano, e dura poucos segundos.
+- **A linha de log literal** de cada caso, guardada em `/tmp/dito-push/*.log`.
 
-Data: <data> · Branch: integration/rich-mobile-push · Commit: <git rev-parse --short HEAD>
-Ambiente: macOS <versão> · Xcode <versão> · simulador <modelo/iOS> · AVD <nome/API> · Flutter <versão> · aparelho <modelo/iOS ou nenhum>
+### Z-3. Montar o relatório HTML
 
-## Matriz de resultados
+Recorte e reduza os prints antes de embutir. Um screenshot de iPhone tem ~1200x2600
+e a página fica impossível de carregar com quatro deles em tamanho cheio. O recorte
+da faixa do banner é o que interessa. Rode um script Python que, para cada
+`*case*.png` em `/tmp/dito-push`:
+
+1. recorta a faixa superior onde o banner aparece (algo como `crop((0, 60, largura, 620))`,
+   ajustando se o print for de outra tela);
+2. reduz com `thumbnail((900, 900))`;
+3. salva como PNG otimizado em memória e converte para `data:image/png;base64,...`;
+4. grava o mapa `nome -> data URI` num JSON em `/tmp/dito-push/shots.json`, e
+   imprime o tamanho em KB de cada um para você notar se algum ficou grande demais.
+
+Sem `PIL` disponível: `pip install pillow`, ou reduza com `sips -Z 900 arquivo.png`
+e converta com `base64 -i arquivo.png`.
+
+Escreva a página num arquivo e publique com a ferramenta de Artifact. Restrições
+que **quebram a página** se ignoradas:
+
+- **Nada externo.** Uma CSP estrita bloqueia CDN, fontes e imagens remotas. Todo
+  CSS e JS inline, toda imagem como `data:` URI. É por isso que os prints são
+  convertidos para base64 acima.
+- **Sem `<!DOCTYPE>`, `<html>`, `<head>` ou `<body>`** no arquivo — o conteúdo é
+  embrulhado na publicação. Comece pelo `<title>` e siga com o conteúdo.
+- **Os dois temas.** A página é renderizada no tema de quem abre. Defina a paleta
+  em custom properties no `:root`, redefina sob
+  `@media (prefers-color-scheme: dark)` e também sob `:root[data-theme="dark"]` e
+  `:root[data-theme="light"]`, que é o que o botão de tema aplica.
+- **Passe um `favicon`** (um emoji) e uma `description` de uma linha.
+- **Tabelas e blocos de código** dentro de um contêiner com `overflow-x: auto`,
+  para o corpo da página nunca rolar na horizontal.
+
+Estrutura obrigatória da página:
+
+1. **Cabeçalho** — branch, commit, data, e o ambiente medido (macOS, Xcode,
+   simulador/iOS, AVD/API, Flutter, aparelho ou "nenhum").
+2. **Aviso de escopo, em destaque** — o que este ambiente pode e não pode provar,
+   com a limitação do `simctl push` nomeada. Sem isso o leitor interpreta a
+   ausência de imagem como defeito.
+3. **Matriz de resultados** — a mesma da tabela abaixo, com o estado codificado em
+   cor *e* em texto (nunca só em cor).
+4. **Um cartão por caso**, e este é o miolo do relatório: o payload JSON à esquerda
+   (ou acima, no mobile) e o print correspondente à direita, com o veredito e a
+   linha de log literal embaixo. É o pareamento payload↔tela que torna o relatório
+   útil para quem não rodou.
+5. **Problemas encontrados** — mais severo primeiro, cada um com severidade,
+   plataforma/caso, reprodução, esperado/observado, evidência literal e se é
+   determinístico.
+6. **Bloqueios** — com a saída de erro literal.
+7. **Ruído esperado** — o que parece defeito e não é.
+8. **Higiene** — `git status --short` limpo após Z-1, onde estão os artefatos.
+
+Matriz, com os mesmos estados de sempre:
 
 | Caso | A: iOS sim (entrega) | B: Android | C1: Flutter/Android | C2: Flutter/iOS | D: aparelho (rich) |
 | --- | --- | --- | --- | --- | --- |
@@ -514,39 +569,21 @@ Ambiente: macOS <versão> · Xcode <versão> · simulador <modelo/iOS> · AVD <n
 | 3 + botão | | | | | |
 | 4 + botão + imagem | | | | | |
 
-PASSA · FALHA · BLOQUEADO · NÃO EXECUTADO · N/A
+`PASSA` · `FALHA` · `BLOQUEADO` · `NÃO EXECUTADO` · `N/A`
 
-Lembrete: ausência de imagem/botões na coluna A e em C2 é `PASSA`, não `FALHA`.
+Lembrete que pertence ao relatório, não só a este playbook: ausência de imagem e
+de botões nas colunas A e C2 é `PASSA`.
 
-## Problemas encontrados
+**Não invente evidência.** Se um print não saiu, o cartão daquele caso diz
+"screenshot não capturado" — nunca reutilize o print de outro caso. Se uma
+plataforma não rodou, o cartão dela não existe; ela aparece só na matriz e em
+Bloqueios.
 
-Um bloco por problema, mais severo primeiro.
+Ao final, relate ao usuário a URL do artifact publicado e as conclusões em uma ou
+duas frases. O artifact é o entregável; o texto é o resumo.
 
-### P1 — <título de uma linha>
-- **Severidade:** Alto / Médio / Baixo
-- **Plataforma e caso:** <ex.: aparelho, caso 4>
-- **Reprodução:** <comandos exatos>
-- **Esperado / Observado:** <critério previsto / o que aconteceu>
-- **Evidência:** <linha de log literal, arquivo, screenshot>
-- **Determinístico?** <repetiu N de N vezes>
 
-## Bloqueios
-
-O que não deu para testar e por quê, com a saída de erro literal.
-
-## Ruído esperado (não é defeito)
-
-Falha de ingest por credencial vazia no Android · ausência de imagem/botões no
-simulador iOS e no Flutter/iOS · `grep -c DITO_PUSH` = 0 na Parte A · divergência
-de `reference` entre plataformas.
-
-## Higiene
-
-- `git status --short` limpo após Z-1: sim / não
-- Artefatos: /tmp/dito-push/
-```
-
-### Z-3. Checagem final
+### Z-4. Checagem final
 
 - Toda linha `FALHA` tem evidência literal, não paráfrase?
 - Algum `FALHA` é na verdade bloqueio de ambiente (rede, permissão, log
