@@ -33,14 +33,28 @@ class NotificationOpenedActivity : AppCompatActivity() {
 
         if (!Dito.isInitialized()) {
             Log.d(TAG, "Dito not initialized, initializing...")
-            Dito.init(applicationContext, null)
+            // `init` **lança** quando o app não declara `br.com.dito.API_KEY` no manifest, e
+            // é exatamente o caso de quem inicializa por código — Flutter e React Native
+            // passam as credenciais em `Dito.init(context, apiKey, secret)`. Sem este catch,
+            // todo toque em notificação depois da morte do processo derrubava o app aqui.
+            // Abrir o app é mais importante que registrar o clique.
+            try {
+                Dito.init(applicationContext, null)
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not initialize Dito on click: ${e.message}")
+            }
         }
 
         if (click.isActionClick) {
             dismissNotification()
         }
 
-        if (click.notificationId.isNotEmpty() && click.reference.isNotEmpty()) {
+        // Só `notificationId` é obrigatório. `reference` está em retirada dos payloads da
+        // Dito e a atribuição ancora em `user_id`; exigi-lo aqui descartava **todo** clique
+        // de campanha sem o campo, no corpo e no botão, sem nada além de um warning no
+        // logcat. Reproduzido no emulador: "❌ Cannot call notificationClick: reference=,
+        // notificationId=case5-notification", com o broadcast do botão também engolido.
+        if (click.notificationId.isNotEmpty()) {
             if (click.isActionClick) {
                 Log.d(TAG, "✅ Broadcasting notification action click: ${click.actionId}")
                 broadcastActionClick(click)
@@ -53,11 +67,7 @@ class NotificationOpenedActivity : AppCompatActivity() {
                 Log.d(TAG, "✅ Dito.notificationClick() called successfully")
             }
         } else {
-            Log.w(
-                TAG,
-                "❌ Cannot call notificationClick: reference=${click.reference}, " +
-                    "notificationId=${click.notificationId}",
-            )
+            Log.w(TAG, "❌ Cannot call notificationClick: notificationId vazio")
         }
 
         getTargetIntent(click)?.let { targetIntent ->
