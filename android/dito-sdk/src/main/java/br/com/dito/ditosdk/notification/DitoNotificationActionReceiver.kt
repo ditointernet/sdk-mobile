@@ -58,8 +58,10 @@ class DitoNotificationActionReceiver : BroadcastReceiver() {
 
         Log.d(TAG, "Notification action clicked: id=$actionId, notification=$notificationId")
 
-        if (notificationId.isEmpty() || reference.isEmpty()) {
-            Log.w(TAG, "Missing notification/reference; skipping click tracking")
+        // `reference` não entra na condição: está em retirada dos payloads e exigi-lo aqui
+        // descartava o registro do clique em botão de qualquer campanha sem o campo.
+        if (notificationId.isEmpty()) {
+            Log.w(TAG, "Missing notification id; skipping click tracking")
             return
         }
 
