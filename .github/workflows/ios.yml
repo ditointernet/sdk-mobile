@@ -103,6 +103,12 @@ jobs:
         echo "IOS_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
         echo "Simulador escolhido (UDID): $UDID"
 
+    # Um bump só do iOS deixa o plugin Flutter pedindo uma versão que não existe, e o
+    # sintoma aparece na mão de quem integra. Falhar aqui é mais barato.
+    - name: Check the DitoSDK version the Flutter plugin asks for
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: ./scripts/check-ios-version-pair.sh
+
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
       env:
@@ -176,7 +182,6 @@ jobs:
         env:
           COCOAPODS_TRUNK_TOKEN: ${{ secrets.COCOAPODS_TRUNK_TOKEN }}
         run: |
-          cd ios
           if [ -z "$COCOAPODS_TRUNK_TOKEN" ]; then
             echo "COCOAPODS_TRUNK_TOKEN not set, skipping CocoaPods publish"
             exit 0

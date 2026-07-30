@@ -117,7 +117,22 @@ DITO_USE_LOCAL_IOS_SDK=1 flutter run
 # ou: touch flutter/ios/.use_local_dito_ios_sdk && flutter run
 ```
 
-Exemplo no `flutter/sample_application/ios/Podfile`: declarar `pod 'DitoSDK', :path => ...` antes de `flutter_install_all_ios_pods` quando estiver em modo local.
+No `flutter/sample_application/ios/Podfile`, em modo local, os **dois** pods são declarados por
+path antes de `flutter_install_all_ios_pods`:
+
+```ruby
+dito_repo_root = File.expand_path('../../..', __dir__)
+pod 'DitoSDK', :path => dito_repo_root
+pod 'DitoSDKNotificationService', :path => dito_repo_root
+```
+
+O `:path` é a **raiz do repositório**, não `ios/`: é onde ficam `DitoSDK.podspec` e
+`DitoSDKNotificationService.podspec`, e os `source_files` deles são relativos a essa raiz. E o
+pod da extensão precisa estar ali explicitamente — o `DitoSDK` depende dele numa versão exata,
+e sem o path local o CocoaPods vai procurar essa versão no trunk.
+
+A versão que o plugin pede em `s.dependency 'DitoSDK'` tem que existir no repositório;
+`scripts/check-ios-version-pair.sh` verifica isso em CI.
 
 ## ⚙️ Configuração Inicial
 

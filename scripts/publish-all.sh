@@ -62,7 +62,6 @@ if [ "$PUBLISH_IOS" = true ]; then
         echo "Error: COCOAPODS_TRUNK_TOKEN not set" >&2
         FAILED_PROJECTS+=("ios")
     else
-        cd ios
         # DitoSDK depends on DitoSDKNotificationService at an exact version, so the
         # extension-safe pod has to reach trunk first or DitoSDK cannot even lint.
         if push_pod DitoSDKNotificationService.podspec && push_pod DitoSDK.podspec; then
@@ -72,7 +71,6 @@ if [ "$PUBLISH_IOS" = true ]; then
             FAILED_PROJECTS+=("ios")
             echo "❌ Failed to publish iOS SDK"
         fi
-        cd ..
     fi
 fi
 

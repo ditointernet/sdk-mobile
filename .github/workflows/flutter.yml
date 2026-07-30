@@ -65,6 +65,10 @@ jobs:
         flutter config --no-analytics
         flutter config --no-cli-animations
 
+    - name: Check the DitoSDK version the plugin asks for
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: ./scripts/check-ios-version-pair.sh
+
     - name: Install dependencies
       if: steps.check-changes.outputs.has_changes == 'true'
       run: |

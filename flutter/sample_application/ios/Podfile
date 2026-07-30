@@ -35,8 +35,15 @@ target 'Runner' do
   use_frameworks!
 
   if dito_use_local_ios_sdk?
-    # Paths in DitoSDK.podspec (ios/DitoSDK/...) are relative to the repo root.
-    pod 'DitoSDK', :path => File.expand_path('../../..', __dir__)
+    # Both podspecs live at the repo root, and their file patterns (ios/DitoSDK/...)
+    # are root-relative, so :path has to be the repo root.
+    #
+    # The extension-safe pod is declared too, not just implied: DitoSDK depends on
+    # it at an exact version, and without a local path CocoaPods goes looking for
+    # that version on trunk — where it does not exist yet.
+    dito_repo_root = File.expand_path('../../..', __dir__)
+    pod 'DitoSDK', :path => dito_repo_root
+    pod 'DitoSDKNotificationService', :path => dito_repo_root
   end
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
