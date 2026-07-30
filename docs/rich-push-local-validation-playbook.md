@@ -67,10 +67,15 @@ fecha os critérios de aceitação pendentes. Se não tiver, registre a Parte D 
   exige a chave; sem ela o SDK ignora a mensagem silenciosamente.
 - **O dump de payload vem desligado** e é ligado no passo A-3. No iOS a extensão
   lê a flag do próprio `Info.plist` — o processo da app não alcança a extensão.
-- **Credenciais vazias não são defeito.** O Android lê
+- **Credenciais vazias não são defeito — mas mudam o que você mede.** O Android lê
   `android/example-app/src/main/assets/.env.development.local`, que não existe no
-  repo. Renderização não depende de credencial; só o envio ao ingest. Falha de
-  ingest vai em "ruído esperado".
+  repo. Renderização não depende de credencial: os quatro casos desenham sem ela, e
+  `Failed to process notification received: É preciso configurar API_KEY` vai em "ruído
+  esperado". O **clique**, porém, passa por um `Dito.init` que exige a chave; sem ela você
+  mede o caminho degradado. Por isso B-6 pede uma chave falsa, e depois pede para tirá-la.
+- **O Android também tem um simulador local, e é o único gatilho que funciona.** O serviço
+  do FCM é `exported="false"` e o emulador não dá root, então `am start-service` é negado.
+  Ver B-4.
 
 ## Os 4 payloads
 
@@ -257,18 +262,26 @@ aparelho da Parte D valem aqui também.
 
 # Parte B — Android nativo (example-app)
 
-> **Não verificado.** O ambiente onde este playbook foi escrito não tinha Java
-> (`Unable to locate a Java Runtime`), então nenhum comando desta parte foi
-> executado. Trate as formas exatas como hipótese: se um comando falhar, use o
-> fallback e **reporte o comando que falhou** — isso é resultado útil.
+> **Executada e verificada** em 2026-07-30, emulador `Medium_Phone` API 37, no commit
+> `656b8f6`. Os quatro casos renderizaram. As formas de comando abaixo são as que
+> funcionaram, não hipóteses — mas o emulador é instável sob automação, então leia as
+> ressalvas antes de culpar o payload.
 
-Diferente do iOS, o Android **renderiza rich push no emulador**: imagem e botões
-são desenhados pelo próprio SDK no processo do app, sem extensão separada. Esta
-parte é a única que valida rich push sem aparelho físico.
+Diferente do iOS, o Android **renderiza rich push no emulador**: imagem e botões são
+desenhados pelo próprio SDK no processo do app, sem extensão separada. Esta parte é a única
+que valida rich push sem aparelho físico, e é onde está o maior valor deste playbook.
 
 ### B-1. Pré-requisitos
 
+`java` e `emulator` provavelmente **não estão no PATH**, e isso não é ausência de
+ferramenta — foi o que me fez registrar esta parte como bloqueada na primeira execução.
+Procure antes de desistir:
+
 ```bash
+export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+export ANDROID_HOME="$HOME/Library/Android/sdk"
+export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
 java -version || echo "BLOQUEADO: sem Java, pare a Parte B"
 emulator -list-avds
 ```
@@ -276,10 +289,16 @@ emulator -list-avds
 Sem AVD: `BLOQUEADO`. Não crie um — isso muda o ambiente do teste.
 
 ```bash
-emulator -avd <avd> -no-snapshot-load &
+emulator -avd <avd> -no-snapshot -no-boot-anim -memory 4096 -cores 4 &
 adb wait-for-device
-adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 1; done'
+adb shell 'while [[ -z $(getprop sys.boot_completed) ]]; do sleep 2; done'
+sleep 30   # o launcher ainda está assentando; começar antes disso provoca ANR
 ```
+
+`-memory 4096 -cores 4` não é capricho: com o default, o SystemUI e o Pixel Launcher dão
+ANR no meio da automação, e o diálogo "isn't responding" **engole todos os taps seguintes**.
+Se aparecer, dispense-o (tap em "Wait") antes de continuar; se voltar sempre, reinicie o
+emulador em vez de insistir.
 
 ### B-2. Instalar e abrir
 
@@ -289,113 +308,225 @@ adb shell monkey -p br.com.dito.example_app -c android.intent.category.LAUNCHER 
 adb shell pm grant br.com.dito.example_app android.permission.POST_NOTIFICATIONS
 ```
 
-A permissão é obrigatória no Android 13+; sem ela nada aparece e parece bug de
-payload.
+A permissão é obrigatória no Android 13+; sem ela nada aparece e parece bug de payload.
 
 ### B-3. Monitor
 
-Mesmo prefixo `DITO_PUSH_PAYLOAD` do iOS, mas **formato diferente**: `key=value`
-com `data={...}`, não JSON. Não tente parsear como JSON. `DITO_PUSH_DISPLAY`
-separa "processei o payload" de "consegui desenhar".
+Mesmo prefixo `DITO_PUSH_PAYLOAD` do iOS, mas **formato diferente**: `key=value` com
+`data={...}`, não JSON. Não tente parsear como JSON. `DITO_PUSH_DISPLAY` separa "processei o
+payload" de "consegui desenhar".
 
 ```bash
 adb logcat -c
-adb logcat | grep -E "DITO_PUSH_PAYLOAD|DITO_PUSH_DISPLAY|DitoNotificationHandler|DitoRichPushParser|NotificationDisplayHelper|NotificationOpenedActivity|DitoNotificationActionReceiver" \
-  > /tmp/dito-push/and-case$N.log 2>&1 &
+adb logcat -v time > /tmp/dito-push/and-caseN.log 2>&1 &
 ```
 
-### B-4. Disparar e sanidade
-
-**Método primário** — entregar direto ao serviço que o manifest registra
-(`DitoMessagingService`), com as chaves como extras. Caso 1:
+Filtre depois, no arquivo. Filtrar no pipe do `logcat` esconde o crash e o ANR, que é
+exatamente o que você precisa ver quando algo falha:
 
 ```bash
-adb shell am start-service \
-  -a com.google.firebase.MESSAGING_EVENT \
-  -n br.com.dito.example_app/br.com.dito.ditosdk.notification.DitoMessagingService \
-  --es channel DITO --es notification case1-notification \
-  --es user_id playbook-user-001 --es reference playbook-ref-001 \
-  --es title "Caso 1" --es message "Titulo e mensagem" --es link "app://dito/case1"
+grep -E "DITO_PUSH_PAYLOAD|DITO_PUSH_DISPLAY|DitoNotificationHandler|DitoRichPushParser|NotificationDisplayHelper|NotificationOpenedActivity|DitoNotificationActionReceiver|AndroidRuntime" /tmp/dito-push/and-caseN.log
 ```
 
-Casos 2 a 4: acrescente `--es image "<url>"`, `--es actions '<json>'`,
-`--es custom_data '<json>'` com os mesmos valores dos `.apns`. As strings JSON têm
-aspas duplas — envolva em aspas simples.
+**`DITO_PUSH_PAYLOAD` só sai com `Dito.options.debug == true`**, que o
+`DitoExampleApplication` já configura. Se a linha desaparecer no meio da bateria, não
+conclua "o payload não chegou": confirme com `DITO_PUSH_DISPLAY` e com o registro do
+NotificationManager (B-5).
 
-**Sanidade:** se o primeiro caso não produzir nenhuma linha `DITO_PUSH_PAYLOAD` no
-logcat, o gatilho não funcionou. Não conclua "entrega quebrada" — vá ao fallback.
-`Permission Denial` ou `Service not found` significam o mesmo.
+### B-4. Disparar
 
-**Fallback** — o sample tem simulador embutido
-(`NotificationDebugHelper.simulateNotification`), acionado pela
-`NotificationDebugActivity`, que lê arquivos de `files/dito_notifications_debug`:
+**O `am start-service` do FCM não funciona**, e não é questão de forma do comando:
+
+```
+Error: Requires permission not exported from uid 10232
+```
+
+O `DitoMessagingService` é `exported="false"`, e a imagem do emulador é de produção
+(`adb root` responde `adbd cannot run as root`), então não há como contornar. O caminho é o
+simulador embutido do sample, que lê arquivos de `files/dito_notifications_debug` e é
+acionado pela `NotificationDebugActivity` — também `exported="false"`, portanto alcançável
+só pela UI, pelo botão "Debug de Notificações" na MainActivity.
+
+O nome do arquivo importa: o sample só lista arquivos que começam com `notification_` e
+terminam em `.json`. Um `and-case1.json` não aparece na lista.
 
 ```bash
-cat > /tmp/dito-push/and-case1.json <<'JSON'
+cat > /tmp/dito-push/notification_case1.json <<'JSON'
 {"data":{"channel":"DITO","notification":"case1-notification","user_id":"playbook-user-001","reference":"playbook-ref-001","title":"Caso 1","message":"Titulo e mensagem","link":"app://dito/case1"}}
 JSON
-adb push /tmp/dito-push/and-case1.json /data/local/tmp/
+
+# Um payload por rodada: o botão "Última" escolhe por data de modificação, e o próprio app
+# salva uma cópia do payload a cada simulação — sem limpar, você simula o caso anterior.
+adb shell run-as br.com.dito.example_app sh -c 'rm -f files/dito_notifications_debug/*.json'
+adb push /tmp/dito-push/notification_case1.json /data/local/tmp/
 adb shell run-as br.com.dito.example_app mkdir -p files/dito_notifications_debug
 adb shell run-as br.com.dito.example_app \
-  cp /data/local/tmp/and-case1.json files/dito_notifications_debug/and-case1.json
-adb shell am start -n br.com.dito.example_app/.NotificationDebugActivity
+  cp /data/local/tmp/notification_case1.json files/dito_notifications_debug/notification_case1.json
 ```
 
-A activity é `exported="false"`; se o `am start` for negado, registre
-`BLOQUEADO — sem gatilho local de push no Android` com as duas saídas de erro.
-Esse é um resultado legítimo e importante: significa que o Android não tem caminho
-de validação local sem alterar o app.
+Depois, na UI, em sequência: **Debug de Notificações** → **Última** → **Simular Esta
+Notificação**. Localize cada botão por `resource-id` em vez de coordenada fixa, porque a
+posição muda com o scroll:
+
+```bash
+adb shell uiautomator dump /sdcard/ui.xml && adb shell cat /sdcard/ui.xml
+# procure br.com.dito.example_app:id/buttonNotificationDebug, :id/buttonLatest, :id/buttonSimulate
+adb shell input tap <x> <y>
+```
+
+Não use `pm clear` entre casos para limpar a gaveta: ele força um cold start com
+re-registro de FCM, e essa carga é o que dispara o ANR do SystemUI. Cada caso tem título
+próprio (`Caso 1`..`Caso 4`), então acumular notificações não confunde a evidência.
 
 ### B-5. Critérios
 
-| Caso | Log | Render |
-| --- | --- | --- |
-| 1 | `DITO_PUSH_PAYLOAD` com `data_keys=[...]` + `DITO_PUSH_DISPLAY` | título + corpo |
-| 2 | `DITO_PUSH_DISPLAY` indicando imagem | miniatura colapsada, imagem expandida |
-| 3 | `DitoRichPushParser` com as duas actions | dois botões, labels exatos |
-| 4 | imagem e actions na mesma linha | imagem **e** botões |
+A evidência **autoritativa** do que o SDK construiu é o registro do NotificationManager, não
+a árvore de UI:
 
-`adb exec-out screencap -p > /tmp/dito-push/and-case$N.png` por caso.
+```bash
+adb shell dumpsys notification --noredact > /tmp/dito-push/and-caseN.dumpsys
+# no bloco pkg=br.com.dito.example_app: android.title, android.text, android.template,
+# android.pictureIcon, e a lista actions={...}
+```
 
-### B-6. Clique — o gate de `reference`
+| Caso | Log | Registro | Render |
+| --- | --- | --- | --- |
+| 1 | `DITO_PUSH_PAYLOAD` com `data_keys=[...]` | `template=BigTextStyle` | título + corpo |
+| 2 | idem, com `image` nas chaves | `template=BigPictureStyle`, `android.pictureIcon` presente | miniatura colapsada, imagem expandida |
+| 3 | `data_keys` com `actions` | `actions=2`, com os labels exatos | dois botões |
+| 4 | `data_keys` com `actions` e `image` | `BigPictureStyle` **e** `actions=2` | imagem **e** botões |
 
-Este é o ponto de maior valor no Android. `NotificationOpenedActivity` **só reporta
-o clique quando `reference` não está vazio**; caso contrário descarta o evento com
-uma linha começando por `❌ Cannot call notificationClick`. O campo `reference`
-está em retirada dos payloads da Dito e o iOS já parou de lê-lo, então teste os
-dois lados:
+Atenção a duas leituras que enganam: `android.picture=null` é normal — a imagem grande fica
+em `android.pictureIcon` — e `android.largeIcon` aparece reduzido (algo como 126x63) porque
+o sistema redimensiona ícone grande. Nenhum dos dois é defeito.
 
-1. Caso 3 **com** `reference` → o clique deve ser reportado.
-2. Caso 3 **sem** a chave `reference` → se aparecer `❌ Cannot call notificationClick`,
-   você reproduziu a perda silenciosa de cliques. **Reporte como Alto**, com a
-   linha literal.
+Print por caso, com a gaveta aberta pelo comando do systemui e a notificação **expandida** —
+colapsada, a notificação não mostra imagem nem botões:
 
-Confirme também que o `action_id` no evento é o `id` do botão tocado
-(`comprar_agora`), e que o app abre o link **do botão** (`app://dito/comprar`), não
-o do push.
+```bash
+adb shell input keyevent 3 && adb shell cmd statusbar expand-notifications && sleep 3
+adb exec-out screencap -p > /tmp/dito-push/and-caseN.png
+# expandir: ache o nó com content-desc="Expand" no uiautomator dump e toque nele
+adb exec-out screencap -p > /tmp/dito-push/and-caseN-expanded.png
+adb shell cmd statusbar collapse
+```
+
+O gesto de arrastar do topo é pior: dependendo da carga abre as configurações rápidas em vez
+da lista, e a metade direita do topo abre sempre as configurações rápidas.
+
+### B-6. Clique — o caminho de maior valor
+
+**Exige credencial no manifest.** Sem `br.com.dito.API_KEY`, o toque na notificação é
+inconclusivo: o SDK não inicializa e você mede o caminho degradado, não o normal. Crie o
+arquivo (é gitignored, e uma chave falsa serve — só o envio ao ingest depende de ela ser
+real):
+
+```bash
+printf 'API_KEY=playbook-fake-api-key\n' > android/example-app/src/main/assets/.env.development.local
+cd android && ./gradlew :example-app:installDebug && cd ..
+```
+
+Dispare o caso 3, expanda a notificação e toque em **Comprar agora**. Espere:
+
+```
+D/NotificationOpenedActivity: Deep Link: app://dito/comprar
+D/NotificationOpenedActivity: ✅ Broadcasting notification action click: comprar_agora
+D/DitoNotificationActionReceiver: Notification action clicked: id=comprar_agora, notification=case3-notification
+```
+
+Três coisas para conferir, nessa ordem: o deeplink é o **do botão** (`app://dito/comprar`),
+não o do push (`app://dito/case3`); o `action_id` é o `id` do botão tocado; e o receiver
+registrou o clique.
+
+**A linha do receiver chega atrasada.** O `broadcastActionClick` é um broadcast de background,
+e a fila do sistema entregou com **~57 segundos** de atraso na medição de 2026-07-30
+(`✅ Broadcasting` às 10:00:05, `Notification action clicked` às 10:01:03). Não conclua
+"o receiver não rodou" depois de 10 segundos — espere pela linha:
+
+```bash
+until grep -q DitoNotificationActionReceiver /tmp/dito-push/and-click.log; do sleep 3; done
+```
+
+Depois repita com o **mesmo payload sem a chave `reference`**. O resultado esperado hoje é
+idêntico ao de cima. Se aparecer
+
+```
+W/NotificationOpenedActivity: ❌ Cannot call notificationClick: reference=, notificationId=...
+```
+
+você encontrou uma **regressão** do commit `840f8f3`: `reference` está em retirada dos
+payloads da Dito e voltou a ser obrigatório em algum gate. Reporte como Alto, com a linha
+literal. Confira também que o clique sem `reference` gera evento de entrega — o mesmo gate
+existia em `DitoNotificationHandler` e zerava a entrega de campanhas sem o campo.
+
+Por fim, **remova a credencial de teste** e confirme que o toque na notificação apenas
+degrada, sem derrubar o app:
+
+```bash
+rm android/example-app/src/main/assets/.env.development.local
+cd android && ./gradlew :example-app:installDebug && cd ..
+# esperado no logcat, e o app abrindo normalmente:
+# W/NotificationOpenedActivity: Could not initialize Dito on click: É preciso configurar API_KEY...
+```
+
+Um `E/AndroidRuntime ... RuntimeException` com `Dito.init` no topo da pilha é regressão do
+commit `bd77c28` — e é o cenário de Flutter e React Native, que passam credencial por
+código e não têm chave no manifest.
 
 ---
 
 # Parte C — Flutter (sample_application)
 
-### C-1. Android — deve renderizar rich push
+### C-1. Android — o build precisa da SDK nativa local
+
+O plugin consome a SDK Android como **artefato publicado**, não como módulo do repo, então
+recurso novo em `android/dito-sdk` só compila aqui depois de publicado. Use o escape hatch,
+com a versão que está em `android/dito-sdk/build.gradle.kts`:
 
 ```bash
-cd flutter/sample_application && flutter pub get && flutter devices
-flutter run -d <emulator-id> 2>&1 | tee /tmp/dito-push/flu-android-run.log
+cd android && VERSION_NAME=4.0.0 ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal -x test -x lint && cd ..
+touch flutter/android/.use_local_dito_android_sdk
+cd flutter/sample_application && flutter build apk --debug && cd ../..
 ```
 
-Dispare os 4 casos pelo método de B-4, trocando o pacote para
-`br.com.dito.example.sample_application` e o componente do serviço conforme
-`grep -n "MESSAGING_EVENT" -B3 flutter/sample_application/android/app/src/main/AndroidManifest.xml`.
+Se `flutter build apk` reclamar `Could not find br.com.dito:ditosdk:<versão>`, o pin do
+plugin não bate com a SDK do repositório. Rode `./scripts/check-version-pins.sh`: é
+exatamente esse desalinhamento que ele reprova.
 
-Critérios de B-5, **mais** a ponte: o evento tem de chegar ao Dart. No log do
-`flutter run`, confirme que o mapa entregue traz `image`, `customData` e, no
-clique de botão, `actionId`.
+**Não há gatilho de push local neste sample** — ele não tem a tela de Debug de Notificações
+do example-app nativo, e o serviço do FCM continua `exported="false"`. Portanto os 4 casos de
+renderização **não são executáveis aqui**; registre `NÃO EXECUTADO` e diga por quê. O
+comportamento de render é o mesmo código já medido na Parte B.
 
-`reference` no mapa do Dart vem **vazio** no iOS e preenchido no Android. Essa
-divergência é conhecida e documentada — registre o que observou, **não reporte
-como defeito novo**.
+O que **é** executável, e é o que importa nesta parte, é o **clique**: a
+`NotificationOpenedActivity` é `exported="true"` com a ação
+`br.com.dito.ditosdk.notification.NOTIFICATION_CLICK`, então dá para entregar um clique
+direto pelo `adb`:
+
+```bash
+adb shell 'am start -a br.com.dito.ditosdk.notification.NOTIFICATION_CLICK \
+  -n br.com.dito.example.sample_application/br.com.dito.ditosdk.notification.NotificationOpenedActivity \
+  --es br.com.dito.ditosdk.DITO_NOTIFICATION_ID case3-notification \
+  --es br.com.dito.ditosdk.DITO_DEEP_LINK app://dito/comprar \
+  --es action_id comprar_agora --es action_label "Comprar agora" \
+  --es custom_data "{\"nivel_programa\":\"ouro\",\"id_pedido\":\"12345\"}"'
+```
+
+Espere: nenhum `E/AndroidRuntime`, a `MainActivity` abrindo com os extras, e a linha do
+`DitoNotificationActionReceiver` — que chega com dezenas de segundos de atraso, ver B-6.
+
+> **Atenção antes de disparar:** o sample Flutter inicializa com **credenciais reais** de um
+> `.env` — a tela mostra "SDK initialized at startup (API Key/Secret from .env)". Um clique
+> sintético aqui é enviado ao ingest **de verdade**, com o `notification` que você inventou.
+> Se isso não for aceitável, apague o `.env` antes, ou pare nesta linha e registre
+> `NÃO EXECUTADO — evita escrever no ambiente real`.
+
+Se o app já tiver uma instância da `NotificationOpenedActivity` viva, o `am start` cai em
+`onNewIntent` — que a Activity **não implementa** — e o clique é engolido sem log. Um
+`am force-stop` antes de cada disparo evita medir isso por acidente.
+
+`reference` no mapa do Dart vem vazio nas duas plataformas: o iOS parou de lê-lo e o Android
+parou de exigi-lo. Registre o que observou, **não reporte como defeito novo**.
 
 ### C-2. iOS — degradação
 
