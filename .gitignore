@@ -226,3 +226,9 @@ doc/memory.md
 android/dito-sdk/proto/mobileingest/mobileingest/v1/api.proto
 android/.kotlin/sessions/kotlin-compiler-4807540833847664787.salive
 .cursor/memory
+
+# Relatórios de validação salvos localmente (scripts/save-report.py).
+# Cópias offline dos artifacts publicados, para acompanhar o que já foi resolvido sem
+# depender do scratchpad de uma sessão. Ficam de fora do repo por peso: cada um traz os
+# prints de tela embutidos como data URI.
+.reports/
