@@ -52,7 +52,7 @@ struct DitoNotificationOffline {
     notificationReceiveDataManager.save(with: json)
   }
 
-  var getNotificationReceive: [NotificationReceive] {
+  var getNotificationReceive: [DitoNotificationReceiveRow] {
     notificationReceiveDataManager.fetchAll
   }
 

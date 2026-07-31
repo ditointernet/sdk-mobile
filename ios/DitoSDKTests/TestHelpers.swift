@@ -27,7 +27,7 @@ class TestHelpers {
         let notificationReceiveDataManager = DitoNotificationReceiveDataManager()
         let receiveRows = notificationReceiveDataManager.fetchAll
         for row in receiveRows {
-            _ = notificationReceiveDataManager.delete(with: row.objectID)
+            _ = notificationReceiveDataManager.delete(with: row.id)
         }
 
         #if DEBUG
