@@ -1,6 +1,19 @@
 import CoreData
 import Foundation
 
+/// Instantâneo imutável de uma linha pendente de clique (`NotificationRead`).
+///
+/// Mesma causa de `DitoNotificationReceiveRow`: o `fetch` abre um contexto de fundo
+/// de vida curta e um `NSManagedObject` não retém o próprio contexto, então devolver
+/// o objeto entrega um fault órfão ao chamador. Aqui o custo é o evento de clique:
+/// `json` volta nil, o `guard` do reenvio pula a linha antes de mexer no contador,
+/// e o clique nunca é reenviado nem descartado.
+struct DitoNotificationReadRow: Sendable {
+  let id: NSManagedObjectID
+  let json: String?
+  let retry: Int16
+}
+
 struct DitoNotificationReadDataManager {
 
   @discardableResult
@@ -78,14 +91,14 @@ struct DitoNotificationReadDataManager {
   }
 
   /// Fetches all notification reads using background context
-  var fetchAll: [NotificationRead] {
+  var fetchAll: [DitoNotificationReadRow] {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext()
     else {
       DitoLogger.error("Failed to create background context for fetch")
       return []
     }
 
-    var results: [NotificationRead] = []
+    var results: [DitoNotificationReadRow] = []
     context.performAndWait {
       let fetchRequest = NSFetchRequest<NotificationRead>(
         entityName: "NotificationRead"
@@ -93,7 +106,11 @@ struct DitoNotificationReadDataManager {
       fetchRequest.returnsObjectsAsFaults = false
 
       do {
-        results = try context.fetch(fetchRequest)
+        // Os atributos são copiados aqui, dentro da fila do contexto: fora dela o
+        // objeto não serve mais (ver `DitoNotificationReadRow`).
+        results = try context.fetch(fetchRequest).map {
+          DitoNotificationReadRow(id: $0.objectID, json: $0.json, retry: $0.retry)
+        }
         DitoLogger.information(
           "\(results.count) Notifications found - Successfully!!!"
         )

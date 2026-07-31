@@ -1,14 +1,6 @@
 import CoreData
 import Foundation
 
-extension DitoRetry {
-    struct NotificationData: Sendable {
-        let id: NSManagedObjectID
-        let json: String?
-        let retry: Int16
-    }
-}
-
 class DitoRetry {
 
     private static let maxRetries: Int16 = 5
@@ -217,7 +209,7 @@ class DitoRetry {
         }
 
         for notification in notifications {
-            let notifID = notification.objectID
+            let notifID = notification.id
             let notifRetry = notification.retry
             guard let jsonData = notification.json,
                   let notificationRequest = jsonData.convertToObject(type: DitoNotificationOpenRequest.self)

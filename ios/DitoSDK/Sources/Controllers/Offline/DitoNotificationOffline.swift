@@ -100,7 +100,7 @@ struct DitoNotificationOffline {
     notificationUnregisterDataManager.delete()
   }
 
-  var getNotificationRead: [NotificationRead] {
+  var getNotificationRead: [DitoNotificationReadRow] {
     return notificationDataManager.fetchAll
   }
 
