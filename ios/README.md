@@ -66,13 +66,57 @@ import DitoSDK
 
 ### 1. Configure o Info.plist
 
-Adicione suas credenciais da Dito no `Info.plist`:
+Adicione suas credenciais da Dito no `Info.plist` do **app**:
 
 ```xml
-<key>ApiKey</key>
+<key>AppKey</key>
 <string>sua-api-key</string>
-<key>ApiSecret</key>
+<key>AppSecret</key>
 <string>seu-api-secret</string>
+```
+
+> **Os nomes são `AppKey` e `AppSecret`.** A SDK lê exatamente essas duas chaves; até
+> a versão 3.5.0 este README pedia `ApiKey`/`ApiSecret`, que a SDK nunca leu. Se a sua
+> integração usa os nomes antigos, ela está rodando **sem credencial** — e sem erro
+> visível, porque a inicialização desiste em silêncio quando a chave vem vazia. Renomeie.
+
+Se `AppSecret` ficar de fora, a SDK usa autenticação `X-Api-Key` com o `AppKey` e o
+bundle id do app. Com os dois, usa o modelo legado (`platform_api_key` + assinatura
+SHA1 da secret).
+
+**Alternativa por código**, para quem inicializa em runtime:
+
+```swift
+Dito.configure(appKey: "sua-api-key", appSecret: "seu-api-secret")
+// ou, no fluxo X-Api-Key:
+Dito.configure(apiKey: "sua-api-key", bundleId: Bundle.main.bundleIdentifier!)
+```
+
+> **Se o seu app é Flutter, React Native ou qualquer híbrido, ponha as chaves no
+> `Info.plist` mesmo inicializando por código.** Credencial passada por código só
+> existe no processo que rodou aquele código. Num cold start provocado por push, o
+> processo sobe e o Dart/JS que chamaria `configure(...)` ainda não rodou — a única
+> fonte disponível é o `Info.plist`. Sem ele, o evento daquele push sai sem
+> autenticação ou não sai.
+
+### 1.1 Habilite o modo background para push
+
+Sem isto o app não é acordado pelo push e **o evento de entrega não sai com o app
+encerrado**:
+
+```xml
+<key>UIBackgroundModes</key>
+<array>
+  <string>remote-notification</string>
+</array>
+```
+
+E confirme o entitlement `aps-environment` no target — sem ele não há push real
+nenhum. Um bundle compilado com `CODE_SIGNING_ALLOWED=NO` não tem entitlements:
+serve para teste local, não para validar push.
+
+```bash
+codesign -d --entitlements - SeuApp.app 2>/dev/null | grep -A1 aps-environment
 ```
 
 ### 2. Configure o Firebase
@@ -786,8 +830,21 @@ lado.
 > num sysdiagnose. A linha `DITO_PUSH_PAYLOAD` é derivada e não contém identidade,
 > mas o payload cru sai numa segunda linha `DITO_PUSH_RAW` marcada como privada
 > (aparece como `<private>` a menos que se active o log de dados privados no
-> aparelho) e com `user_id`, `identifier`, `reference` e `token` redigidos.
-> A extensão do sample vem com a flag em `false` de propósito.
+> aparelho). A extensão do sample vem com a flag em `false` de propósito.
+
+**O que é redigido na linha crua**, recursivamente, inclusive dentro de `data`:
+
+| Categoria | Chaves |
+| --- | --- |
+| identidade | `user_id`, `identifier`, `reference`, `token` |
+| credencial | `api_key`, `apiKey`, `api_secret`, `apiSecret`, `signature`, `sha1_signature` |
+
+A credencial está na lista porque o channel-sender a põe **dentro do payload do
+push**: numa campanha real de produção o `userInfo` chegou com `api_key` ao lado de
+`notification_name` e da lista de acções. Tudo que chega ao `userInfo` chega ao dump.
+
+Valor vazio **não** é redigido — "esta chave chegou vazia" costuma ser exactamente o
+sinal que se está a procurar.
 
 ## ⚠️ Tratamento de Erros
 
