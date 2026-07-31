@@ -49,9 +49,18 @@ public enum DitoPushDebugLog {
   /// materialises for whoever has enabled private-data logging on the device.
   public static let rawPrefix = "DITO_PUSH_RAW"
 
-  /// Payload keys carrying who the user is. Redacted even inside the private
-  /// line: a support log should never be the thing that leaks an identity.
-  static let redactedKeys: Set<String> = ["user_id", "identifier", "reference", "token"]
+  /// Payload keys carrying who the user is, or how to authenticate as the app.
+  /// Redacted even inside the private line: a support log should never be the
+  /// thing that leaks an identity or a credential.
+  ///
+  /// `api_key` and friends are here because the channel-sender puts them **in the
+  /// push payload** — observed in a real production campaign, alongside
+  /// `notification_name` and the action list. Anything that reaches `userInfo`
+  /// reaches this dump, so the credential has to be named explicitly.
+  static let redactedKeys: Set<String> = [
+    "user_id", "identifier", "reference", "token",
+    "api_key", "apiKey", "api_secret", "apiSecret", "signature", "sha1_signature",
+  ]
 
   private static let overrideLock = NSLock()
   nonisolated(unsafe) private static var overrideEnabled: Bool?

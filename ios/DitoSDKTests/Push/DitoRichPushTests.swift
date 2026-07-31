@@ -539,6 +539,32 @@ final class DitoRichPushTests: XCTestCase {
         XCTAssertEqual(object["notification"] as? String, "nid")
     }
 
+    /// A credencial da plataforma viaja **dentro do payload** do push: numa campanha
+    /// real de produção o `userInfo` chegou com `api_key` ao lado de `notification_name`
+    /// e da lista de acções. Tudo que chega ao `userInfo` chega a este dump, então a
+    /// chave tem de ser redigida como a identidade é.
+    func test_pushDebugLog_linhaCrua_redigeCredenciais() throws {
+        let raw = DitoPushDebugLog.rawLine(userInfo: [
+            "notification": "nid",
+            "api_key": "chave-de-plataforma-real",
+            "api_secret": "secret-real",
+            "signature": "sha1-real",
+            "data": ["api_key": "chave-de-plataforma-real"] as [String: Any],
+        ])
+
+        XCTAssertFalse(raw.contains("chave-de-plataforma-real"), "api_key não pode aparecer em claro")
+        XCTAssertFalse(raw.contains("secret-real"), "api_secret não pode aparecer em claro")
+        XCTAssertFalse(raw.contains("sha1-real"), "signature não pode aparecer em claro")
+
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: XCTUnwrap(raw.data(using: .utf8))) as? [String: Any]
+        )
+        XCTAssertEqual(object["api_key"] as? String, "<redacted>")
+        let nested = try XCTUnwrap(object["data"] as? [String: Any])
+        XCTAssertEqual(nested["api_key"] as? String, "<redacted>", "a redacção desce ao data aninhado")
+        XCTAssertEqual(object["notification"] as? String, "nid", "o que não é segredo continua legível")
+    }
+
     /// A linha pública não pode conter o payload cru.
     func test_pushDebugLog_linhaPublica_naoCarregaPayloadCru() {
         let line = DitoPushDebugLog.line(
