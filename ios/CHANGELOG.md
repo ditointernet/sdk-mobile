@@ -1,5 +1,9 @@
 ### Funcionalidades
 
+- feat(ios): NSE de rich push e correções de CoreData, para release 3.6.0 (#31) (0f3577f)
+
+### Funcionalidades
+
 - feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
 
 ### Outros
