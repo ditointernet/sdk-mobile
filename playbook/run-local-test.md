@@ -1,11 +1,26 @@
-# Playbook: validação local do payload de rich push
+# Playbook: teste local simulado de push
 
 Este arquivo é um **prompt de execução**. Você é uma LLM com acesso a um shell no
-macOS, dentro do repositório `sdk-mobile`, na branch `integration/rich-mobile-push`.
-Sua tarefa é validar o payload de rich push nos samples, disparando push
-localmente, e **produzir um relatório dos problemas encontrados**.
+macOS, dentro do repositório `sdk-mobile`. Sua tarefa é validar o payload de rich
+push nos samples **injetando payload localmente pelo terminal**, e produzir um
+relatório dos problemas encontrados.
 
 Você não está corrigindo nada. Você está medindo e relatando.
+
+> **Este é o playbook local.** Ele injeta payload sintético e não passa por
+> FCM/APNs nem pelo painel da Dito. Para validar push **real disparado do painel
+> de produção** — que é o único caminho que mede os contadores de entrega e
+> clique do painel — use [`run-prod-test.md`](./run-prod-test.md).
+>
+> | O que você quer provar | Aqui | `run-prod-test.md` |
+> | --- | --- | --- |
+> | Render de imagem, botões e custom data | ✅ | ✅ |
+> | Parser do payload e mapeamento de `action_id` | ✅ | ✅ |
+> | Entrega via FCM/APNs de verdade | ❌ | ✅ |
+> | Cold start por push real, app morto | ❌ | ✅ |
+> | **Contador de entrega/clique no painel** | ❌ | ✅ |
+> | Token registrado para o usuário certo | ❌ | ✅ |
+> | Rodar num app fora deste repo, com SDK publicada | ❌ | ✅ |
 
 ## O que este playbook pode e não pode provar
 
