@@ -23,6 +23,28 @@ class DitoNotificationHandler(private val context: Context) {
 
         /** Prefixo estável para grep do dump de payload (T9.1). */
         private const val PAYLOAD_LOG_PREFIX = "DITO_PUSH_PAYLOAD"
+
+        private const val REDACTED = "<redacted>"
+
+        /**
+         * Chaves do payload que não podem sair em claro no logcat: quem é o utilizador,
+         * e como autenticar como a app. Ver [logPayload].
+         */
+        private val REDACTED_KEYS = setOf(
+            "user_id", "identifier", "reference", "token",
+            "api_key", "apiKey", "api_secret", "apiSecret", "signature", "sha1_signature",
+        )
+
+        /**
+         * Renderiza o data map para o dump, trocando identidade e credencial por
+         * [REDACTED]. Separada de [logPayload] para poder ser testada sem o framework:
+         * o que interessa fixar é a redacção, não a chamada a `Log.d`.
+         */
+        internal fun redactPayload(data: Map<String, String>): String =
+            data.entries.joinToString(separator = "&") { (key, value) ->
+                val redact = key in REDACTED_KEYS && value.isNotBlank()
+                "$key=${if (redact) REDACTED else value.replace("\n", "\\n")}"
+            }
     }
 
     fun canHandle(remoteMessage: RemoteMessage): Boolean {
@@ -132,14 +154,22 @@ class DitoNotificationHandler(private val context: Context) {
     }
 
     /**
-     * Dump em linha única do data map completo do FCM, com prefixo estável para grep no logcat.
+     * Dump em linha única do data map do FCM, com prefixo estável para grep no logcat.
      * Só sai com `Options.debug = true` (T9.1).
+     *
+     * Identidade e credencial saem como `<redacted>`. As duas categorias chegam de
+     * verdade aqui: numa campanha real de produção o data map veio com `api_key` ao
+     * lado de `notification_name` e da lista de acções — o channel-sender põe a chave
+     * **dentro do payload**. O logcat não é lido só por quem programa: ele entra em
+     * bug report e em captura de suporte.
+     *
+     * Valor vazio fica visível de propósito. "Esta chave chegou vazia" é o sinal que
+     * se vai ler quando algo não chega — foi assim que a perda de eventos por
+     * `reference` ausente apareceu.
      */
     private fun logPayload(remoteMessage: RemoteMessage) {
         if (Dito.options?.debug != true) return
-        val data = remoteMessage.data.entries.joinToString(separator = "&") { (key, value) ->
-            "$key=${value.replace("\n", "\\n")}"
-        }
+        val data = redactPayload(remoteMessage.data)
         val notification = remoteMessage.notification
         Log.d(
             TAG,
