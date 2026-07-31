@@ -70,3 +70,31 @@ if [ "$android_version" != "$android_pin" ]; then
 fi
 
 echo "✅ br.com.dito:ditosdk $android_pin é a versão do repositório"
+
+# Todo arquivo que bump-version.sh escreve tem de estar no `assets` do config de release,
+# e todo `assets` tem de existir em disco. `@semantic-release/git` ignora asset inexistente
+# em silêncio: o bump é gravado na árvore e descartado, e a tag sai apontando para a versão
+# anterior. Foi o que aconteceu com o iOS 3.6.0, que nunca chegou ao trunk do CocoaPods.
+missing="$(node -e '
+const fs = require("fs");
+const missing = [];
+for (const p of ["android", "ios", "flutter", "react-native"]) {
+  const cfg = require(`./.github/semantic-release/${p}.release.config.cjs`);
+  const plugin = (name) => cfg.plugins.find((x) => Array.isArray(x) && x[0] === name);
+  const git = plugin("@semantic-release/git");
+  // O CHANGELOG é criado por @semantic-release/changelog, que roda antes do git no mesmo
+  // release — ele não existir agora é normal e não indica asset errado.
+  const generated = plugin("@semantic-release/changelog")?.[1]?.changelogFile;
+  for (const asset of git?.[1]?.assets || []) {
+    if (asset !== generated && !fs.existsSync(asset)) missing.push(`${p}: ${asset}`);
+  }
+}
+process.stdout.write(missing.join("\n"));
+')"
+
+if [ -n "$missing" ]; then
+  fail "asset de release que não existe em disco (o bump seria descartado em silêncio):
+$missing"
+fi
+
+echo "✅ todos os assets dos configs de release existem"
