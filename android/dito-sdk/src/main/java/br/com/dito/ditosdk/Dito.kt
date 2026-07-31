@@ -35,7 +35,12 @@ object Dito {
 
     private lateinit var apiKey: String
     private lateinit var apiSecret: String
-    private lateinit var hibridMode: String
+    // `"OFF"` é o default documentado de `br.com.dito.HIBRID_MODE`, e o campo tem de valer
+    // isso antes de qualquer inicialização. Como `lateinit`, `getHibridMode()` lançava
+    // `UninitializedPropertyAccessException` sempre que era lido sem init bem-sucedido — e
+    // `NotificationOpenedActivity.getTargetIntent` o lê no caminho do clique, justamente
+    // quando o app não conseguiu inicializar. Era um crash no toque da notificação.
+    private var hibridMode: String = "OFF"
     private lateinit var tracker: Tracker
     private lateinit var applicationContext: Context
 
@@ -76,6 +81,24 @@ object Dito {
     }
 
     /**
+     * Guarda as [Options] do app **sem apagar** as que já estavam lá quando vem `null`.
+     *
+     * O SDK se re-inicializa sozinho em quatro pontos (`NotificationOpenedActivity`,
+     * `DitoNotificationActionReceiver` e duas vezes em `DitoNotificationHandler`), sempre
+     * com `Dito.init(context, null)`. Atribuir `null` nesses pontos destruía a
+     * configuração do app host: `debug`, `retry`, `iconNotification`, `contentIntent` e —
+     * o pior — o `notificationClickListener`. O caso concreto: o processo morre, o usuário
+     * toca na notificação, a `NotificationOpenedActivity` re-inicializa com `null` e aí lê
+     * `Dito.notificationClickListener`, que ela mesma acabou de zerar. O clique era
+     * registrado no backend e nunca chegava ao app.
+     */
+    private fun applyOptions(options: Options?) {
+        if (options == null) return
+        this.options = options
+        this.notificationClickListener = options.notificationClickListener
+    }
+
+    /**
      * Inicializa o SDK lendo `br.com.dito.API_KEY`, `br.com.dito.API_SECRET` (opcional) e
      * `br.com.dito.HIBRID_MODE` do AndroidManifest do app host.
      *
@@ -83,8 +106,7 @@ object Dito {
      * @param options Configurações opcionais do SDK (debug, retry, etc.)
      */
     fun init(context: Context?, options: Options?) {
-        this.options = options
-        this.notificationClickListener = options?.notificationClickListener
+        applyOptions(options)
         if (context == null) throw RuntimeException("Context is not available")
         this.applicationContext = context.applicationContext
         val meta = context.packageManager
@@ -117,8 +139,7 @@ object Dito {
      * @param options Configurações opcionais do SDK
      */
     fun init(context: Context?, apiKey: String, apiSecret: String = "", options: Options? = null) {
-        this.options = options
-        this.notificationClickListener = options?.notificationClickListener
+        applyOptions(options)
         if (context == null) throw RuntimeException("Context is not available")
         this.applicationContext = context.applicationContext
         val hibridMode = resolveHibridMode(context)
@@ -308,7 +329,10 @@ object Dito {
      */
     fun notificationClick(userInfo: Map<String, String>) {
         val data = DitoNotificationHandler.extractReadData(userInfo)
-        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
+        // `reference` fora da condição: está em retirada dos payloads e a atribuição
+        // ancora em `user_id`. Enquanto ele estava aqui, campanha sem o campo não gerava
+        // evento nenhum.
+        if (data.notificationId.isEmpty()) return
         tracker.notificationClick(
             data.notificationId,
             data.reference,
@@ -328,7 +352,10 @@ object Dito {
      */
     fun notificationRead(userInfo: Map<String, String>) {
         val data = DitoNotificationHandler.extractReadData(userInfo)
-        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
+        // `reference` fora da condição: está em retirada dos payloads e a atribuição
+        // ancora em `user_id`. Enquanto ele estava aqui, campanha sem o campo não gerava
+        // evento nenhum.
+        if (data.notificationId.isEmpty()) return
         processNotificationReceived(data)
     }
 
