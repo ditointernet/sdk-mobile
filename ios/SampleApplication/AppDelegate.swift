@@ -317,8 +317,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
   ) {
     let userInfo = response.notification.request.content.userInfo
 
-    // Notifica o Dito SDK sobre o clique na notificação
-    Dito.notificationClick(userInfo: userInfo)
+    // Notifica o Dito SDK sobre o clique na notificação.
+    // Passar a `response` inteira é o que permite distinguir um toque num botão
+    // de rich push de um toque no corpo — com apenas o `userInfo` o SDK não tem
+    // como saber qual botão foi tocado.
+    Dito.notificationClick(response: response) { link in
+        print("🔗 [CLICK] link a abrir: \(link)")
+    }
 
     // Notifica o Firebase Messaging sobre a interação com a notificação
     Messaging.messaging().appDidReceiveMessage(userInfo)

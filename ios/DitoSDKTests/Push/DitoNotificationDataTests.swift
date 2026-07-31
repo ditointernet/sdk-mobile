@@ -195,7 +195,9 @@ final class DitoNotificationDataTests: XCTestCase {
         let list = Dito.shared.getNotifications()
         let match = list.first { $0.notificationId == nid }
         XCTAssertNotNil(match, "registo local via Core Data deve incluir a notificação")
-        XCTAssertEqual(match?.reference, reference)
+        // `reference` deixou de ser lido do payload (campo em retirada; a
+        // atribuição ancora em user_id), por isso não é asserido aqui.
+        // Ver test_payload_comReference_naoPropagaOCampo em DitoRichPushTests.
         XCTAssertEqual(match?.title, title)
         XCTAssertEqual(match?.message, message)
         XCTAssertEqual(match?.link, link)

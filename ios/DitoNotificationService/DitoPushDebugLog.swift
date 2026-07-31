@@ -11,6 +11,16 @@ public enum DitoPushLogSource: String, Sendable {
   case notificationServiceExtension = "nse"
 }
 
+/// Which moment of a push's life a log line describes.
+///
+/// The app process emits a line both when a push arrives and when one is tapped;
+/// without this field the two are indistinguishable, which is exactly the
+/// distinction a delivery-versus-click investigation needs.
+public enum DitoPushLogEvent: String, Sendable {
+  case received
+  case clicked
+}
+
 /// Single-line, greppable dump of an incoming push payload.
 ///
 /// Disabled by default. Enable it either programmatically (`DitoPushDebugLog.isEnabled`)
@@ -35,6 +45,24 @@ public enum DitoPushDebugLog {
   /// keeps a full payload while bounding a pathological one.
   static let maxRawLength = 4096
 
+  /// Prefix of the companion raw-payload line. Emitted privately, so it only
+  /// materialises for whoever has enabled private-data logging on the device.
+  public static let rawPrefix = "DITO_PUSH_RAW"
+
+  /// Payload keys carrying who the user is, or how to authenticate as the app.
+  /// Redacted even inside the private line: a support log should never be the
+  /// thing that leaks an identity or a credential.
+  ///
+  /// `api_key` and friends are here because the channel-sender puts them **in the
+  /// push payload** — observed in a real production campaign, alongside
+  /// `notification_name` and the action list. Anything that reaches `userInfo`
+  /// reaches this dump, so the credential has to be named explicitly.
+  static let redactedKeys: Set<String> = [
+    "user_id", "identifier", "reference", "token",
+    "api_key", "apiKey", "api_secret", "apiSecret", "signature", "sha1_signature",
+  ]
+
+  private static let overrideLock = NSLock()
   nonisolated(unsafe) private static var overrideEnabled: Bool?
 
   /// Whether payload dumping is on.
@@ -43,29 +71,55 @@ public enum DitoPushDebugLog {
   /// flag of the *running* bundle, then the existing `EnabledDebug` launch argument.
   public static var isEnabled: Bool {
     get {
-      if let overrideEnabled { return overrideEnabled }
+      overrideLock.lock()
+      let override = overrideEnabled
+      overrideLock.unlock()
+      if let override { return override }
       if let flag = Bundle.main.object(forInfoDictionaryKey: infoPlistKey) as? Bool { return flag }
       return ProcessInfo.processInfo.arguments.contains("EnabledDebug")
     }
-    set { overrideEnabled = newValue }
+    set {
+      overrideLock.lock()
+      overrideEnabled = newValue
+      overrideLock.unlock()
+    }
   }
 
   /// Restores flag resolution to its Info.plist / launch-argument default.
   public static func resetEnabledOverride() {
+    overrideLock.lock()
     overrideEnabled = nil
+    overrideLock.unlock()
   }
 
-  /// Emits one line describing `userInfo`. No-op when disabled.
-  public static func dump(source: DitoPushLogSource, userInfo: [AnyHashable: Any]) {
+  /// Emits the summary line, plus the raw payload as a second, private line.
+  /// No-op when disabled.
+  ///
+  /// The split is deliberate: the summary is derived, carries no identity and
+  /// stays public so `grep DITO_PUSH_PAYLOAD` keeps working, while the untouched
+  /// payload goes out as `%{private}@` and shows up as `<private>` unless private
+  /// data is explicitly enabled on the device. `os_log` output is persisted and
+  /// travels in a sysdiagnose, so it is not a place for a user id.
+  public static func dump(
+    event: DitoPushLogEvent,
+    source: DitoPushLogSource,
+    userInfo: [AnyHashable: Any]
+  ) {
     guard isEnabled else { return }
-    os_log("%{public}@", log: log, type: .info, line(source: source, userInfo: userInfo))
+    os_log("%{public}@", log: log, type: .info, line(event: event, source: source, userInfo: userInfo))
+    os_log("%{public}@ %{private}@", log: log, type: .debug, rawPrefix, rawLine(userInfo: userInfo))
   }
 
-  /// Builds the log line. Exposed for tests so the format stays pinned.
-  static func line(source: DitoPushLogSource, userInfo: [AnyHashable: Any]) -> String {
+  /// Builds the summary line. Exposed for tests so the format stays pinned.
+  static func line(
+    event: DitoPushLogEvent,
+    source: DitoPushLogSource,
+    userInfo: [AnyHashable: Any]
+  ) -> String {
     let payload = DitoRichPushPayload(userInfo: userInfo)
 
     var summary: [String: Any] = [
+      "event": event.rawValue,
       "source": source.rawValue,
       "notification": DitoRichPushPayload.stringValue(userInfo, key: "notification") ?? "",
       "log_id": DitoRichPushPayload.stringValue(userInfo, key: "log_id") ?? "",
@@ -77,13 +131,14 @@ public enum DitoPushDebugLog {
     if let imageURL = payload.imageURL {
       summary["image"] = imageURL.absoluteString
     }
-    summary["raw"] = rawDescription(userInfo)
 
     return "\(prefix) \(compactJSON(summary))"
   }
 
-  /// JSON-safe, single-line rendering of the untouched payload.
-  private static func rawDescription(_ userInfo: [AnyHashable: Any]) -> String {
+  /// JSON-safe, single-line rendering of the payload, with identity redacted.
+  ///
+  /// Exposed for tests so the redaction stays pinned. Only ever logged privately.
+  static func rawLine(userInfo: [AnyHashable: Any]) -> String {
     let rendered = compactJSON(sanitized(userInfo))
     return rendered.count > maxRawLength
       ? String(rendered.prefix(maxRawLength)) + "…<truncated>"
@@ -102,13 +157,23 @@ public enum DitoPushDebugLog {
     return string
   }
 
-  /// Coerces an arbitrary `userInfo` into something `JSONSerialization` accepts.
+  /// Coerces an arbitrary `userInfo` into something `JSONSerialization` accepts,
+  /// redacting identity along the way — including inside nested `data` payloads,
+  /// since the recursion reaches them too.
+  ///
+  /// An empty value is left as-is rather than redacted: there is nothing to leak,
+  /// and "this key arrived empty" is usually the whole point of reading the log.
   private static func sanitized(_ value: Any) -> Any {
     switch value {
     case let dictionary as [AnyHashable: Any]:
       var result: [String: Any] = [:]
       for (key, nested) in dictionary {
-        result["\(key)"] = sanitized(nested)
+        let name = "\(key)"
+        if redactedKeys.contains(name), !isEmptyValue(nested) {
+          result[name] = "<redacted>"
+        } else {
+          result[name] = sanitized(nested)
+        }
       }
       return result
     case let array as [Any]:
@@ -122,5 +187,13 @@ public enum DitoPushDebugLog {
     default:
       return String(describing: value)
     }
+  }
+
+  private static func isEmptyValue(_ value: Any) -> Bool {
+    if value is NSNull { return true }
+    if let string = value as? String {
+      return string.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+    return false
   }
 }

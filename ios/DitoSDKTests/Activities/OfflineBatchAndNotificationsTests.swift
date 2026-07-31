@@ -133,7 +133,6 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         let title = "Título integração getNotifications"
         DitoNotificationCoreDataManager.shared.insert(
             notificationId: nid,
-            reference: "ref-getnotif",
             title: title,
             message: "Corpo",
             link: "https://example.test/get"

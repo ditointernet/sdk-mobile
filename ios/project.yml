@@ -32,9 +32,12 @@ targets:
           - "NotificationServiceExtension/**"
     dependencies:
       - target: DitoSDK
-      # DitoSDK e a extensão linkam ambos este framework via @rpath; é a app
-      # que o tem de embeber, senão o dyld falha no arranque.
+      # DitoSDK e a extensão linkam ambos este framework via @rpath; é a app que
+      # o tem de embeber, senão o dyld falha no arranque. A app não precisa de
+      # linkar contra ele — chega-lhe via DitoSDK — por isso só embebe.
       - target: DitoSDKNotificationService
+        embed: true
+        link: false
       - target: SampleNotificationService
       - package: Firebase
         product: FirebaseAnalytics
@@ -126,6 +129,9 @@ targets:
       - path: DitoSDKTests
     dependencies:
       - target: DitoSDK
+      # Explícito: os testes fazem `@testable import DitoSDKNotificationService`,
+      # que já não chega por reexportação depois de trocar @_exported por typealias.
+      - target: DitoSDKNotificationService
     settings:
       base:
         INFOPLIST_FILE: DitoSDKTests/Info.plist

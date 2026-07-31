@@ -500,11 +500,14 @@ func handleDeeplink(_ deeplink: String) {
 
 #### Dados retornados
 
+> `reference` deixou de ser lido do payload: o campo está em retirada e a
+> atribuição ancora em `user_id`. `DitoNotificationInfo.reference` continua a
+> existir marcado como deprecated e devolve sempre `""`.
+
 ```swift
 let notification: DitoNotificationReceived = [
     "notification": "ID da notificação",
     "identifier": "ID do usuário",
-    "reference": "SHA1 do usuário",
     "title": "Título",
     "message": "Mensagem",
     "deeplink": "app://link",

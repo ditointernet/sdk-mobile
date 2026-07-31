@@ -136,7 +136,7 @@ class DitoNotification {
             #endif
             // Full payload dump, behind DitoPushDebugLog's flag. The extension
             // emits the same line from its own process with source="nse".
-            DitoPushDebugLog.dump(source: .app, userInfo: userInfo)
+            DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
 
             self.notificationOffline.notificationRead(notificationRequest)
         }
@@ -146,12 +146,11 @@ class DitoNotification {
     ///   button tap it carries `action_id` / `action_label` (D-03).
     func notificationClick(
         notificationId: String,
-        reference: String,
         identifier: String,
         data: [String: String] = [:]
     ) {
         #if DEBUG
-        let action = data["action_id"].map { " action=\($0)" } ?? ""
+        let action = data[DitoRichPushKeys.actionId].map { " action=\($0)" } ?? ""
         DitoLogger.information("👆 [NOTIFICATION CLICK] id=\(notificationId)\(action)")
         #endif
 
@@ -160,7 +159,6 @@ class DitoNotification {
         Task {
             await processNotificationClick(
                 notificationId: notificationId,
-                reference: reference,
                 identifier: identifier,
                 data: data
             )
@@ -169,9 +167,8 @@ class DitoNotification {
 
     private func processNotificationClick(
         notificationId: String,
-        reference: String,
         identifier: String,
-        data: [String: String] = [:]
+        data: [String: String]
     ) async {
         guard !identifier.isEmpty else {
             DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
@@ -191,11 +188,11 @@ class DitoNotification {
             // Keep the rich-push context so a replayed click still reports
             // which button was tapped.
             var customData = data
-            let actionId = customData.removeValue(forKey: "action_id") ?? ""
-            let actionLabel = customData.removeValue(forKey: "action_label") ?? ""
+            let actionId = customData.removeValue(forKey: DitoRichPushKeys.actionId) ?? ""
+            let actionLabel = customData.removeValue(forKey: DitoRichPushKeys.actionLabel) ?? ""
             let notificationData = DitoDataNotification(
                 identifier: identifier,
-                reference: reference,
+                reference: "",
                 notification: notificationId,
                 notificationLogId: "",
                 userId: identifier,

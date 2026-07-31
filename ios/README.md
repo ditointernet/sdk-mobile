@@ -756,8 +756,12 @@ Para inspeccionar o que chegou ao dispositivo, active o dump do payload. Cada pu
 produz **uma linha** com o prefixo estável `DITO_PUSH_PAYLOAD` seguida de JSON:
 
 ```
-DITO_PUSH_PAYLOAD {"action_ids":["comprar_agora"],"has_image":true,"source":"nse", …}
+DITO_PUSH_PAYLOAD {"action_ids":["comprar_agora"],"event":"received","has_image":true,"source":"nse", …}
 ```
+
+O campo `event` distingue `received` de `clicked` — é o que separa um problema de
+entrega de um problema de clique. O campo `source` distingue o processo (`app` ou
+`nse`).
 
 Ative programaticamente no app:
 
@@ -776,7 +780,14 @@ extensão**:
 
 As linhas saem via `os_log` no subsistema `br.com.dito.sdk`, categoria `push`.
 No Console.app filtre por `DITO_PUSH_PAYLOAD` para ver os dois processos lado a
-lado — o campo `source` distingue `app` de `nse`.
+lado.
+
+> ⚠️ **Não deixe activo em produção.** O `os_log` é persistido no aparelho e vai
+> num sysdiagnose. A linha `DITO_PUSH_PAYLOAD` é derivada e não contém identidade,
+> mas o payload cru sai numa segunda linha `DITO_PUSH_RAW` marcada como privada
+> (aparece como `<private>` a menos que se active o log de dados privados no
+> aparelho) e com `user_id`, `identifier`, `reference` e `token` redigidos.
+> A extensão do sample vem com a flag em `false` de propósito.
 
 ## ⚠️ Tratamento de Erros
 
