@@ -57,6 +57,29 @@ final class DitoRetryTests: XCTestCase {
         )
     }
 
+    private func makeClickRequest(
+        notificationId: String,
+        userId: String,
+        actionId: String = ""
+    ) -> DitoNotificationOpenRequest {
+        DitoNotificationOpenRequest(
+            platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
+            sha1Signature: Dito.signature,
+            data: DitoDataNotification(
+                from: [
+                    "user_id": userId,
+                    "notification": notificationId,
+                    "log_id": "log-\(notificationId)",
+                    "notification_name": "campanha-clique",
+                    "title": "titulo",
+                    "message": "mensagem",
+                ],
+                actionId: actionId,
+                actionLabel: actionId.isEmpty ? "" : "Ver oferta"
+            )
+        )
+    }
+
     private func savePostIdentify(userId: String) {
         let signup = makeSignup()
         guard let signupJson = signup.toString else {
@@ -134,6 +157,80 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertEqual(unreg.provider, .providerFcm)
 
         XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
+    }
+
+    /// O clique offline tem de chegar ao ingest com o payload inteiro.
+    ///
+    /// Cobre a regressão do fault órfão de CoreData: quando `fetchAll` devolvia o
+    /// `NSManagedObject`, `json` voltava nil fora do contexto e este reenvio era
+    /// silenciosamente pulado.
+    func testLoadOffline_postIdentify_pendingClick_sendsPushClickWithPayloadAndClearsCoreData() async throws {
+        let mock = MockMobileIngestClient()
+        mock.shouldSucceed = true
+
+        let userId = "uid-retry-click-1"
+        let notificationId = "01KYTJGZF2K8F2F4C84ZNE734J"
+        savePostIdentify(userId: userId)
+
+        let click = makeClickRequest(
+            notificationId: notificationId,
+            userId: userId,
+            actionId: "btn-oferta"
+        )
+        guard let clickJson = click.toString else {
+            XCTFail("click json")
+            return
+        }
+        XCTAssertTrue(DitoNotificationReadDataManager().save(with: clickJson, retry: 0))
+
+        let sut = DitoRetry(client: mock)
+        await sut.runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 1)
+        let req = try XCTUnwrap(mock.allActivityRequests.first)
+        XCTAssertEqual(req.userID, userId)
+        XCTAssertEqual(req.activities.count, 1)
+        let act = try XCTUnwrap(req.activities.first)
+        guard let oneOf = act.activity, case .trackPushClick(let pushClick) = oneOf else {
+            XCTFail("esperado trackPushClick; activity=\(String(describing: act.activity))")
+            return
+        }
+        XCTAssertEqual(pushClick.notification.notificationID, notificationId)
+        XCTAssertEqual(pushClick.notification.identifier, userId)
+        XCTAssertEqual(
+            pushClick.data[DitoRichPushKeys.actionId]?.single.stringValue,
+            "btn-oferta",
+            "o action_id do botão precisa sobreviver ao trânsito pelo offline"
+        )
+
+        XCTAssertTrue(DitoNotificationReadDataManager().fetchAll.isEmpty)
+    }
+
+    /// Se o ingest falha, a linha do clique fica — e o contador **avança**.
+    ///
+    /// Sob o fault órfão o `guard` pulava a linha antes de mexer no `retry`, então o
+    /// clique nunca era reenviado nem descartado: ficava preso na fila para sempre.
+    func testLoadOffline_postIdentify_pendingClick_ingestFails_rowSurvivesWithIncrementedRetry() async throws {
+        let mock = MockMobileIngestClient()
+
+        let userId = "uid-retry-click-fail-1"
+        savePostIdentify(userId: userId)
+
+        let click = makeClickRequest(notificationId: "notif-click-fail", userId: userId)
+        guard let clickJson = click.toString else {
+            XCTFail("click json")
+            return
+        }
+        XCTAssertTrue(DitoNotificationReadDataManager().save(with: clickJson, retry: 0))
+
+        mock.shouldSucceed = false
+        let sut = DitoRetry(client: mock)
+        await sut.runLoadOffline()
+
+        let rows = DitoNotificationReadDataManager().fetchAll
+        XCTAssertEqual(rows.count, 1, "a linha do clique não pode ser descartada por uma falha de rede")
+        XCTAssertEqual(rows.first?.retry, 1, "o contador tem de avançar, senão o clique nunca sai nem expira")
+        XCTAssertNotNil(rows.first?.json)
     }
 
     func testLoadOffline_identifyNotSent_firstActivityFails_tracksRemainAndNoFurtherActivityCalls() async throws {

@@ -21,7 +21,7 @@ class TestHelpers {
         let notificationReadDataManager = DitoNotificationReadDataManager()
         let notifications = notificationReadDataManager.fetchAll
         for notification in notifications {
-            _ = notificationReadDataManager.delete(with: notification.objectID)
+            _ = notificationReadDataManager.delete(with: notification.id)
         }
 
         let notificationReceiveDataManager = DitoNotificationReceiveDataManager()
