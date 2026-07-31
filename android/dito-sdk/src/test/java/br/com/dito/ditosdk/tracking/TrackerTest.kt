@@ -2,14 +2,17 @@ package br.com.dito.ditosdk.tracking
 
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
+import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
+import br.com.dito.ditosdk.IdentifyOff
 import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import com.google.common.truth.Truth.assertThat
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import kotlinx.coroutines.delay
@@ -153,6 +156,43 @@ class TrackerTest {
     }
 
     @Test
+    fun `awaitId should wait for the persisted identify to load`() = testScope.runTest {
+        every { trackerOffline.getIdentify() } returns IdentifyOff(
+            id = "user123",
+            name = null,
+            email = null,
+            gender = null,
+            birthday = null,
+            location = null,
+            customDataJson = null,
+            send = true,
+        )
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        // Leitura direta ainda não vê nada: é este instante que o flush no cold start pegava.
+        assertThat(coldTracker.idOrNull).isNull()
+
+        assertThat(coldTracker.awaitId()).isEqualTo("user123")
+    }
+
+    @Test
+    fun `awaitId should not overwrite an identify set while loading`() = testScope.runTest {
+        every { trackerOffline.getIdentify() } returns IdentifyOff(
+            id = "stale-user",
+            name = null,
+            email = null,
+            gender = null,
+            birthday = null,
+            location = null,
+            customDataJson = null,
+            send = true,
+        )
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        coldTracker.id = "fresh-user"
+
+        assertThat(coldTracker.awaitId()).isEqualTo("fresh-user")
+    }
+
+    @Test
     fun `notificationClick should not call client when reference is empty`() = testScope.runTest {
         tracker.id = "user123"
 
@@ -180,6 +220,79 @@ class TrackerTest {
         tracker.notificationClick("notif123", "ref123", "user123")
 
         delay(500)
-        verify { trackerOffline.notificationRead(any(), any(), any()) }
+        verify { trackerOffline.notificationRead(any(), any(), any(), any()) }
     }
+
+    @Test
+    fun `notificationClick should persist action data offline on API error`() = testScope.runTest {
+        tracker.id = "user123"
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+        val actionData = mapOf("action_id" to "botao_1", "action_label" to "Botão 1")
+
+        tracker.notificationClick("notif123", "ref123", "user123", actionData)
+
+        delay(500)
+        verify { trackerOffline.notificationRead(any(), "notif123", "user123", actionData) }
+    }
+
+    @Test
+    fun `notificationReceived should queue delivery event on API error`() = testScope.runTest {
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        // Antes disto a exceção era engolida por um catch vazio: a entrega perdida não deixava
+        // fila nem log, e era indistinguível de uma entrega bem-sucedida.
+        verify { trackerOffline.event(any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived should persist identify so the queue can be drained later`() = testScope.runTest {
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+        every { trackerOffline.getIdentify() } returns null
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        verify { trackerOffline.identify(any(), false) }
+    }
+
+    @Test
+    fun `notificationReceived should not overwrite a richer stored identify`() = testScope.runTest {
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+        every { trackerOffline.getIdentify() } returns IdentifyOff(
+            id = "user123",
+            name = "Igor",
+            email = "igor@example.com",
+            gender = null,
+            birthday = null,
+            location = null,
+            customDataJson = null,
+            send = true,
+        )
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        verify(exactly = 0) { trackerOffline.identify(any(), any()) }
+        verify { trackerOffline.event(any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived should not queue anything on success`() = testScope.runTest {
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        coVerify { mockClient.activity(any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any()) }
+    }
+
+    private fun notificationReadData() = Dito.NotificationReadData(
+        notificationId = "notif123",
+        reference = "",
+        logId = "log123",
+        notificationName = "campanha",
+        userId = "user123",
+    )
 }
