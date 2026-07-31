@@ -232,3 +232,9 @@ android/.kotlin/sessions/kotlin-compiler-4807540833847664787.salive
 # depender do scratchpad de uma sessão. Ficam de fora do repo por peso: cada um traz os
 # prints de tela embutidos como data URI.
 .reports/
+
+# Réplica híbrida local, montada para reproduzir a perda de entrega/clique fora do
+# sample oficial. Fica de fora do repo por três motivos: traz `.env.development.local`
+# com credenciais de produção reais, carrega ~2.8 GB de `build/` e `.dart_tool/`, e é
+# um banco de provas descartável — não um sample que a gente mantenha.
+flutter/SampleAppAbstration/
