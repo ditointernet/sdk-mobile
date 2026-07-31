@@ -4,6 +4,15 @@
 
 ### Outros
 
+- chore(release): ios 3.5.0 (9bbc077)
+- chore(release): ios 3.4.1 (3fd1d14)
+
+### Funcionalidades
+
+- feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
+
+### Outros
+
 - chore(release): ios 3.4.1 (3fd1d14)
 
 ### Correções

@@ -500,7 +500,7 @@ Para um guia completo de configuração de Push Notifications, consulte o [guia 
 
 ### 🖼️ Push rico: imagem, botões de ação e custom data
 
-A partir da versão **4.1.0**, uma campanha pode trazer uma imagem, até dois botões de ação e
+A partir da versão **3.6.0**, uma campanha pode trazer uma imagem, até dois botões de ação e
 custom data. **Não é preciso configurar nada**: a SDK detecta as chaves no payload e
 renderiza. Um push sem essas chaves renderiza exatamente como antes.
 
