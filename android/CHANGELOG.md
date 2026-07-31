@@ -1,5 +1,9 @@
 ### Funcionalidades
 
+- feat(android): rich push — imagem, botões e custom data, para release 3.6.0 (#30) (c897baf)
+
+### Funcionalidades
+
 - feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
 
 ### Outros
