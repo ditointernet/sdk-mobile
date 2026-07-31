@@ -40,12 +40,28 @@ Cada plataforma requer arquivos de configuração específicos:
 
 #### 3. Configurar AppDelegate
 
-Veja o exemplo completo em [iOS README](../ios/README.md#configuração-inicial).
+Veja o exemplo completo em [iOS README](../ios/README.md#-configuração-inicial).
 
 **Ordem Importante (iOS 18+)**:
 1. `FirebaseApp.configure()`
 2. `Messaging.messaging().delegate = self`
 3. `Dito.shared.configure()`
+
+#### 4. Rich push: imagem e botões exigem um target a mais
+
+Campanhas com `image` ou `actions` **só renderizam** se o app tiver uma
+**Notification Service Extension**. Trocar a versão da SDK não basta: a extensão é um
+target novo no projeto do app, e nenhuma versão de SDK cria target em projeto de
+terceiro. Sem ela o push continua chegando, mas como título + mensagem.
+
+São três passos — criar o target, linkar o pod `DitoSDKNotificationService` (não o
+`DitoSDK`, que não compila em extensão) e herdar de `DitoNotificationService`. O
+roteiro completo está em
+[iOS README — Rich Push](../ios/README.md#-rich-push-imagem-botões-e-custom-data).
+
+No lado do clique, use `Dito.notificationClick(response:)`. É o `actionIdentifier` da
+`response` que identifica o botão tocado; com só o `userInfo`, o clique chega ao
+painel sem `action_id`.
 
 **Cold start e `receive-ios-notification`**: com app morto ou em background, o iOS só executa o SDK na **chegada** do push se o payload APNs incluir `"content-available": 1` e o app tiver **Remote notifications** em Background Modes. O plugin Flutter (`DitoNotificationDelegate`) chama o SDK nativo sem subir o Dart. Guarde o token FCM em `UserDefaults` (chave `FCMToken`) e reutilize-o quando `didReceiveRemoteNotification` rodar. O ingest exige `user_id` ou `userId` (também em `data`/`gcm`). Detalhes: [iOS README — secção 3.1](../ios/README.md).
 
@@ -344,7 +360,8 @@ flowchart TD
 ### Exemplo iOS
 
 ```swift
-Dito.notificationClick(userInfo: userInfo) { deeplink in
+// Passe a `response`: é ela que carrega qual botão de rich push foi tocado.
+Dito.notificationClick(response: response) { deeplink in
     if let url = URL(string: deeplink) {
         UIApplication.shared.open(url)
     }
@@ -483,7 +500,7 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 ## 🔗 Links Úteis
 
 - 🔥 [Firebase Cloud Messaging Documentation](https://firebase.google.com/docs/cloud-messaging)
-- 📱 [iOS Push Notifications Guide](../ios/README.md#push-notifications)
+- 📱 [iOS Push Notifications Guide](../ios/README.md#-push-notifications)
 - 🤖 [Android Push Notifications Guide](../android/README.md#push-notifications)
 - 🎯 [Flutter Push Notifications Guide](../flutter/README.md#push-notifications)
 - ⚛️ [React Native Push Notifications Guide](../react-native/README.md#push-notifications)

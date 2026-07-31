@@ -111,7 +111,7 @@ Para exemplos completos e guias detalhados, consulte a documentação específic
 
 - **Flutter**: Flutter 3.3.0+ e Dart 3.10.7+
 - **React Native**: React Native 0.72.0+ e Node.js 16+
-- **iOS**: Xcode 14+ e iOS 16.0+
+- **iOS**: Xcode 15.3+ (Swift 5.10) e iOS 16.0+
 - **Android**: Android Studio e Android API 24+
 - **Melos**: Para gerenciamento do monorepo Flutter
 

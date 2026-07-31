@@ -67,7 +67,7 @@ Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
 
 ```ruby
 # Atualize para a versão mais recente
-pod 'DitoSDK', '~> 3.0.1'
+pod 'DitoSDK', '~> 3.6'
 ```
 
 Execute:
@@ -400,8 +400,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 withCompletionHandler completionHandler: @escaping () -> Void) {
         let userInfo = response.notification.request.content.userInfo
 
-        // Rastrear clique no Dito e extrair deeplink
-        let notification = Dito.notificationClick(userInfo: userInfo)
+        // Rastrear clique no Dito e extrair deeplink. Passe a `response`, não o
+        // `userInfo`: é o `actionIdentifier` dela que identifica o botão de rich
+        // push tocado. Com só o `userInfo`, `action_id` chega vazio ao painel.
+        let notification = Dito.notificationClick(response: response)
 
         // Processar deeplink se houver
         if !notification.deeplink.isEmpty {
@@ -502,7 +504,7 @@ platform :ios, '16.0'
 target 'SeuApp' do
   use_frameworks!
 
-  pod 'DitoSDK', '~> 3.0.1'
+  pod 'DitoSDK', '~> 3.6'
   pod 'Firebase/Messaging'  # Obrigatório
   pod 'Firebase/Analytics'  # Recomendado
 end
