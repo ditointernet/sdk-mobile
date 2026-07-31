@@ -297,7 +297,7 @@ class DitoRetry {
             notificationReadOffline.deleteUnregister()
             DitoLogger.information("✅ [RETRY] Token removido")
         } catch {
-            notificationReadOffline.updateUnregister(id: notificationUnregister.objectID, retry: notificationUnregister.retry + 1)
+            notificationReadOffline.updateUnregister(id: notificationUnregister.id, retry: notificationUnregister.retry + 1)
             DitoLogger.error(error.localizedDescription)
         }
     }

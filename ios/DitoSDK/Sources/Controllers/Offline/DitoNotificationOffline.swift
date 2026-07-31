@@ -88,7 +88,7 @@ struct DitoNotificationOffline {
     notificationRegisterDataManager.delete()
   }
 
-  var getNotificationUnregister: NotificationUnregister? {
+  var getNotificationUnregister: DitoNotificationUnregisterRow? {
     return notificationUnregisterDataManager.fetch
   }
 
