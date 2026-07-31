@@ -46,7 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           android_version="$(sed -nE 's/^version[[:space:]]*=.*\\?:[[:space:]]*"([^"]+)".*/\1/p' android/dito-sdk/build.gradle.kts | head -n 1)"
-          ios_version="$(sed -nE "s/.*s\\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" ios/DitoSDK.podspec | head -n 1)"
+          ios_version="$(sed -nE "s/.*s\\.version[[:space:]]*=[[:space:]]*'([^']+)'.*/\1/p" DitoSDK.podspec | head -n 1)"
           flutter_version="$(sed -nE 's/^version:[[:space:]]*([^[:space:]]+).*/\1/p' flutter/pubspec.yaml | head -n 1)"
           rn_version="$(node -e "const j=require('./react-native/package.json');process.stdout.write(j.version)")"
 
