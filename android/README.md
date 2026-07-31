@@ -66,8 +66,43 @@ Adicione suas credenciais da Dito no `AndroidManifest.xml`:
     <meta-data
         android:name="br.com.dito.API_SECRET"
         android:value="seu-api-secret" />
+    <!-- Opcional. Só é lido do manifest, mesmo quando você inicializa por código. -->
+    <meta-data
+        android:name="br.com.dito.HIBRID_MODE"
+        android:value="OFF" />
 </application>
 ```
+
+Se `API_SECRET` ficar de fora, a SDK usa autenticação `X-Api-Key` com a `API_KEY` e o
+`packageName` do app. Com as duas, usa o modelo legado (`platform_api_key` +
+assinatura SHA1 da secret).
+
+> ### ⚠️ Flutter, React Native e híbridos: a chave no manifest **não é opcional**
+>
+> Se o seu app inicializa a SDK por código — `Dito.init(context, apiKey, apiSecret)`,
+> que é o que os plugins de Flutter e React Native fazem — **você ainda precisa da
+> `br.com.dito.API_KEY` no `AndroidManifest.xml`.** Não é redundância; são dois
+> processos diferentes.
+>
+> Quando o app está encerrado e o utilizador toca numa notificação, a
+> `NotificationOpenedActivity` sobe num **processo novo**, onde o Dart/JS que chamaria
+> `Dito.init(...)` ainda não correu. Ela então chama a variante que lê o manifest, e
+> sem a chave essa chamada lança. O efeito é enganoso:
+>
+> | Toque | Sem a chave no manifest |
+> | --- | --- |
+> | **num botão** de acção | funciona — o broadcast não passa pelo tracker |
+> | **no corpo** da notificação | o clique não é registado |
+>
+> Quem testa só o botão conclui que está tudo bem. Confirme no **manifest mesclado**,
+> não no fonte — um `android:value="${DITO_API_KEY}"` cujo placeholder não resolve
+> chega como string vazia, e a SDK trata vazio igual a ausente:
+>
+> ```bash
+> adb shell pm path <seu.package>          # pegue o caminho do base.apk
+> adb pull <caminho> /tmp/app.apk
+> apkanalyzer manifest print /tmp/app.apk | grep -A2 -i "br.com.dito"
+> ```
 
 ### 2. Configure o Firebase
 
@@ -763,8 +798,56 @@ Se você não configurar um ícone customizado, o SDK usará o ícone do aplicat
 1. ✅ Firebase configurado (`google-services.json` adicionado)
 2. ✅ `FirebaseMessagingService` registrado no `AndroidManifest.xml`
 3. ✅ Token FCM registrado (`Dito.registerDevice(token)`)
-4. ✅ Permissões de notificação solicitadas
+4. ✅ Permissões de notificação solicitadas — `POST_NOTIFICATIONS` é **obrigatória no
+   Android 13+**, e sem ela nada aparece, o que parece defeito de payload
 5. ✅ Ícone de notificação configurado (opcional mas recomendado)
+6. ✅ O payload traz `channel=DITO` — sem essa chave a SDK ignora a mensagem em
+   silêncio (`DitoNotificationHandler.canHandle`)
+
+**O clique não é registado quando o app está encerrado**
+
+Se o app inicializa por código (Flutter, React Native), confirme a
+`br.com.dito.API_KEY` no manifest mesclado. Ver o aviso em
+[Configure o AndroidManifest.xml](#1-configure-o-androidmanifestxml). Sintoma
+característico: o toque no **botão** funciona e o toque no **corpo** não.
+
+### Inspecionar o payload que chegou
+
+Com `Options.debug = true`, cada push produz **uma linha** no logcat com o prefixo
+estável `DITO_PUSH_PAYLOAD`, e o `NotificationDisplayHelper` produz um
+`DITO_PUSH_DISPLAY` dizendo o que conseguiu desenhar:
+
+```bash
+adb logcat -v time > /tmp/push.log     # capture tudo e filtre depois
+grep -E "DITO_PUSH_PAYLOAD|DITO_PUSH_DISPLAY|E/AndroidRuntime" /tmp/push.log
+```
+
+Filtrar no pipe do `logcat` esconde crash e ANR, que é exatamente o que se precisa ver
+quando algo falha. O formato é `key=value` com `data={...}` — **não** é JSON.
+
+`DITO_PUSH_DISPLAY` é o que separa "processei o payload" de "consegui desenhar":
+traz `image_downloaded`, `actions_count`, os labels de cada botão e o `custom_data`.
+
+A evidência **autoritativa** do que a SDK construiu é o registo do
+`NotificationManager`, não a árvore de UI:
+
+```bash
+adb shell dumpsys notification --noredact
+# no bloco do seu package: android.title, android.text, android.template,
+# android.pictureIcon e a lista actions={...}
+```
+
+Duas leituras que enganam e **não** são defeito: `android.picture=null` é normal — a
+imagem grande fica em `android.pictureIcon` — e `android.largeIcon` aparece reduzido
+porque o sistema redimensiona.
+
+> **Identidade e credencial saem como `<redacted>`.** O logcat entra em bug report e
+> em captura de suporte, então o dump redige `user_id`, `identifier`, `reference`,
+> `token`, `api_key`, `api_secret` e `signature`. A credencial está na lista porque o
+> channel-sender a envia **dentro do payload do push**.
+>
+> Campo que chegou **vazio** continua visível: "esta chave veio vazia" é normalmente o
+> sinal que se está a procurar.
 
 ## 💡 Exemplos Completos
 
