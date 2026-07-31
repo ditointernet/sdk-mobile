@@ -70,6 +70,8 @@ internal data class NotificationReadOff(
     val notificationId: String,
     val identifier: String,
     val retry: Int,
+    /** `action_id` / `action_label` do clique, quando foi num botão. */
+    val data: Map<String, String> = emptyMap(),
 )
 
 data class NotificationResult(

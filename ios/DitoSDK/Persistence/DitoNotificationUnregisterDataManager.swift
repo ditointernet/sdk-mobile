@@ -1,6 +1,18 @@
 import CoreData
 import Foundation
 
+/// Instantâneo imutável da linha pendente de unregister de token.
+///
+/// Mesma causa de `DitoNotificationReceiveRow` e `DitoNotificationReadRow`: o `fetch`
+/// abre um contexto de fundo de vida curta e um `NSManagedObject` não retém o próprio
+/// contexto. Aqui o custo é o token continuar recebendo push depois do logout, porque
+/// o `guard` do reenvio desiste ao ler `json` nil e a linha nunca envelhece.
+struct DitoNotificationUnregisterRow: Sendable {
+  let id: NSManagedObjectID
+  let json: String?
+  let retry: Int16
+}
+
 struct DitoNotificationUnregisterDataManager {
 
   @discardableResult
@@ -69,13 +81,13 @@ struct DitoNotificationUnregisterDataManager {
     return success
   }
 
-  var fetch: NotificationUnregister? {
+  var fetch: DitoNotificationUnregisterRow? {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext() else {
       DitoLogger.error("Failed to create background context for fetch")
       return nil
     }
 
-    var result: NotificationUnregister?
+    var result: DitoNotificationUnregisterRow?
     context.performAndWait {
       let fetchRequest = NSFetchRequest<NotificationUnregister>(
         entityName: "NotificationUnregister")
@@ -83,7 +95,11 @@ struct DitoNotificationUnregisterDataManager {
       fetchRequest.returnsObjectsAsFaults = false
 
       do {
-        result = try context.fetch(fetchRequest).first
+        // Os atributos são copiados aqui, dentro da fila do contexto: fora dela o
+        // objeto não serve mais (ver `DitoNotificationUnregisterRow`).
+        result = try context.fetch(fetchRequest).first.map {
+          DitoNotificationUnregisterRow(id: $0.objectID, json: $0.json, retry: $0.retry)
+        }
         if result != nil {
           DitoLogger.information("NotificationUnregister found - Successfully!!!")
         }

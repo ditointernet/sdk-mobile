@@ -1,5 +1,7 @@
+import DitoSDKNotificationService
 import Foundation
 import UIKit
+import UserNotifications
 
 public enum DitoOperationStatus {
   case sent
@@ -46,8 +48,18 @@ public class Dito {
     return created
   }
 
+  /// Turns SDK logging on or off, payload dumping included.
+  ///
+  /// The dump used to be reachable only through the `DitoPushDebugLog` Info.plist key, so calling
+  /// this was not enough to get it — which left the one instrument a delivery investigation needs
+  /// switched off in the very app being investigated.
+  ///
+  /// This only affects the host app's process. The Notification Service Extension runs separately
+  /// and cannot be reached from here: it still needs the Info.plist key in the extension's own
+  /// bundle.
   public static func enableDebugMode(_ enabled: Bool = true) {
     DitoLogger.isDebugEnabled = enabled
+    DitoPushDebugLog.isEnabled = enabled
   }
 
   public static func setNotificationOptions(_ options: DitoNotificationOptions) {
@@ -252,6 +264,11 @@ public class Dito {
     token: String,
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
+    // Dump do payload no processo do app, par da linha `source:"nse"` que a extensão emite. Fica
+    // aqui, na entrada pública, e não no caminho legado `DitoNotification.notificationRead`: era ele
+    // o único a dumpar, e ninguém que usa a API atual passa por lá — o diagnóstico ficava cego
+    // exatamente do lado do app.
+    DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
     let received = createNotificationReceived(from: userInfo)
     sendNotificationReceivedActivities(received, token: token, completion: completion)
     Dito.notificationReceivedListener?(userInfo)
@@ -319,10 +336,11 @@ public class Dito {
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: received.notification,
-      reference: received.reference,
       title: received.title,
       message: received.message,
-      link: received.deeplink
+      link: received.deeplink,
+      image: received.image,
+      customData: received.customData
     )
 
     guard !received.userId.isEmpty else {
@@ -333,12 +351,14 @@ public class Dito {
       return
     }
 
-    if !shouldDeliverReceiveNotification(
+    // Reivindicação, não consulta: a marcação só acontece depois do `await` da rede, e em primeiro
+    // plano dois callbacks disparam este caminho para o mesmo push.
+    guard DitoNotificationReceiveTracker.claimDelivery(
       notification: received.notification,
       logId: received.logId
-    ) {
+    ) else {
       #if DEBUG
-      DitoLogger.debug("receive-ios-notification já entregue para notification=\(received.notification)")
+      DitoLogger.debug("receive-ios-notification já entregue ou em vôo para notification=\(received.notification)")
       #endif
       completion?(.success(()))
       return
@@ -403,11 +423,16 @@ public class Dito {
       completion?(.success(()))
     } catch {
       DitoLogger.error(error.localizedDescription)
+      // A entrega não aconteceu: devolve a reivindicação para que a fila offline — ou uma nova
+      // chegada do mesmo push — possa tentar de novo.
+      DitoNotificationReceiveTracker.releaseClaim(
+        notification: received.notification,
+        logId: received.logId
+      )
       let pending = DitoNotificationReceivePending(
         userId: received.userId,
         token: token,
         notification: received.notification,
-        reference: received.reference,
         logId: received.logId,
         notificationName: received.notificationName
       )
@@ -424,12 +449,13 @@ public class Dito {
       DitoNotificationInfo(
         id: record.id ?? "",
         notificationId: record.notificationId ?? "",
-        reference: record.reference ?? "",
         title: record.title ?? "",
         message: record.message ?? "",
         link: record.link ?? "",
         receivedAt: record.receivedAt ?? Date(),
-        isRead: record.isRead
+        isRead: record.isRead,
+        image: record.image ?? "",
+        customData: DitoNotificationCoreDataManager.decode(record.customData)
       )
     }
   }
@@ -453,28 +479,72 @@ public class Dito {
   /// Called when a notification is clicked
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
-  ///   - callback: Optional callback with deeplink
+  ///   - actionIdentifier: `UNNotificationResponse.actionIdentifier` when an action
+  ///     button was tapped. The system's default/dismiss identifiers are ignored.
+  ///   - callback: Optional callback with the deeplink to open. For a button tap
+  ///     this is the button's own already-iOS-resolved link.
   /// - Returns: DitoNotificationReceived object with notification data
   @discardableResult
   nonisolated public static func notificationClick(
     userInfo: [AnyHashable: Any],
+    actionIdentifier: String? = nil,
     callback: ((String) -> Void)? = nil
   ) -> DitoNotificationReceived {
-    let notificationReceived = DitoNotificationReceived(with: userInfo)
+    var notificationReceived = DitoNotificationReceived(with: userInfo)
+    let tappedAction = resolveTappedAction(actionIdentifier, in: notificationReceived)
+    notificationReceived.actionId = tappedAction?.id ?? ""
+    notificationReceived.actionLabel = tappedAction?.label ?? ""
+
+    DitoPushDebugLog.dump(event: .clicked, source: .app, userInfo: userInfo)
+
+    let clickData = notificationReceived.clickCustomData
     DispatchQueue.main.async {
       let notificationController = DitoNotification()
       notificationController.options = Dito.notificationOptions
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
-        reference: notificationReceived.reference,
-        identifier: notificationReceived.identifier
+        identifier: notificationReceived.identifier,
+        data: clickData
       )
     }
     if !notificationReceived.notification.isEmpty {
       DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
     }
-    callback?(notificationReceived.deeplink)
+    callback?(notificationReceived.resolvedLink)
     return notificationReceived
+  }
+
+  /// Called when a notification is clicked, taking the response straight from
+  /// `userNotificationCenter(_:didReceive:withCompletionHandler:)`.
+  ///
+  /// This is the recommended entry point: it maps `response.actionIdentifier`
+  /// back to the button declared by the payload.
+  @discardableResult
+  nonisolated public static func notificationClick(
+    response: UNNotificationResponse,
+    callback: ((String) -> Void)? = nil
+  ) -> DitoNotificationReceived {
+    notificationClick(
+      userInfo: response.notification.request.content.userInfo,
+      actionIdentifier: response.actionIdentifier,
+      callback: callback
+    )
+  }
+
+  /// Maps a raw `actionIdentifier` onto a button from the payload.
+  ///
+  /// Returns `nil` for a tap on the notification body or a dismissal, so those
+  /// keep reporting a plain click with no action in the data map.
+  nonisolated private static func resolveTappedAction(
+    _ actionIdentifier: String?,
+    in notificationReceived: DitoNotificationReceived
+  ) -> DitoPushAction? {
+    guard
+      let actionIdentifier,
+      actionIdentifier != UNNotificationDefaultActionIdentifier,
+      actionIdentifier != UNNotificationDismissActionIdentifier
+    else { return nil }
+    return notificationReceived.actions.first { $0.id == actionIdentifier }
   }
 
   /// Called when a notification is clicked
@@ -483,27 +553,17 @@ public class Dito {
   ///   - callback: Optional callback with deeplink
   /// - Returns: DitoNotificationReceived object with notification data
   /// - Warning: This method is deprecated. Use `notificationClick(userInfo:callback:)` instead.
+  ///
+  /// Forwards to the current implementation instead of carrying a second body:
+  /// the duplicate had already drifted — the campaign's custom data never reached
+  /// the click event through this path.
   @available(*, deprecated, message: "Use notificationClick(userInfo:callback:) instead for consistency")
   @discardableResult
   nonisolated public static func notificationClick(
     with userInfo: [AnyHashable: Any],
     callback: ((String) -> Void)? = nil
   ) -> DitoNotificationReceived {
-    let notificationReceived = DitoNotificationReceived(with: userInfo)
-    DispatchQueue.main.async {
-      let notificationController = DitoNotification()
-      notificationController.options = Dito.notificationOptions
-      notificationController.notificationClick(
-        notificationId: notificationReceived.notification,
-        reference: notificationReceived.reference,
-        identifier: notificationReceived.identifier
-      )
-    }
-    if !notificationReceived.notification.isEmpty {
-      DitoNotificationCoreDataManager.shared.markAsReadByNotificationId(notificationReceived.notification)
-    }
-    callback?(notificationReceived.deeplink)
-    return notificationReceived
+    notificationClick(userInfo: userInfo, callback: callback)
   }
 }
 
@@ -528,10 +588,11 @@ extension Dito {
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
       notificationId: received.notification,
-      reference: received.reference,
       title: received.title,
       message: received.message,
-      link: received.deeplink
+      link: received.deeplink,
+      image: received.image,
+      customData: received.customData
     )
     await deliverNotificationReceivedActivities(received: received, token: token)
   }

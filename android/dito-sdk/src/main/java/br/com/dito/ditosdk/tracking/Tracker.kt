@@ -9,6 +9,7 @@ import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
@@ -25,9 +26,13 @@ internal class Tracker(
     var id: String? = null
     private var trackerRetry: TrackerRetry? = null
 
-    init {
-        loadIdentify()
-    }
+    /**
+     * Carregamento do identify persistido, exposto como [Job] para que quem depende do `id` possa
+     * esperá-lo. No cold start o flush da fila offline corre em paralelo com este carregamento: sem
+     * poder esperar, ele lia `id == null` e voltava sem drenar nada — justamente no ciclo do push,
+     * que é quando a fila mais importa.
+     */
+    private val identifyLoad: Job = loadIdentify()
 
     val idOrNull: String? get() = id
 
@@ -40,10 +45,19 @@ internal class Tracker(
         scope.cancel()
     }
 
-    private fun loadIdentify() {
-        scope.launch {
-            trackerOffline.getIdentify()?.let { id = it.id }
-        }
+    private fun loadIdentify(): Job = scope.launch {
+        val stored = trackerOffline.getIdentify()?.id
+        // Um `identify()` concorrente é mais novo que o disco: não sobrescreve.
+        if (id == null) id = stored
+    }
+
+    /**
+     * `id` depois de garantido o carregamento do identify persistido. Qualquer caminho que possa
+     * rodar no arranque do processo deve usar isto, e não [idOrNull].
+     */
+    internal suspend fun awaitId(): String? {
+        identifyLoad.join()
+        return id
     }
 
     enum class OperationStatus {
@@ -160,17 +174,35 @@ internal class Tracker(
                     params["notification_name"] = data.notificationName
                 }
             }
-            val trackActivity = mapper.mapTrack(trackEvent)
+            val activityId = UUID.randomUUID().toString()
+            val trackActivity = mapper.mapTrack(trackEvent, activityId)
             val request = mapper.buildRequest(data.userId, listOf(identifyActivity, trackActivity), null)
             try {
                 client.activity(request)
-            } catch (_: Exception) { }
+            } catch (e: Exception) {
+                // Sem isto, uma entrega perdida era indistinguível de uma entrega bem-sucedida: sem
+                // log, sem fila, sem rastro. `createdAt` do evento já está preenchido, então o
+                // reenvio preserva o instante real da entrega, não o do retry.
+                Log.e(
+                    "Tracker",
+                    "Falha ao enviar a entrega da notificação ${data.notificationId}; enfileirada para retry.",
+                    e,
+                )
+                // O identify precisa existir no disco para o flush conseguir resolver o usuário num
+                // próximo arranque. Só grava se não houver nenhum: sobrescrever apagaria os campos
+                // de um identify mais rico já persistido.
+                if (trackerOffline.getIdentify() == null) {
+                    trackerOffline.identify(Identify(data.userId), send = false)
+                }
+                trackerOffline.event(trackEvent, activityId)
+            }
         }
     }
 
     /**
      * @param data Custom data extra do clique (ex.: `action_id`/`action_label` de um botão).
-     *   Não é persistido no retry offline — só o clique básico é reenviado.
+     *   Persistido junto do clique na fila offline, então a atribuição de qual botão foi tocado
+     *   sobrevive ao reenvio.
      */
     fun notificationClick(
         notificationId: String,
@@ -185,8 +217,9 @@ internal class Tracker(
             val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
                 client.activity(request)
-            } catch (_: Exception) {
-                trackerOffline.notificationRead(activityId, notificationId, userId)
+            } catch (e: Exception) {
+                Log.e("Tracker", "Falha ao enviar o clique da notificação $notificationId; enfileirado para retry.", e)
+                trackerOffline.notificationRead(activityId, notificationId, userId, data)
             }
         }
     }

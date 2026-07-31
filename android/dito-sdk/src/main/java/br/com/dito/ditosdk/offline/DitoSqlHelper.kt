@@ -8,6 +8,8 @@ import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "identify")
 data class IdentifyOffline(
@@ -75,6 +77,12 @@ data class NotificationOffline(
     val notificationId: String,
     val identifier: String,
     val retry: Int,
+    /**
+     * Custom data do clique (`action_id` / `action_label`) serializada em JSON. Sem esta coluna o
+     * reenvio contava o clique sem dizer qual botão foi tocado, e a atribuição se perdia em
+     * silêncio. Nulo quando o clique foi no corpo da notificação.
+     */
+    val dataJson: String? = null,
 )
 
 @Dao
@@ -92,9 +100,20 @@ interface NotificationOfflineDao {
     fun delete(id: Int)
 }
 
+/**
+ * Adiciona `dataJson` à fila de cliques. Migração aditiva e nullable — nenhuma linha pendente é
+ * perdida, e é isso que importa aqui: a alternativa (`fallbackToDestructiveMigration`) apagaria
+ * exatamente os cliques que ainda não foram entregues.
+ */
+val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE notification ADD COLUMN dataJson TEXT")
+    }
+}
+
 @Database(
     entities = [IdentifyOffline::class, EventOffline::class, NotificationOffline::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class DitoSqlHelper : RoomDatabase() {

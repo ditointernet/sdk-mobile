@@ -170,6 +170,26 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `notificationRead should round-trip the click action data`() = runBlocking {
+        val actionData = mapOf("action_id" to "botao_1", "action_label" to "Botão 1")
+
+        trackerOffline.notificationRead("act1", "notif123", "ident123", actionData)
+        delay(500)
+
+        val stored = trackerOffline.getAllNotificationRead()?.first()
+        assertThat(stored?.data).isEqualTo(actionData)
+    }
+
+    @Test
+    fun `notificationRead without action data should read back as empty`() = runBlocking {
+        trackerOffline.notificationRead("act1", "notif123", "ident123")
+        delay(500)
+
+        val stored = trackerOffline.getAllNotificationRead()?.first()
+        assertThat(stored?.data).isEmpty()
+    }
+
+    @Test
     fun `getAllNotificationRead should return empty when no notifications`() = runBlocking {
         val notifications = trackerOffline.getAllNotificationRead()
 

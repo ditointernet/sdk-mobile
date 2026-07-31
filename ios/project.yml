@@ -29,8 +29,16 @@ targets:
           - "NotificationDebugViewController.swift"
           - "EnvLoader.swift"
           - "Info.plist"
+          - "NotificationServiceExtension/**"
     dependencies:
       - target: DitoSDK
+      # DitoSDK e a extensão linkam ambos este framework via @rpath; é a app que
+      # o tem de embeber, senão o dyld falha no arranque. A app não precisa de
+      # linkar contra ele — chega-lhe via DitoSDK — por isso só embebe.
+      - target: DitoSDKNotificationService
+        embed: true
+        link: false
+      - target: SampleNotificationService
       - package: Firebase
         product: FirebaseAnalytics
       - package: Firebase
@@ -51,10 +59,49 @@ targets:
         Release:
           MOBILE_INGEST_URL: https://ingest.dito.com.br/mobile
 
+  # Notification Service Extension do sample app. Serve de exemplo e prova que
+  # DitoSDKNotificationService linka mesmo num target de extensão.
+  SampleNotificationService:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: SampleApplication/NotificationServiceExtension
+        excludes:
+          - "Info.plist"
+    dependencies:
+      # embed: false — quem embebe o framework é a app hospedeira.
+      - target: DitoSDKNotificationService
+        embed: false
+    settings:
+      base:
+        INFOPLIST_FILE: SampleApplication/NotificationServiceExtension/Info.plist
+        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.samplesdk.notificationservice
+        MARKETING_VERSION: 1.0.0
+        CURRENT_PROJECT_VERSION: 1
+
+  # Extension-safe subset linked by a Notification Service Extension.
+  # APPLICATION_EXTENSION_API_ONLY makes the split enforced rather than
+  # cosmetic: the build fails if this target ever reaches for app-only API.
+  DitoSDKNotificationService:
+    type: framework
+    platform: iOS
+    sources:
+      - path: DitoNotificationService
+        name: NotificationService
+        createIntermediateGroups: true
+    settings:
+      base:
+        APPLICATION_EXTENSION_API_ONLY: YES
+        MARKETING_VERSION: 3.5.0
+        CURRENT_PROJECT_VERSION: 1
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: br.com.dito.DitoSDKNotificationService
+
   DitoSDK:
     type: framework
     platform: iOS
     dependencies:
+      - target: DitoSDKNotificationService
       - package: SwiftProtobuf
         product: SwiftProtobuf
       - package: ConnectSwift
@@ -82,6 +129,9 @@ targets:
       - path: DitoSDKTests
     dependencies:
       - target: DitoSDK
+      # Explícito: os testes fazem `@testable import DitoSDKNotificationService`,
+      # que já não chega por reexportação depois de trocar @_exported por typealias.
+      - target: DitoSDKNotificationService
     settings:
       base:
         INFOPLIST_FILE: DitoSDKTests/Info.plist

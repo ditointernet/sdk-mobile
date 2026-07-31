@@ -12,6 +12,13 @@ Pod::Spec.new do |s|
   s.ios.deployment_target = '16.0'
   s.pod_target_xcconfig = { 'SWIFT_STRICT_CONCURRENCY' => 'minimal' }
   s.dependency 'Connect-Swift', '~> 0.14.0'
+
+  # Extension-safe half (rich-push parsing + a UNNotificationServiceExtension
+  # base class). A Notification Service Extension target depends on this pod
+  # directly: the full SDK below uses UIApplication and CoreData and therefore
+  # cannot be linked into an app extension.
+  s.dependency 'DitoSDKNotificationService', s.version.to_s
+
   s.source_files = 'ios/DitoSDK/Sources/**/*', 'ios/DitoSDK/Persistence/*.{swift}'
   s.resources = 'ios/DitoSDK/Persistence/*.{xcdatamodeld}'
   s.exclude_files = 'ios/DitoSDK/Sources/Info.plist'

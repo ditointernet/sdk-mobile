@@ -275,6 +275,11 @@ func handleLogout() {
 
 O DitoSDK oferece suporte completo para notificações push via Firebase Cloud Messaging (FCM).
 
+> **Imagem e botões (rich push) não estão nesta página.** Eles são produzidos por uma
+> Notification Service Extension, que é um target do app e não uma chamada de API —
+> nada aqui os habilita. O roteiro está em
+> [README — Rich Push](README.md#-rich-push-imagem-botões-e-custom-data).
+
 ### Fluxo de Notificações
 
 Existem 4 cenários diferentes quando uma notificação é recebida:
@@ -417,10 +422,11 @@ func userNotificationCenter(
     Messaging.messaging().token { fcmToken, _ in
         if let fcmToken = fcmToken {
             Dito.notificationReceived(userInfo: userInfo, token: fcmToken)
-            Dito.notificationClick(userInfo: userInfo) { deeplink in
-                // processe o deeplink
-            }
         }
+    }
+
+    Dito.notificationClick(response: response) { deeplink in
+        // processe o deeplink
     }
 
     completionHandler()
@@ -445,16 +451,23 @@ func userNotificationCenter(
 
 ---
 
-#### Dito.notificationClick(with:callback:)
+#### Dito.notificationClick(response:callback:)
 
 **Registra quando uma notificação é CLICADA.**
 
-Chamado apenas quando o usuário toca no banner.
+Chamado quando o usuário toca no banner **ou num botão de rich push**.
+
+> **Passe a `response`, não o `userInfo`.** É o `response.actionIdentifier` que a SDK
+> mapeia de volta para o botão declarado no payload. As sobrecargas
+> `notificationClick(userInfo:)` e `notificationClick(with:)` — esta última
+> **deprecated** — registram um clique simples: os botões aparecem na notificação, mas
+> `action_id` e `action_label` chegam vazios ao painel. Use `userInfo:` só quando não
+> houver `response`, e nesse caso passe também o `actionIdentifier`.
 
 #### Parâmetros
 
-- `userInfo` ([AnyHashable: Any]): Dados da notificação
-- `callback` ((String) -> Void)?: Closure com o deeplink (opcional)
+- `response` (UNNotificationResponse): A resposta entregue pelo `UNUserNotificationCenterDelegate`
+- `callback` ((String) -> Void)?: Closure com o link do botão tocado, ou o deeplink do push quando o toque foi no corpo (opcional)
 
 #### Retorno
 
@@ -469,10 +482,8 @@ func userNotificationCenter(
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
 ) {
-    let userInfo = response.notification.request.content.userInfo
-
-    // Registra o clique
-    let notificationData = Dito.notificationClick(with: userInfo) { deeplink in
+    // Registra o clique. A `response` carrega qual botão foi tocado.
+    let notificationData = Dito.notificationClick(response: response) { deeplink in
         // Callback com o deeplink
         print("🔗 Deeplink: \(deeplink)")
 
@@ -500,11 +511,14 @@ func handleDeeplink(_ deeplink: String) {
 
 #### Dados retornados
 
+> `reference` deixou de ser lido do payload: o campo está em retirada e a
+> atribuição ancora em `user_id`. `DitoNotificationInfo.reference` continua a
+> existir marcado como deprecated e devolve sempre `""`.
+
 ```swift
 let notification: DitoNotificationReceived = [
     "notification": "ID da notificação",
     "identifier": "ID do usuário",
-    "reference": "SHA1 do usuário",
     "title": "Título",
     "message": "Mensagem",
     "deeplink": "app://link",

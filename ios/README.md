@@ -20,10 +20,15 @@ Com o DitoSDK você pode:
 | Requisito        | Versão Mínima |
 | ---------------- | ------------- |
 | iOS              | 16.0+         |
-| Xcode            | 14.0+         |
-| Swift            | 5.5+          |
+| Xcode            | 15.3+         |
+| Swift            | 5.10+         |
 | Firebase iOS SDK | 9.0+          |
 | CocoaPods        | 1.11.0+       |
+
+> **Swift 5.10 é piso, não recomendação.** A SDK usa `nonisolated(unsafe)`, que só
+> existe a partir do Swift 5.10 / Xcode 15.3, e os dois podspecs declaram
+> `swift_version = "5.10"`. Num Xcode 14 a compilação falha — não é degradação de
+> funcionalidade, é erro de build.
 
 ## 📦 Instalação
 
@@ -32,8 +37,12 @@ Com o DitoSDK você pode:
 #### 1. Adicione o DitoSDK ao Podfile
 
 ```ruby
-pod 'DitoSDK', '~> 3.0.1'
+pod 'DitoSDK', '~> 3.6'
 ```
+
+> **Rich push (imagem e botões) exige 3.6.0 ou superior** — é a versão em que a
+> Notification Service Extension passou a ser distribuída. Um pin fechado no patch,
+> como `~> 3.0.1`, resolve para `< 3.1.0` e instala uma SDK sem extensão nenhuma.
 
 #### 2. Instale as dependências
 
@@ -41,13 +50,17 @@ pod 'DitoSDK', '~> 3.0.1'
 pod install
 ```
 
+> Para rich push há um **segundo pod**, no target da extensão. Veja
+> [Rich Push](#-rich-push-imagem-botões-e-custom-data) — as duas versões andam em
+> lockstep, então o mesmo pin vale para os dois.
+
 ### Opção 2: Via Swift Package Manager (SPM)
 
 #### 1. Adicione o pacote no Xcode
 
 1. Abra o Xcode e vá em **File > Add Package Dependencies...**
 2. Cole a URL: `https://github.com/ditointernet/sdk-mobile`
-3. Em **Dependency Rule**, escolha **Up to Next Major Version** e informe `3.1.3`
+3. Em **Dependency Rule**, escolha **Up to Next Major Version** e informe `3.6.0`
 4. Confirme em **Add Package**
 
 #### 2. Selecione o target
@@ -66,13 +79,57 @@ import DitoSDK
 
 ### 1. Configure o Info.plist
 
-Adicione suas credenciais da Dito no `Info.plist`:
+Adicione suas credenciais da Dito no `Info.plist` do **app**:
 
 ```xml
-<key>ApiKey</key>
+<key>AppKey</key>
 <string>sua-api-key</string>
-<key>ApiSecret</key>
+<key>AppSecret</key>
 <string>seu-api-secret</string>
+```
+
+> **Os nomes são `AppKey` e `AppSecret`.** A SDK lê exatamente essas duas chaves; até
+> a versão 3.5.0 este README pedia `ApiKey`/`ApiSecret`, que a SDK nunca leu. Se a sua
+> integração usa os nomes antigos, ela está rodando **sem credencial** — e sem erro
+> visível, porque a inicialização desiste em silêncio quando a chave vem vazia. Renomeie.
+
+Se `AppSecret` ficar de fora, a SDK usa autenticação `X-Api-Key` com o `AppKey` e o
+bundle id do app. Com os dois, usa o modelo legado (`platform_api_key` + assinatura
+SHA1 da secret).
+
+**Alternativa por código**, para quem inicializa em runtime:
+
+```swift
+Dito.configure(appKey: "sua-api-key", appSecret: "seu-api-secret")
+// ou, no fluxo X-Api-Key:
+Dito.configure(apiKey: "sua-api-key", bundleId: Bundle.main.bundleIdentifier!)
+```
+
+> **Se o seu app é Flutter, React Native ou qualquer híbrido, ponha as chaves no
+> `Info.plist` mesmo inicializando por código.** Credencial passada por código só
+> existe no processo que rodou aquele código. Num cold start provocado por push, o
+> processo sobe e o Dart/JS que chamaria `configure(...)` ainda não rodou — a única
+> fonte disponível é o `Info.plist`. Sem ele, o evento daquele push sai sem
+> autenticação ou não sai.
+
+### 1.1 Habilite o modo background para push
+
+Sem isto o app não é acordado pelo push e **o evento de entrega não sai com o app
+encerrado**:
+
+```xml
+<key>UIBackgroundModes</key>
+<array>
+  <string>remote-notification</string>
+</array>
+```
+
+E confirme o entitlement `aps-environment` no target — sem ele não há push real
+nenhum. Um bundle compilado com `CODE_SIGNING_ALLOWED=NO` não tem entitlements:
+serve para teste local, não para validar push.
+
+```bash
+codesign -d --entitlements - SeuApp.app 2>/dev/null | grep -A1 aps-environment
 ```
 
 ### 2. Configure o Firebase
@@ -178,6 +235,14 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
     ) {
         let userInfo = notification.request.content.userInfo
+
+        // Com o app em primeiro plano, este é o callback que reporta a entrega:
+        // `didReceiveRemoteNotification` não é garantido aqui.
+        let cachedToken = fcmToken ?? UserDefaults.standard.string(forKey: "FCMToken")
+        if let token = cachedToken, !token.isEmpty {
+            Dito.notificationReceived(userInfo: userInfo, token: token)
+        }
+
         Messaging.messaging().appDidReceiveMessage(userInfo)
         completionHandler([[.banner, .list, .sound, .badge]])
     }
@@ -188,12 +253,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         let userInfo = response.notification.request.content.userInfo
-        if let token = fcmToken {
-            Dito.notificationReceived(userInfo: userInfo, token: token)
-        }
 
-        Dito.notificationClick(userInfo: userInfo) { deeplink in
-            // Processar deeplink se necessário
+        // Passe a `response` inteira, não só o `userInfo`: é o
+        // `response.actionIdentifier` que diz **qual botão** de rich push foi
+        // tocado. Com apenas o `userInfo`, o clique chega ao painel sem
+        // `action_id` e sem `action_label`, e a atribuição do botão se perde.
+        Dito.notificationClick(response: response) { deeplink in
+            // `deeplink` é o link do botão tocado, com fallback para o link do push.
             print("Deeplink recebido: \(deeplink)")
         }
 
@@ -505,6 +571,11 @@ func application(
 **Notas**:
 - Deve ser chamado quando uma notificação é recebida
 - Funciona mesmo quando o app está em background
+- **Chamar duas vezes para o mesmo push é seguro.** A SDK deduplica por
+  `notification`/`log_id`, então reportar em `willPresent` e em
+  `didReceiveRemoteNotification` — o que acontece com o app em primeiro plano — envia
+  um evento só. Se precisar consultar esse estado, existe
+  `Dito.shouldDeliverReceiveNotification(notification:logId:)`
 - Para compatibilidade, `notificationRead(userInfo:token:)` ainda existe, mas está deprecated
 
 ---
@@ -513,11 +584,13 @@ func application(
 
 **Descrição**: Processa o clique em uma notificação e retorna o deeplink se disponível.
 
-**Assinatura**:
+**Assinatura recomendada** — use esta sempre que tiver a `response` em mão, que é o
+caso do `didReceive response:`:
+
 ```swift
 @discardableResult
 public static func notificationClick(
-    userInfo: [AnyHashable: Any],
+    response: UNNotificationResponse,
     callback: ((String) -> Void)? = nil
 ) -> DitoNotificationReceived
 ```
@@ -525,8 +598,30 @@ public static func notificationClick(
 **Parâmetros**:
 | Nome | Tipo | Obrigatório | Descrição |
 |------|------|-------------|-----------|
-| userInfo | [AnyHashable: Any] | Sim | Dicionário com dados da notificação |
-| callback | ((String) -> Void)? | Não | Callback chamado com o deeplink |
+| response | UNNotificationResponse | Sim | A resposta entregue pelo `UNUserNotificationCenterDelegate` |
+| callback | ((String) -> Void)? | Não | Callback com o link do botão tocado, ou o deeplink do push quando o toque foi no corpo |
+
+**Assinatura alternativa** — para quem só tem o dicionário, por exemplo ao tratar um
+clique reconstruído de outra origem:
+
+```swift
+@discardableResult
+public static func notificationClick(
+    userInfo: [AnyHashable: Any],
+    actionIdentifier: String? = nil,
+    callback: ((String) -> Void)? = nil
+) -> DitoNotificationReceived
+```
+
+> **Sem `response` ou `actionIdentifier`, o botão não é resolvido.** É o
+> `actionIdentifier` que a SDK mapeia de volta para o botão declarado no payload.
+> Chamar `notificationClick(userInfo:)` num toque em botão de rich push registra um
+> clique simples: os botões aparecem na notificação, mas `action_id` e
+> `action_label` chegam vazios ao painel. É a falha mais silenciosa desta
+> integração, porque nada no aparelho indica que faltou algo.
+>
+> Existe também `notificationClick(with:callback:)`, **deprecated** — encaminha para
+> a forma `userInfo:` e tem o mesmo limite.
 
 **Retorno**: `DitoNotificationReceived` - Objeto com dados da notificação
 
@@ -539,9 +634,7 @@ func userNotificationCenter(
     didReceive response: UNNotificationResponse,
     withCompletionHandler completionHandler: @escaping () -> Void
 ) {
-    let userInfo = response.notification.request.content.userInfo
-
-    Dito.notificationClick(userInfo: userInfo) { deeplink in
+    Dito.notificationClick(response: response) { deeplink in
         // Processar deeplink
         if let url = URL(string: deeplink) {
             UIApplication.shared.open(url)
@@ -554,8 +647,10 @@ func userNotificationCenter(
 
 **Notas**:
 - Deve ser chamado quando o usuário clica em uma notificação
-- O callback recebe o deeplink se disponível na notificação
+- O callback recebe o link do botão tocado; se o toque foi no corpo, o deeplink do push
 - O deeplink é extraído do campo `link` do payload
+- O clique num botão **reutiliza o evento de clique**, acrescentando `action_id` e
+  `action_label` ao custom data — não é um evento novo
 
 Fluxo (alto nível):
 
@@ -622,7 +717,7 @@ Dito.setNotificationOptions(DitoNotificationOptions(
 ))
 ```
 
-> **Limitação APNs — som em notificações remotas**: A personalização de som via `DitoNotificationOptions` afeta apenas notificações construídas localmente pelo SDK (ex.: reapresentação offline). Para notificações entregues diretamente pelo APNs, o som é definido no payload enviado pelo servidor. Se precisar modificar o conteúdo de notificações APNs no dispositivo (som, badge, attachments), é necessário implementar uma `UNNotificationServiceExtension` no app — o SDK não tem acesso ao content delivery feito pelo APNs.
+> **Limitação APNs — som em notificações remotas**: A personalização de som via `DitoNotificationOptions` afeta apenas notificações construídas localmente pelo SDK (ex.: reapresentação offline). Para notificações entregues diretamente pelo APNs, o som é definido no payload enviado pelo servidor. Modificar o conteúdo de uma notificação APNs no dispositivo (som, badge, attachments) exige uma `UNNotificationServiceExtension` — e o SDK já fornece uma classe base pronta para isso: veja [Rich Push](#-rich-push-imagem-botões-e-custom-data) abaixo.
 
 ### Checklist: Notificações não aparecem?
 
@@ -634,6 +729,179 @@ Dito.setNotificationOptions(DitoNotificationOptions(
 6. ✅ Capabilities: **Push Notifications** habilitada
 7. ✅ Certificates APNs válidos no Firebase Console
 8. ✅ App não tem notificações desabilitadas em Settings
+
+---
+
+## 🖼 Rich Push (imagem, botões e custom data)
+
+Campanhas com **imagem**, **botões de ação** ou **custom data** chegam como campos
+adicionais no payload FCM. Todos são opcionais e aditivos: uma campanha sem esses
+campos continua a funcionar exactamente como antes.
+
+| Campo | Conteúdo |
+| --- | --- |
+| `data.image` | URL da imagem |
+| `data.actions` | JSON string: `[{"id":"comprar_agora","label":"Comprar agora","link":"https://…"}]` |
+| `data.custom_data` | JSON string: `{"nivel_programa":"ouro"}` |
+
+> **Sem a Notification Service Extension o push continua a funcionar** — apenas
+> aparece como título + mensagem, sem imagem e sem botões. A extensão é opcional
+> e pode ser adicionada mais tarde.
+
+### 1. Criar a Notification Service Extension
+
+No Xcode: **File → New → Target… → Notification Service Extension**. Dê um nome
+(ex.: `DitoNotificationServiceExtension`) e associe-a ao mesmo App Group / team
+do app.
+
+### 2. Linkar o módulo extension-safe
+
+O produto `DitoSDK` completo **não** pode ser linkado numa extensão: usa
+`UIApplication` e CoreData, que são API exclusivas de app. Por isso o SDK publica
+um produto separado, `DitoSDKNotificationService`, que contém apenas o que a
+extensão precisa.
+
+**Swift Package Manager** — adicione ao *target* da extensão (e **não** o `DitoSDK`):
+
+```swift
+.target(
+    name: "DitoNotificationServiceExtension",
+    dependencies: [
+        .product(name: "DitoSDKNotificationService", package: "DitoSDK")
+    ]
+)
+```
+
+**CocoaPods** — no `Podfile`:
+
+```ruby
+target 'MeuApp' do
+  pod 'DitoSDK'                       # SDK completo, como sempre
+end
+
+target 'DitoNotificationServiceExtension' do
+  pod 'DitoSDKNotificationService'    # apenas a parte extension-safe
+end
+```
+
+> O `DitoSDK` já depende de `DitoSDKNotificationService`, por isso a app não
+> precisa de o declarar — só o target da extensão é que o faz.
+
+### 3. Herdar da classe base
+
+Substitua o conteúdo do `NotificationService.swift` gerado pelo Xcode por:
+
+```swift
+import DitoSDKNotificationService
+
+class NotificationService: DitoNotificationService {}
+```
+
+Isto basta. A classe base:
+
+- descarrega `data.image` e anexa-a como `UNNotificationAttachment`;
+- regista dinamicamente uma `UNNotificationCategory` cujos `UNNotificationAction`
+  têm como identificador o `id` de cada botão, e define o `categoryIdentifier`
+  do conteúdo;
+- entrega o conteúdo original se algo falhar ou o tempo esgotar.
+
+Para ajustar o tempo máximo do download, sobreponha `imageDownloadTimeout`
+(por omissão 15s).
+
+### 4. Tratar o clique num botão
+
+No app, encaminhe a resposta para o SDK. `Dito.notificationClick(response:)` mapeia
+o `response.actionIdentifier` de volta para o botão declarado no payload:
+
+```swift
+func userNotificationCenter(
+    _ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void
+) {
+    Dito.notificationClick(response: response) { link in
+        // `link` é o link do botão tocado, ou o deeplink do push
+        // quando o utilizador tocou no corpo da notificação.
+        self.navigate(to: link)
+    }
+    completionHandler()
+}
+```
+
+O clique num botão **reutiliza o evento de clique existente**, acrescentando
+`action_id` e `action_label` ao mapa de custom data — não é um evento novo.
+
+O objecto devolvido expõe os campos rich:
+
+```swift
+let received = Dito.notificationClick(response: response)
+received.image        // String
+received.actions      // [DitoPushAction] — id, label, link
+received.customData   // [String: String]
+received.actionId     // botão tocado ("" se foi no corpo)
+received.resolvedLink // link do botão, com fallback para o deeplink do push
+```
+
+Imagem e custom data também ficam disponíveis no inbox via
+`Dito.shared.getNotifications()` (`DitoNotificationInfo.image` / `.customData`).
+
+### 5. Depurar o payload
+
+Para inspeccionar o que chegou ao dispositivo, active o dump do payload. Cada push
+produz **uma linha** com o prefixo estável `DITO_PUSH_PAYLOAD` seguida de JSON:
+
+```
+DITO_PUSH_PAYLOAD {"action_ids":["comprar_agora"],"event":"received","has_image":true,"source":"nse", …}
+```
+
+O campo `event` distingue `received` de `clicked` — é o que separa um problema de
+entrega de um problema de clique. O campo `source` distingue o processo (`app` ou
+`nse`).
+
+Ative programaticamente no app, por qualquer um dos dois caminhos:
+
+```swift
+Dito.enableDebugMode(true)        // liga o log da SDK e o dump de payload
+DitoPushDebugLog.isEnabled = true // liga só o dump
+```
+
+> `Dito.enableDebugMode(_:)` passou a espelhar o valor em `DitoPushDebugLog.isEnabled`
+> a partir da 3.6.0. Em versões anteriores ele ligava apenas o log geral da SDK, e o
+> dump de payload só saía pela chave no `Info.plist` — que é o caso a lembrar se
+> estiver a depurar numa versão mais antiga e a linha não aparecer.
+
+A extensão corre **noutro processo**, por isso não vê essa configuração e os seus
+logs não saem junto com os do app. Para a activar, adicione ao `Info.plist` **da
+extensão**:
+
+```xml
+<key>DitoPushDebugLog</key>
+<true/>
+```
+
+As linhas saem via `os_log` no subsistema `br.com.dito.sdk`, categoria `push`.
+No Console.app filtre por `DITO_PUSH_PAYLOAD` para ver os dois processos lado a
+lado.
+
+> ⚠️ **Não deixe activo em produção.** O `os_log` é persistido no aparelho e vai
+> num sysdiagnose. A linha `DITO_PUSH_PAYLOAD` é derivada e não contém identidade,
+> mas o payload cru sai numa segunda linha `DITO_PUSH_RAW` marcada como privada
+> (aparece como `<private>` a menos que se active o log de dados privados no
+> aparelho). A extensão do sample vem com a flag em `false` de propósito.
+
+**O que é redigido na linha crua**, recursivamente, inclusive dentro de `data`:
+
+| Categoria | Chaves |
+| --- | --- |
+| identidade | `user_id`, `identifier`, `reference`, `token` |
+| credencial | `api_key`, `apiKey`, `api_secret`, `apiSecret`, `signature`, `sha1_signature` |
+
+A credencial está na lista porque o channel-sender a põe **dentro do payload do
+push**: numa campanha real de produção o `userInfo` chegou com `api_key` ao lado de
+`notification_name` e da lista de acções. Tudo que chega ao `userInfo` chega ao dump.
+
+Valor vazio **não** é redigido — "esta chave chegou vazia" costuma ser exactamente o
+sinal que se está a procurar.
 
 ## ⚠️ Tratamento de Erros
 

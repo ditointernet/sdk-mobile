@@ -2,6 +2,12 @@ import CoreData
 import Foundation
 import os.log
 
+/// Inbox storage for received notifications.
+///
+/// The rich-push columns (`image`, `customData`) are optional on purpose: the
+/// `.xcdatamodel` is still unversioned, and an additive optional attribute is the
+/// case Core Data's automatic inferred mapping handles. The next *non-additive*
+/// change to this entity needs real model versioning first.
 class DitoNotificationCoreDataManager {
 
     nonisolated(unsafe) static let shared = DitoNotificationCoreDataManager()
@@ -13,18 +19,37 @@ class DitoNotificationCoreDataManager {
         self.container?.viewContext.automaticallyMergesChangesFromParent = true
     }
 
-    func insert(notificationId: String, reference: String, title: String, message: String, link: String) {
+    func insert(
+        notificationId: String,
+        title: String,
+        message: String,
+        link: String,
+        image: String = "",
+        customData: [String: String] = [:]
+    ) {
         guard let container = container else { return }
         let context = container.newBackgroundContext()
         context.undoManager = nil
         context.performAndWait {
+            // O inbox tem uma linha por notificação. Sem esta checagem, um push que chega duas vezes
+            // pelo mesmo processo — em primeiro plano `willPresent` e `didReceiveRemoteNotification`
+            // chamam o mesmo caminho — criava uma segunda linha que nunca era marcada como lida, e
+            // o contador de não-lidas do app ficava permanentemente errado.
+            if Self.recordExists(notificationId: notificationId, in: context) { return }
+
             let record = DitoNotificationRecord(context: context)
             record.id = UUID().uuidString
             record.notificationId = notificationId
-            record.reference = reference
+            // The model still declares `reference` as non-optional, so the column
+            // has to be written. It is intentionally empty: the field was retired
+            // from Dito payloads and the SDK no longer reads it. Dropping the
+            // attribute is a separate, migration-bearing change.
+            record.reference = ""
             record.title = title
             record.message = message
             record.link = link
+            record.image = image.isEmpty ? nil : image
+            record.customData = Self.encode(customData)
             record.receivedAt = Date()
             record.isRead = false
             do {
@@ -85,5 +110,42 @@ class DitoNotificationCoreDataManager {
                 os_log("DitoNotificationCoreDataManager markAsReadByNotificationId error: %@", type: .error, error.localizedDescription)
             }
         }
+    }
+
+    /// Whether the inbox already holds a row for this notification.
+    ///
+    /// An empty `notificationId` is never treated as a duplicate: there is nothing to match on, and
+    /// dropping those rows would lose notifications instead of deduplicating them.
+    private static func recordExists(notificationId: String, in context: NSManagedObjectContext) -> Bool {
+        guard !notificationId.isEmpty else { return false }
+        let request = DitoNotificationRecord.fetchRequest()
+        request.predicate = NSPredicate(format: "notificationId == %@", notificationId)
+        request.fetchLimit = 1
+        do {
+            return try context.count(for: request) > 0
+        } catch {
+            // Falha de leitura não deve virar perda de notificação: segue e insere.
+            os_log(
+                "DitoNotificationCoreDataManager duplicate check error: %@",
+                type: .error,
+                error.localizedDescription
+            )
+            return false
+        }
+    }
+
+    /// Custom data is stored as a JSON string, matching how the other entities
+    /// in this model persist structured payloads.
+    static func encode(_ customData: [String: String]) -> String? {
+        guard !customData.isEmpty else { return nil }
+        guard let data = try? JSONSerialization.data(withJSONObject: customData, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
+    static func decode(_ json: String?) -> [String: String] {
+        guard let json, !json.isEmpty, let data = json.data(using: .utf8) else { return [:] }
+        return (try? JSONSerialization.jsonObject(with: data)) as? [String: String] ?? [:]
     }
 }

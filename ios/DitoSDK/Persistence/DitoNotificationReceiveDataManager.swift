@@ -1,6 +1,23 @@
 import CoreData
 import Foundation
 
+/// Instantâneo imutável de uma linha pendente de `receive-ios-notification`.
+///
+/// Cada `fetch` abre um contexto de fundo local, de vida curta. Um `NSManagedObject`
+/// **não retém o próprio contexto**, então devolvê-lo ao chamador entrega um fault
+/// órfão assim que o contexto é liberado — e isso acontece em momento imprevisível.
+/// O sintoma: `json` volta nil, o `guard` do reenvio pula a linha em silêncio, e como
+/// isso ocorre antes de mexer no contador, a linha nunca é reenviada nem descartada.
+/// Fica presa na fila para sempre, e o evento de entrega simplesmente não é reportado.
+///
+/// `returnsObjectsAsFaults = false` não resolve: quem dispararia o fault é justamente
+/// o contexto que já morreu.
+struct DitoNotificationReceiveRow: Sendable {
+  let id: NSManagedObjectID
+  let json: String?
+  let retry: Int16
+}
+
 struct DitoNotificationReceiveDataManager {
 
   @discardableResult
@@ -73,20 +90,24 @@ struct DitoNotificationReceiveDataManager {
     return success
   }
 
-  var fetchAll: [NotificationReceive] {
+  var fetchAll: [DitoNotificationReceiveRow] {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext()
     else {
       DitoLogger.error("Failed to create background context for NotificationReceive fetch")
       return []
     }
 
-    var results: [NotificationReceive] = []
+    var results: [DitoNotificationReceiveRow] = []
     context.performAndWait {
       let fetchRequest = NSFetchRequest<NotificationReceive>(entityName: "NotificationReceive")
       fetchRequest.returnsObjectsAsFaults = false
 
       do {
-        results = try context.fetch(fetchRequest)
+        // Os atributos são copiados aqui, dentro da fila do contexto: fora dela o
+        // objeto não serve mais (ver `DitoNotificationReceiveRow`).
+        results = try context.fetch(fetchRequest).map {
+          DitoNotificationReceiveRow(id: $0.objectID, json: $0.json, retry: $0.retry)
+        }
         DitoLogger.information(
           "\(results.count) NotificationReceive row(s) found - Successfully!!!"
         )

@@ -48,7 +48,7 @@ internal class TrackerRetry(
 
     private fun checkEvent() {
         scope.launch {
-            val userId = tracker.idOrNull ?: run {
+            val userId = tracker.awaitId() ?: run {
                 Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
                 return@launch
             }
@@ -84,7 +84,7 @@ internal class TrackerRetry(
 
     private fun checkNotificationRead() {
         scope.launch {
-            val userId = tracker.idOrNull ?: run {
+            val userId = tracker.awaitId() ?: run {
                 Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
                 return@launch
             }
@@ -102,7 +102,12 @@ internal class TrackerRetry(
 
     private suspend fun sendNotificationsBatch(notifications: List<NotificationReadOff>, userId: String) {
         val activities = notifications.map { notif ->
-            mapper.mapNotificationClick(notif.notificationId, notif.identifier, notif.activityId)
+            mapper.mapNotificationClick(
+                notif.notificationId,
+                notif.identifier,
+                notif.activityId,
+                notif.data,
+            )
         }
         try {
             val request = mapper.buildRequest(userId, activities, null)

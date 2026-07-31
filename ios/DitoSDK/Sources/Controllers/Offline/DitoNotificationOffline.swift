@@ -52,7 +52,7 @@ struct DitoNotificationOffline {
     notificationReceiveDataManager.save(with: json)
   }
 
-  var getNotificationReceive: [NotificationReceive] {
+  var getNotificationReceive: [DitoNotificationReceiveRow] {
     notificationReceiveDataManager.fetchAll
   }
 
@@ -88,7 +88,7 @@ struct DitoNotificationOffline {
     notificationRegisterDataManager.delete()
   }
 
-  var getNotificationUnregister: NotificationUnregister? {
+  var getNotificationUnregister: DitoNotificationUnregisterRow? {
     return notificationUnregisterDataManager.fetch
   }
 
@@ -100,7 +100,7 @@ struct DitoNotificationOffline {
     notificationUnregisterDataManager.delete()
   }
 
-  var getNotificationRead: [NotificationRead] {
+  var getNotificationRead: [DitoNotificationReadRow] {
     return notificationDataManager.fetchAll
   }
 

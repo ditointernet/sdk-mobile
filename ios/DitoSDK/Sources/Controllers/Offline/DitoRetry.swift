@@ -1,14 +1,6 @@
 import CoreData
 import Foundation
 
-extension DitoRetry {
-    struct NotificationData: Sendable {
-        let id: NSManagedObjectID
-        let json: String?
-        let retry: Int16
-    }
-}
-
 class DitoRetry {
 
     private static let maxRetries: Int16 = 5
@@ -152,7 +144,7 @@ class DitoRetry {
         #endif
 
         for row in pendingRows {
-            let rowId = row.objectID
+            let rowId = row.id
             let rowRetry = row.retry
             guard let jsonData = row.json,
                   let pending = jsonData.convertToObject(type: DitoNotificationReceivePending.self)
@@ -168,7 +160,6 @@ class DitoRetry {
 
             let received = DitoNotificationReceived(with: [
                 "notification": pending.notification,
-                "reference": pending.reference,
                 "log_id": pending.logId,
                 "notification_name": pending.notificationName,
                 "user_id": pending.userId,
@@ -218,7 +209,7 @@ class DitoRetry {
         }
 
         for notification in notifications {
-            let notifID = notification.objectID
+            let notifID = notification.id
             let notifRetry = notification.retry
             guard let jsonData = notification.json,
                   let notificationRequest = jsonData.convertToObject(type: DitoNotificationOpenRequest.self)
@@ -306,7 +297,7 @@ class DitoRetry {
             notificationReadOffline.deleteUnregister()
             DitoLogger.information("✅ [RETRY] Token removido")
         } catch {
-            notificationReadOffline.updateUnregister(id: notificationUnregister.objectID, retry: notificationUnregister.retry + 1)
+            notificationReadOffline.updateUnregister(id: notificationUnregister.id, retry: notificationUnregister.retry + 1)
             DitoLogger.error(error.localizedDescription)
         }
     }
