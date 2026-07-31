@@ -40,10 +40,41 @@ android {
             localPropertiesFile.inputStream().use { localProperties.load(it) }
         }
 
-        val ditoApiKey = System.getenv("DITO_API_KEY")
-            ?: (localProperties.getProperty("DITO_API_KEY") ?: "")
-        val ditoApiSecret = System.getenv("DITO_API_SECRET")
-            ?: (localProperties.getProperty("DITO_API_SECRET") ?: "")
+        // O Dart lê as credenciais de `.env.development.local` (lib/env_loader.dart). O lado
+        // nativo tem de sair da **mesma** fonte: se as duas metades autenticarem com chaves
+        // diferentes, o app aberto funciona e só o clique em processo novo falha — porque é
+        // ele que depende do manifest, e não do que o Dart inicializou.
+        val dartEnv = Properties()
+        val dartEnvFile = rootProject.file("../.env.development.local")
+        if (dartEnvFile.exists()) {
+            dartEnvFile.inputStream().use { dartEnv.load(it) }
+        }
+
+        // Vazio conta como ausente. Sem isso, um `export DITO_API_KEY=` no shell vence o
+        // arquivo e o placeholder resolve para string vazia — que o merge aceita sem erro.
+        fun resolve(vararg candidates: String?): String =
+            candidates.firstOrNull { !it.isNullOrBlank() }?.trim()?.trim('"', '\'') ?: ""
+
+        val ditoApiKey = resolve(
+            System.getenv("DITO_API_KEY"),
+            localProperties.getProperty("DITO_API_KEY"),
+            dartEnv.getProperty("API_KEY"),
+        )
+        val ditoApiSecret = resolve(
+            System.getenv("DITO_API_SECRET"),
+            localProperties.getProperty("DITO_API_SECRET"),
+            dartEnv.getProperty("API_SECRET"),
+        )
+
+        // Falhar aqui é mais barato que descobrir no clique. O build passava com placeholder
+        // vazio e o sintoma aparecia só depois de matar o app e tocar na notificação.
+        if (ditoApiKey.isBlank()) {
+            throw GradleException(
+                "Credencial da Dito não encontrada. Defina API_KEY em " +
+                    "${dartEnvFile.path} (mesma fonte do Dart), ou DITO_API_KEY em " +
+                    "local.properties ou no ambiente.",
+            )
+        }
 
         manifestPlaceholders["DITO_API_KEY"] = ditoApiKey
         manifestPlaceholders["DITO_API_SECRET"] = ditoApiSecret

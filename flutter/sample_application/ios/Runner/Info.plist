@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>AppKey</key>
-	<string>${DITO_API_KEY}</string>
+	<string>$(DITO_APP_KEY)</string>
 	<key>AppSecret</key>
-	<string>${DITO_API_SECRET}</string>
+	<string>$(DITO_APP_SECRET)</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

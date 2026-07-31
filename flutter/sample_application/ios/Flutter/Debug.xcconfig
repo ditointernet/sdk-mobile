@@ -1,2 +1,7 @@
 #include? "Pods/Target Support Files/Pods-Runner/Pods-Runner.debug.xcconfig"
 #include "Generated.xcconfig"
+// Obrigatório de propósito. Se este arquivo não existir, o build falha nomeando-o —
+// e o remédio é rodar ios/generate-dito-xcconfig.sh. Com `#include?` a ausência era
+// silenciosa: $(DITO_APP_KEY) resolvia para string vazia, o Info.plist saía sem
+// credencial, `Dito.init` desistia sem erro e o sintoma só aparecia no clique.
+#include "Dito.xcconfig"
