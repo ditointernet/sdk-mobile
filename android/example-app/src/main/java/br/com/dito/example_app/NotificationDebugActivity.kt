@@ -10,14 +10,18 @@ import android.util.Log
 import android.widget.Toast
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.notification.DitoMessagingService
+import br.com.dito.ditosdk.notification.DitoNotificationHandler
 import br.com.dito.ditosdk.notification.DitoNotificationOptions
 import br.com.dito.example_app.databinding.ActivityNotificationDebugBinding
 import com.google.firebase.messaging.RemoteMessage
 import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class NotificationDebugActivity : AppCompatActivity() {
 
@@ -72,8 +76,24 @@ class NotificationDebugActivity : AppCompatActivity() {
         try {
             val remoteMessage = NotificationDebugHelper.simulateNotification(this, jsonPayload)
             if (remoteMessage != null) {
-                val service = DitoMessagingService()
-                service.onMessageReceived(remoteMessage)
+                // Reproduz `DitoMessagingService.onMessageReceived` sem instanciar o
+                // serviço: um Service criado com `DitoMessagingService()` não passa pelo
+                // ciclo de vida do sistema, então não tem base context e o
+                // `applicationContext` que o handler exige é nulo — o simulador morria
+                // com NullPointerException antes de tocar no payload.
+                DitoMessagingService.notificationInterceptor?.onNotificationReceived(remoteMessage)
+                val handler = DitoNotificationHandler(applicationContext)
+                if (handler.canHandle(remoteMessage)) {
+                    // Em background, como o FCM faz. Na main thread o download da imagem
+                    // do push rico morre com NetworkOnMainThreadException — cuja mensagem é
+                    // nula — e a notificação cai para BigTextStyle silenciosamente, o que
+                    // parece defeito de payload e não é.
+                    lifecycleScope.launch(Dispatchers.IO) {
+                        handler.handleNotification(remoteMessage)
+                    }
+                } else {
+                    Log.w("NotificationDebug", "Payload sem channel=DITO, o SDK ignoraria")
+                }
 
                 Toast.makeText(this, "Notificação simulada com sucesso!", Toast.LENGTH_SHORT).show()
                 Log.d("NotificationDebug", "Notification simulated successfully")

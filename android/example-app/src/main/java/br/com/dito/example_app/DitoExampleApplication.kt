@@ -14,6 +14,13 @@ import com.google.firebase.messaging.RemoteMessage
 
 class DitoExampleApplication : Application() {
 
+    companion object {
+        private const val TAG = "DitoExample"
+
+        /** O data map do push pode trazer credenciais; valor mascarado antes de ir para o logcat. */
+        private val MASKED_KEYS = setOf("api_key", "api_secret", "secret")
+    }
+
     @RequiresApi(Build.VERSION_CODES.O)
     override fun onCreate() {
         super.onCreate()
@@ -35,7 +42,42 @@ class DitoExampleApplication : Application() {
             Log.e("DitoExample", "Erro ao inicializar Dito SDK: ${e.message}", e)
         }
 
+        setupNotificationCallbacks()
         setupNotificationInterceptor()
+    }
+
+    /**
+     * Registro **depois** de `Dito.init`: `init` com `Options` não-nulo sobrescreve
+     * `notificationClickListener` com o campo homônimo de `Options` (que aqui é nulo), então
+     * registrar antes apagaria o listener. Cada callback emite uma linha única com prefixo fixo
+     * para que um teste em dispositivo possa provar, via logcat, que o payload do toque chega
+     * inteiro ao app host.
+     */
+    private fun setupNotificationCallbacks() {
+        Dito.notificationClickDataListener = { result ->
+            Log.i(
+                TAG,
+                "DITO_CB_CLICK_DATA notificationId=${oneLine(result.notificationId)} " +
+                    "reference=${oneLine(result.reference)} " +
+                    "deepLink=${oneLine(result.deepLink)} " +
+                    "actionId=${oneLine(result.actionId)} " +
+                    "actionLabel=${oneLine(result.actionLabel)} " +
+                    "customDataKeys=${result.customData.keys.sorted()} " +
+                    "customData={${flatten(result.customData)}}",
+            )
+        }
+
+        Dito.notificationClickListener = { deepLink ->
+            Log.i(TAG, "DITO_CB_CLICK_LINK deepLink=${oneLine(deepLink)}")
+        }
+
+        Dito.notificationReceivedListener = { data ->
+            Log.i(
+                TAG,
+                "DITO_CB_RECEIVED dataKeys=${data.keys.sorted()} " +
+                    "data={${flatten(data, mask = true)}}",
+            )
+        }
     }
 
     private fun setupNotificationInterceptor() {
@@ -46,4 +88,12 @@ class DitoExampleApplication : Application() {
             }
         }
     }
+
+    /** Um marcador é uma linha só: um `\n` no valor quebraria o grep do teste em duas. */
+    private fun oneLine(value: String): String = value.replace("\n", "\\n").replace("\r", "\\r")
+
+    private fun flatten(map: Map<String, String>, mask: Boolean = false): String =
+        map.entries.sortedBy { it.key }.joinToString(separator = "&") { (key, value) ->
+            "$key=${if (mask && key.lowercase() in MASKED_KEYS) "***" else oneLine(value)}"
+        }
 }

@@ -168,11 +168,20 @@ internal class Tracker(
         }
     }
 
-    fun notificationClick(notificationId: String, notificationReference: String, userId: String) {
+    /**
+     * @param data Custom data extra do clique (ex.: `action_id`/`action_label` de um botão).
+     *   Não é persistido no retry offline — só o clique básico é reenviado.
+     */
+    fun notificationClick(
+        notificationId: String,
+        notificationReference: String,
+        userId: String,
+        data: Map<String, String> = emptyMap(),
+    ) {
         scope.launch {
             if (userId.isEmpty() || notificationId.isEmpty()) return@launch
             val activityId = UUID.randomUUID().toString()
-            val activity = mapper.mapNotificationClick(notificationId, userId, activityId)
+            val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data)
             val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
                 client.activity(request)

@@ -2,7 +2,9 @@ package br.com.dito.ditosdk
 
 import android.content.Context
 import android.content.pm.PackageManager
+import br.com.dito.ditosdk.notification.DitoNotificationAction
 import br.com.dito.ditosdk.notification.DitoNotificationOptions
+import br.com.dito.ditosdk.notification.DitoRichPushParser
 import br.com.dito.ditosdk.notification.inbox.DitoNotificationInfo
 import br.com.dito.ditosdk.offline.DitoDatabase
 import br.com.dito.ditosdk.service.ActivityMapper
@@ -33,7 +35,12 @@ object Dito {
 
     private lateinit var apiKey: String
     private lateinit var apiSecret: String
-    private lateinit var hibridMode: String
+    // `"OFF"` é o default documentado de `br.com.dito.HIBRID_MODE`, e o campo tem de valer
+    // isso antes de qualquer inicialização. Como `lateinit`, `getHibridMode()` lançava
+    // `UninitializedPropertyAccessException` sempre que era lido sem init bem-sucedido — e
+    // `NotificationOpenedActivity.getTargetIntent` o lê no caminho do clique, justamente
+    // quando o app não conseguiu inicializar. Era um crash no toque da notificação.
+    private var hibridMode: String = "OFF"
     private lateinit var tracker: Tracker
     private lateinit var applicationContext: Context
 
@@ -42,14 +49,53 @@ object Dito {
     const val DITO_DEEP_LINK = "br.com.dito.ditosdk.DITO_DEEP_LINK"
     const val DITO_USER_ID = "br.com.dito.ditosdk.DITO_USER_ID"
 
+    /**
+     * Id do botão tocado, ou string vazia quando o toque foi no corpo da notificação. Chega no
+     * Intent que abre o app, junto com [DITO_DEEP_LINK] — o SDK **não** abre link nenhum por conta
+     * própria, quem roteia é o app.
+     */
+    const val DITO_ACTION_ID = "br.com.dito.ditosdk.DITO_ACTION_ID"
+
+    /** Rótulo do botão tocado, ou string vazia para toque no corpo. */
+    const val DITO_ACTION_LABEL = "br.com.dito.ditosdk.DITO_ACTION_LABEL"
+
+    /** Custom data da campanha, ainda como string JSON — igual ao extra do broadcast de botão. */
+    const val DITO_CUSTOM_DATA = "br.com.dito.ditosdk.DITO_CUSTOM_DATA"
+
     var options: Options? = null
     var notificationClickListener: ((String) -> Unit)? = null
     var notificationReceivedListener: ((Map<String, String>) -> Unit)? = null
+
+    /**
+     * Listener rico de clique: recebe o [NotificationResult] completo, com custom data já decodificada
+     * e, quando o clique veio de um botão, `actionId`/`actionLabel`. Disparado junto com
+     * [notificationClickListener], que continua recebendo apenas o deeplink.
+     */
+    var notificationClickDataListener: ((NotificationResult) -> Unit)? = null
+
     var notificationOptions: DitoNotificationOptions = DitoNotificationOptions()
         private set
 
     fun setNotificationOptions(options: DitoNotificationOptions) {
         notificationOptions = options
+    }
+
+    /**
+     * Guarda as [Options] do app **sem apagar** as que já estavam lá quando vem `null`.
+     *
+     * O SDK se re-inicializa sozinho em quatro pontos (`NotificationOpenedActivity`,
+     * `DitoNotificationActionReceiver` e duas vezes em `DitoNotificationHandler`), sempre
+     * com `Dito.init(context, null)`. Atribuir `null` nesses pontos destruía a
+     * configuração do app host: `debug`, `retry`, `iconNotification`, `contentIntent` e —
+     * o pior — o `notificationClickListener`. O caso concreto: o processo morre, o usuário
+     * toca na notificação, a `NotificationOpenedActivity` re-inicializa com `null` e aí lê
+     * `Dito.notificationClickListener`, que ela mesma acabou de zerar. O clique era
+     * registrado no backend e nunca chegava ao app.
+     */
+    private fun applyOptions(options: Options?) {
+        if (options == null) return
+        this.options = options
+        this.notificationClickListener = options.notificationClickListener
     }
 
     /**
@@ -60,8 +106,7 @@ object Dito {
      * @param options Configurações opcionais do SDK (debug, retry, etc.)
      */
     fun init(context: Context?, options: Options?) {
-        this.options = options
-        this.notificationClickListener = options?.notificationClickListener
+        applyOptions(options)
         if (context == null) throw RuntimeException("Context is not available")
         this.applicationContext = context.applicationContext
         val meta = context.packageManager
@@ -94,8 +139,7 @@ object Dito {
      * @param options Configurações opcionais do SDK
      */
     fun init(context: Context?, apiKey: String, apiSecret: String = "", options: Options? = null) {
-        this.options = options
-        this.notificationClickListener = options?.notificationClickListener
+        applyOptions(options)
         if (context == null) throw RuntimeException("Context is not available")
         this.applicationContext = context.applicationContext
         val hibridMode = resolveHibridMode(context)
@@ -285,8 +329,16 @@ object Dito {
      */
     fun notificationClick(userInfo: Map<String, String>) {
         val data = DitoNotificationHandler.extractReadData(userInfo)
-        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
-        tracker.notificationClick(data.notificationId, data.reference, data.userId)
+        // `reference` fora da condição: está em retirada dos payloads e a atribuição
+        // ancora em `user_id`. Enquanto ele estava aqui, campanha sem o campo não gerava
+        // evento nenhum.
+        if (data.notificationId.isEmpty()) return
+        tracker.notificationClick(
+            data.notificationId,
+            data.reference,
+            data.userId,
+            DitoNotificationHandler.extractClickData(userInfo),
+        )
         CoroutineScope(Dispatchers.IO).launch {
             DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(data.notificationId)
         }
@@ -300,7 +352,10 @@ object Dito {
      */
     fun notificationRead(userInfo: Map<String, String>) {
         val data = DitoNotificationHandler.extractReadData(userInfo)
-        if (data.reference.isEmpty() || data.notificationId.isEmpty()) return
+        // `reference` fora da condição: está em retirada dos payloads e a atribuição
+        // ancora em `user_id`. Enquanto ele estava aqui, campanha sem o campo não gerava
+        // evento nenhum.
+        if (data.notificationId.isEmpty()) return
         processNotificationReceived(data)
     }
 
@@ -323,6 +378,7 @@ object Dito {
      */
     fun notificationClick(userInfo: Map<String, String>, callback: ((String) -> Unit)? = null): NotificationResult {
         val result = DitoNotificationHandler.handleClick(userInfo, callback, tracker)
+        notificationClickDataListener?.invoke(result)
         if (result.notificationId.isNotEmpty()) {
             CoroutineScope(Dispatchers.IO).launch {
                 DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(result.notificationId)
@@ -330,6 +386,20 @@ object Dito {
         }
         return result
     }
+
+    /**
+     * Decodifica `custom_data` (string JSON no data map do push) para um mapa. Payload inválido volta
+     * vazio. Útil dentro de [notificationReceivedListener], que recebe o data map cru.
+     */
+    fun parseNotificationCustomData(userInfo: Map<String, String>): Map<String, String> =
+        DitoRichPushParser.parseCustomData(userInfo["custom_data"])
+
+    /**
+     * Decodifica `actions` (string JSON no data map do push) para a lista de botões. Payload inválido
+     * volta vazio. Útil dentro de [notificationReceivedListener], que recebe o data map cru.
+     */
+    fun parseNotificationActions(userInfo: Map<String, String>): List<DitoNotificationAction> =
+        DitoRichPushParser.parseActions(userInfo["actions"])
 
     /**
      * Dados de uma notificação recebida/lida para processamento pelo SDK.
@@ -353,6 +423,8 @@ object Dito {
                 link = record.link,
                 receivedAt = record.receivedAt,
                 isRead = record.isRead,
+                image = record.image,
+                customData = DitoRichPushParser.parseCustomData(record.customData),
             )
         }
 

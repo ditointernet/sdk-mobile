@@ -33,6 +33,7 @@ class DitoTest {
 
     private fun resetDitoState() {
         setField("options", null)
+        setField("notificationClickListener", null)
         setField("apiKey", "")
         setField("apiSecret", "")
         setField("hibridMode", "")
@@ -104,6 +105,55 @@ class DitoTest {
         Dito.init(mockContext, options)
 
         assertThat(Dito.options).isEqualTo(options)
+    }
+
+    @Test
+    fun `init with null options keeps what the app already configured`() {
+        val options = Options(retry = 10).apply {
+            debug = true
+            notificationClickListener = { }
+        }
+        Dito.init(manifestContext(apiKey = "key", apiSecret = "secret"), options)
+
+        // O SDK se re-inicializa sozinho no caminho do clique e da entrega, sempre com
+        // `init(context, null)`. Se isso apagasse as Options, o app perdia o
+        // `notificationClickListener` justamente antes de o clique ser entregue.
+        Dito.init(manifestContext(apiKey = "key", apiSecret = "secret"), null)
+
+        assertThat(Dito.options).isEqualTo(options)
+        assertThat(Dito.notificationClickListener).isNotNull()
+    }
+
+    @Test
+    fun `init with null options keeps the listener even when it throws for missing API_KEY`() {
+        val options = Options(retry = 3).apply { notificationClickListener = { } }
+        Dito.init(manifestContext(apiKey = "key", apiSecret = "secret"), options)
+        setField("apiKey", "")
+        setField("apiSecret", "")
+
+        // É o cenário de quem inicializa por código (Flutter, React Native): sem chave no
+        // manifest, `init` lança — e não pode levar a configuração do app junto.
+        assertFailsWith<RuntimeException> {
+            Dito.init(manifestContext(apiKey = null, apiSecret = null), null)
+        }
+
+        assertThat(Dito.options).isEqualTo(options)
+        assertThat(Dito.notificationClickListener).isNotNull()
+    }
+
+    private fun manifestContext(apiKey: String?, apiSecret: String?): Context {
+        val mockContext = mockk<Context>(relaxed = true)
+        val mockPackageManager = mockk<PackageManager>(relaxed = true)
+        val mockAppInfo = mockk<ApplicationInfo>(relaxed = true)
+        mockAppInfo.metaData = android.os.Bundle().apply {
+            apiKey?.let { putString("br.com.dito.API_KEY", it) }
+            apiSecret?.let { putString("br.com.dito.API_SECRET", it) }
+        }
+        every { mockContext.packageManager } returns mockPackageManager
+        every { mockContext.packageName } returns "test.package"
+        every { mockContext.applicationContext } returns mockContext
+        every { mockPackageManager.getApplicationInfo(any<String>(), any<Int>()) } returns mockAppInfo
+        return mockContext
     }
 
     @Test

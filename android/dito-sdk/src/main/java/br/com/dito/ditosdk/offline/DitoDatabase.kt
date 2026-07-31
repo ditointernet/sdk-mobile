@@ -28,9 +28,21 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
     }
 }
 
+/**
+ * Adiciona os campos de rich push ao inbox. Migração aditiva: `ALTER TABLE ADD COLUMN` com
+ * `NOT NULL DEFAULT ''`, batendo exatamente com o `defaultValue` declarado na entidade — nenhuma
+ * linha existente é perdida.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE dito_notifications ADD COLUMN image TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE dito_notifications ADD COLUMN custom_data TEXT NOT NULL DEFAULT ''")
+    }
+}
+
 @Database(
     entities = [DitoNotificationRecord::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 abstract class DitoDatabase : RoomDatabase() {
@@ -48,7 +60,7 @@ abstract class DitoDatabase : RoomDatabase() {
 
         fun build(context: Context): DitoDatabase =
             Room.databaseBuilder(context, DitoDatabase::class.java, "dito-inbox")
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
