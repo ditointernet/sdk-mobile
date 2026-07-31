@@ -26,7 +26,7 @@ Dito iOS SDK Plugin for Flutter
   #
   # A NSE do app integrador linka o pod separado `DitoSDKNotificationService`, no target da
   # extension. Ele não entra aqui: uma app extension não pode linkar o Flutter.
-  s.dependency 'DitoSDK', '~> 3.5'
+  s.dependency 'DitoSDK', '~> 3.6'
   s.dependency 'Firebase/Messaging'
   s.platform = :ios, '16.0'
 

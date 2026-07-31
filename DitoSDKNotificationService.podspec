@@ -14,7 +14,7 @@
 # Keep `s.version` in lockstep with DitoSDK.podspec.
 Pod::Spec.new do |s|
   s.name             = 'DitoSDKNotificationService'
-  s.version          = '3.5.0'
+  s.version          = '3.6.0'
   s.summary          = 'Extensão de notificação do SDK iOS da Dito: imagem, botões e custom data em push'
   s.homepage         = 'https://github.com/ditointernet/sdk-mobile'
   s.license          = { :type => 'MIT', :file => 'LICENSE' }
