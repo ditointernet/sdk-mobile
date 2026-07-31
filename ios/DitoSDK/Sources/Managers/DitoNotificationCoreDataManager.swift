@@ -31,6 +31,12 @@ class DitoNotificationCoreDataManager {
         let context = container.newBackgroundContext()
         context.undoManager = nil
         context.performAndWait {
+            // O inbox tem uma linha por notificação. Sem esta checagem, um push que chega duas vezes
+            // pelo mesmo processo — em primeiro plano `willPresent` e `didReceiveRemoteNotification`
+            // chamam o mesmo caminho — criava uma segunda linha que nunca era marcada como lida, e
+            // o contador de não-lidas do app ficava permanentemente errado.
+            if Self.recordExists(notificationId: notificationId, in: context) { return }
+
             let record = DitoNotificationRecord(context: context)
             record.id = UUID().uuidString
             record.notificationId = notificationId
@@ -103,6 +109,28 @@ class DitoNotificationCoreDataManager {
             } catch {
                 os_log("DitoNotificationCoreDataManager markAsReadByNotificationId error: %@", type: .error, error.localizedDescription)
             }
+        }
+    }
+
+    /// Whether the inbox already holds a row for this notification.
+    ///
+    /// An empty `notificationId` is never treated as a duplicate: there is nothing to match on, and
+    /// dropping those rows would lose notifications instead of deduplicating them.
+    private static func recordExists(notificationId: String, in context: NSManagedObjectContext) -> Bool {
+        guard !notificationId.isEmpty else { return false }
+        let request = DitoNotificationRecord.fetchRequest()
+        request.predicate = NSPredicate(format: "notificationId == %@", notificationId)
+        request.fetchLimit = 1
+        do {
+            return try context.count(for: request) > 0
+        } catch {
+            // Falha de leitura não deve virar perda de notificação: segue e insere.
+            os_log(
+                "DitoNotificationCoreDataManager duplicate check error: %@",
+                type: .error,
+                error.localizedDescription
+            )
+            return false
         }
     }
 

@@ -296,6 +296,83 @@ final class DitoNotificationDataTests: XCTestCase {
         XCTAssertEqual(req.userID, uid)
     }
 
+    /// Em primeiro plano `willPresent` e `didReceiveRemoteNotification` chamam este caminho para o
+    /// mesmo push. A guarda antiga lia o estado de entrega antes do `await` da rede e só marcava
+    /// depois dele, então as duas chegadas passavam.
+    func test_notificationReceived_duasChegadasDoMesmoPush_enviamUmSoEvento() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let uid = "user-dedup-\(UUID().uuidString)"
+        let nid = "nid-dedup-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "user_id": uid,
+            "notification": nid,
+            "log_id": "log-dedup",
+            "title": "T",
+            "message": "M",
+        ]
+
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-dedup")
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-dedup")
+
+        await waitForActivityCalls(mock, count: 1)
+        try await Task.sleep(nanoseconds: 400_000_000)
+        XCTAssertEqual(mock.activityCallCount, 1, "o segundo callback não deve gerar um segundo envio")
+    }
+
+    /// A linha duplicada ficava com `isRead == false` para sempre, inflando o contador de não-lidas.
+    func test_notificationReceived_duasChegadasDoMesmoPush_criamUmaSoLinhaNoInbox() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        let nid = "nid-inbox-dedup-\(UUID().uuidString)"
+        let userInfo: [AnyHashable: Any] = [
+            "user_id": "user-inbox-dedup-\(UUID().uuidString)",
+            "notification": nid,
+            "log_id": "log-inbox-dedup",
+            "title": "T",
+            "message": "M",
+        ]
+
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-inbox-dedup")
+        Dito.notificationReceived(userInfo: userInfo, token: "fcm-token-inbox-dedup")
+        try await Task.sleep(nanoseconds: 400_000_000)
+
+        let rows = Dito.shared.getNotifications().filter { $0.notificationId == nid }
+        XCTAssertEqual(rows.count, 1)
+    }
+
+    /// Sem devolver a reivindicação, um push cuja entrega falhou ficaria bloqueado até o processo
+    /// morrer — e a nova chegada do mesmo push não teria como ser contada.
+    func test_claimDelivery_reivindicaUmaVezEDevolveNoRelease() {
+        let nid = "nid-claim-\(UUID().uuidString)"
+        let logId = "log-claim"
+
+        XCTAssertTrue(DitoNotificationReceiveTracker.claimDelivery(notification: nid, logId: logId))
+        XCTAssertFalse(DitoNotificationReceiveTracker.claimDelivery(notification: nid, logId: logId))
+
+        DitoNotificationReceiveTracker.releaseClaim(notification: nid, logId: logId)
+        XCTAssertTrue(DitoNotificationReceiveTracker.claimDelivery(notification: nid, logId: logId))
+
+        DitoNotificationReceiveTracker.markDelivered(notification: nid, logId: logId)
+        XCTAssertFalse(
+            DitoNotificationReceiveTracker.claimDelivery(notification: nid, logId: logId),
+            "depois de entregue, nem o release deve reabrir"
+        )
+        DitoNotificationReceiveTracker.releaseClaim(notification: nid, logId: logId)
+        XCTAssertFalse(DitoNotificationReceiveTracker.claimDelivery(notification: nid, logId: logId))
+    }
+
+    /// Sem par de identificadores não há chave de dedupe. Enviar duas vezes é uma falha menor que
+    /// nunca enviar, então o caminho segue aberto.
+    func test_claimDelivery_semIdentificadoresSempreLibera() {
+        XCTAssertTrue(DitoNotificationReceiveTracker.claimDelivery(notification: "", logId: ""))
+        XCTAssertTrue(DitoNotificationReceiveTracker.claimDelivery(notification: "", logId: ""))
+    }
+
     func test_notificationReceived_userIdNumericoEnviaActivityIngest() async throws {
         let mock = MockMobileIngestClient()
         Dito.testNotificationReceivedIngestClient = mock
