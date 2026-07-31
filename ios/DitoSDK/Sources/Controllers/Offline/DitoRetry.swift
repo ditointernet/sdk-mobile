@@ -152,7 +152,7 @@ class DitoRetry {
         #endif
 
         for row in pendingRows {
-            let rowId = row.objectID
+            let rowId = row.id
             let rowRetry = row.retry
             guard let jsonData = row.json,
                   let pending = jsonData.convertToObject(type: DitoNotificationReceivePending.self)
