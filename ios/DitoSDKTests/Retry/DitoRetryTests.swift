@@ -125,6 +125,35 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
     }
 
+    /// Se o ingest falha, a linha do unregister fica — e o contador **avança**.
+    ///
+    /// Sob o fault órfão o `guard` desistia ao ler `json` nil, sem tocar no `retry`:
+    /// o token nunca era removido no backend e continuava recebendo push.
+    func testLoadOffline_postIdentify_pendingUnregister_ingestFails_rowSurvivesWithIncrementedRetry() async throws {
+        let mock = MockMobileIngestClient()
+
+        let userId = "uid-retry-token-unregister-fail-1"
+        savePostIdentify(userId: userId)
+
+        let tokenRequest = makeTokenRequest(token: "fcm-unregister-fail-xyz")
+        guard let unregisterJson = tokenRequest.toString else {
+            XCTFail("token json")
+            return
+        }
+        XCTAssertTrue(DitoNotificationUnregisterDataManager().save(with: unregisterJson, retry: 0))
+
+        mock.shouldSucceed = false
+        let sut = DitoRetry(client: mock)
+        await sut.runLoadOffline()
+
+        let row = try XCTUnwrap(
+            DitoNotificationUnregisterDataManager().fetch,
+            "o unregister não pode ser descartado por uma falha de rede"
+        )
+        XCTAssertEqual(row.retry, 1, "o contador tem de avançar, senão o token nunca é removido nem expira")
+        XCTAssertNotNil(row.json)
+    }
+
     func testLoadOffline_postIdentify_pendingUnregister_sendsTokenUnregisterAndClearsCoreData() async throws {
         let mock = MockMobileIngestClient()
         mock.shouldSucceed = true
