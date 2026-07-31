@@ -3,9 +3,31 @@
         android:label="sample_application"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- As credenciais vivem aqui **além** de serem passadas por Dart em main.dart.
+             Não é redundância: credencial passada por código só existe no processo que rodou
+             aquele código, e o clique na notificação sobe `NotificationOpenedActivity` num
+             processo novo, onde o Dart ainda não rodou. Lá o SDK chama `Dito.init(context,
+             null)`, que lê exclusivamente estes meta-data — sem eles, `resolvedApiKey` vem
+             vazio e o init morre em `RuntimeException("É preciso configurar API_KEY no
+             AndroidManifest.")` (Dito.kt), levando o clique no corpo junto.
+
+             Os valores vêm de `manifestPlaceholders` em app/build.gradle.kts, alimentados por
+             `DITO_API_KEY`/`DITO_API_SECRET` do ambiente ou do local.properties — nenhum dos
+             dois é versionado. Se o placeholder não resolver, o merge grava string vazia e
+             não há erro de build: o sintoma aparece só no clique. -->
         <meta-data
             android:name="br.com.dito.API_KEY"
             android:value="${DITO_API_KEY}" />
+        <meta-data
+            android:name="br.com.dito.API_SECRET"
+            android:value="${DITO_API_SECRET}" />
+        <!-- Obrigatório em app híbrido. Com `OFF` (o default), o Intent que abre o app leva
+             `FLAG_ACTIVITY_CLEAR_TOP or FLAG_ACTIVITY_NEW_TASK`, que recria a Activity e
+             derruba o engine do Flutter no meio do clique. Com `ON`, vai
+             `FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY` e o engine sobrevive. -->
+        <meta-data
+            android:name="br.com.dito.HIBRID_MODE"
+            android:value="ON" />
         <service
             android:name=".CustomMessagingService"
             android:exported="false">
