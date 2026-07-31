@@ -2,6 +2,7 @@ package br.com.dito.ditosdk
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.util.Log
 import br.com.dito.ditosdk.notification.DitoNotificationAction
 import br.com.dito.ditosdk.notification.DitoNotificationOptions
 import br.com.dito.ditosdk.notification.DitoRichPushParser
@@ -339,9 +340,7 @@ object Dito {
             data.userId,
             DitoNotificationHandler.extractClickData(userInfo),
         )
-        CoroutineScope(Dispatchers.IO).launch {
-            DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(data.notificationId)
-        }
+        markInboxAsRead(data.notificationId)
     }
 
     /**
@@ -380,11 +379,27 @@ object Dito {
         val result = DitoNotificationHandler.handleClick(userInfo, callback, tracker)
         notificationClickDataListener?.invoke(result)
         if (result.notificationId.isNotEmpty()) {
-            CoroutineScope(Dispatchers.IO).launch {
-                DitoDatabase.getInstance(applicationContext).ditoNotificationDao().markAsReadByNotificationId(result.notificationId)
-            }
+            markInboxAsRead(result.notificationId)
         }
         return result
+    }
+
+    /**
+     * Marca a notificação como lida no inbox local, fora da thread principal.
+     *
+     * A exceção é contida de propósito: sem isto, uma falha do Room aqui é uma exceção não tratada
+     * dentro de um `launch` — o que no Android derruba o processo. O clique já foi contabilizado
+     * antes desta chamada; falhar em marcar como lido não vale a queda do app hospedeiro.
+     */
+    private fun markInboxAsRead(notificationId: String) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                DitoDatabase.getInstance(applicationContext).ditoNotificationDao()
+                    .markAsReadByNotificationId(notificationId)
+            } catch (e: Exception) {
+                Log.e("Dito", "Falha ao marcar a notificação $notificationId como lida no inbox.", e)
+            }
+        }
     }
 
     /**

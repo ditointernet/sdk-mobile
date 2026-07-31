@@ -1,5 +1,13 @@
 ### Funcionalidades
 
+- feat(ios): NSE de rich push e correções de CoreData, para release 3.6.0 (#31) (0f3577f)
+
+### Correções
+
+- fix(android): redige credencial e identidade no dump de payload (#32) (9466550)
+
+### Funcionalidades
+
 - feat(android): rich push — imagem, botões e custom data, para release 3.6.0 (#30) (c897baf)
 
 ### Funcionalidades

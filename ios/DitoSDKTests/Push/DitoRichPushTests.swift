@@ -503,6 +503,54 @@ final class DitoRichPushTests: XCTestCase {
         XCTAssertFalse(line.contains("\n"))
     }
 
+    /// O dump do lado do app só era chamado a partir da API legada
+    /// `DitoNotification.notificationRead`. Quem usa `Dito.notificationReceived` — o caminho
+    /// recomendado — não passava por lá, e a linha `source:"app"` nunca saía.
+    func test_notificationReceived_emiteODumpDoLadoDoApp() {
+        // Cliente mockado de propósito: sem ele a entrega falha de verdade e fica pendente na fila
+        // offline, contaminando os testes de batch que rodam depois.
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        DitoPushDebugLog.isEnabled = true
+        var emitted: [(DitoPushLogEvent, DitoPushLogSource, String)] = []
+        DitoPushDebugLog.testSink = { event, source, line in emitted.append((event, source, line)) }
+        addTeardownBlock {
+            Dito.testNotificationReceivedIngestClient = nil
+            DitoPushDebugLog.testSink = nil
+            DitoPushDebugLog.resetEnabledOverride()
+        }
+
+        let nid = "nid-dump-app-\(UUID().uuidString)"
+        Dito.notificationReceived(
+            userInfo: [
+                "notification": nid,
+                "user_id": "uid-\(UUID().uuidString)",
+                "title": "Título",
+                "message": "Corpo",
+            ],
+            token: "fcm-token-teste"
+        )
+
+        let received = emitted.filter { $0.0 == .received && $0.1 == .app }
+        XCTAssertEqual(received.count, 1, "esperada exatamente uma linha received/app")
+        XCTAssertTrue(received.first?.2.contains(nid) == true)
+    }
+
+    /// `enableDebugMode` não ligava esta flag: o instrumento em que uma investigação de entrega se
+    /// apoia ficava desligado no próprio app investigado.
+    func test_enableDebugMode_ligaEDesligaODumpDePayload() {
+        addTeardownBlock {
+            Dito.enableDebugMode(false)
+            DitoPushDebugLog.resetEnabledOverride()
+        }
+
+        Dito.enableDebugMode(true)
+        XCTAssertTrue(DitoPushDebugLog.isEnabled)
+
+        Dito.enableDebugMode(false)
+        XCTAssertFalse(DitoPushDebugLog.isEnabled)
+    }
+
     func test_pushDebugLog_isEnabled_respeitaOverrideEReset() {
         let original = DitoPushDebugLog.isEnabled
 
@@ -777,6 +825,13 @@ final class DitoRichPushTests: XCTestCase {
     }
 
     func test_inbox_naoPersisteReferenceDoPayload() throws {
+        // O teste só olha o inbox, mas sem cliente mockado a entrega tenta a rede de verdade,
+        // falha e deixa uma linha pendente que só materializa depois — caindo dentro de um teste
+        // posterior e quebrando as asserções dele.
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
         let nid = "nid-inbox-ref-\(UUID().uuidString)"
         Dito.notificationReceived(
             userInfo: [

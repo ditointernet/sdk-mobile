@@ -12,7 +12,9 @@ import br.com.dito.ditosdk.offline.DitoSqlHelper
 import br.com.dito.ditosdk.offline.EventOffline
 import br.com.dito.ditosdk.offline.IdentifyOffline
 import br.com.dito.ditosdk.offline.NotificationOffline
+import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_3_4
 import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 
 internal class TrackerOffline(
     context: Context,
@@ -31,6 +33,7 @@ internal class TrackerOffline(
             Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
         } else {
             Room.databaseBuilder(context, DitoSqlHelper::class.java, "dito-offline")
+                .addMigrations(OFFLINE_MIGRATION_3_4)
                 .fallbackToDestructiveMigration()
         }
 
@@ -152,6 +155,7 @@ internal class TrackerOffline(
                     it.notificationId,
                     it.identifier,
                     it.retry,
+                    clickDataFromJson(it.dataJson),
                 )
             }
         } catch (e: Exception) {
@@ -177,7 +181,12 @@ internal class TrackerOffline(
         }
     }
 
-    fun notificationRead(activityId: String, notificationId: String, identifier: String) {
+    fun notificationRead(
+        activityId: String,
+        notificationId: String,
+        identifier: String,
+        data: Map<String, String> = emptyMap(),
+    ) {
         try {
             database.notificationDao().insert(
                 NotificationOffline(
@@ -185,10 +194,27 @@ internal class TrackerOffline(
                     notificationId = notificationId,
                     identifier = identifier,
                     retry = 0,
+                    dataJson = data.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
                 ),
             )
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
         }
+    }
+
+    private fun clickDataFromJson(json: String?): Map<String, String> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return try {
+            gson.fromJson(json, clickDataType) ?: emptyMap()
+        } catch (e: Exception) {
+            // Fila corrompida não deve impedir o reenvio do clique: perde-se a atribuição do botão,
+            // não o clique.
+            Log.e("TrackerOffline", "custom data do clique ilegível: ${e.message}", e)
+            emptyMap()
+        }
+    }
+
+    private companion object {
+        private val clickDataType = object : TypeToken<Map<String, String>>() {}.type
     }
 }

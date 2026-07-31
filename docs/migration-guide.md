@@ -130,7 +130,9 @@ Dito.notificationClick(with: userInfo) { deeplink in
 
 **Agora (Recomendado)**:
 ```swift
-Dito.notificationClick(userInfo: userInfo) { deeplink in
+// A partir da 3.6.0, encaminhe a `response` inteira: é o `actionIdentifier` dela
+// que identifica qual botão de rich push foi tocado.
+Dito.notificationClick(response: response) { deeplink in
     // processar deeplink
 }
 ```
@@ -173,7 +175,7 @@ Após período de transição (2+ versões major):
 - [ ] Substituir `Dito.identify(id:data:)` por `Dito.identify(id:name:email:customData:)`
 - [ ] Substituir `Dito.track(event:)` por `Dito.track(action:data:)`
 - [ ] Substituir `Dito.notificationRead(with:token:)` por `Dito.notificationRead(userInfo:token:)`
-- [ ] Substituir `Dito.notificationClick(with:callback:)` por `Dito.notificationClick(userInfo:callback:)`
+- [ ] Substituir `Dito.notificationClick(with:callback:)` por `Dito.notificationClick(response:callback:)`
 - [ ] Testar todas as funcionalidades após migração
 
 ### Android

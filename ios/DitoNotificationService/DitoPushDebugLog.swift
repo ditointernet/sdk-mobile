@@ -106,9 +106,22 @@ public enum DitoPushDebugLog {
     userInfo: [AnyHashable: Any]
   ) {
     guard isEnabled else { return }
-    os_log("%{public}@", log: log, type: .info, line(event: event, source: source, userInfo: userInfo))
+    let summary = line(event: event, source: source, userInfo: userInfo)
+    #if DEBUG
+    testSink?(event, source, summary)
+    #endif
+    os_log("%{public}@", log: log, type: .info, summary)
     os_log("%{public}@ %{private}@", log: log, type: .debug, rawPrefix, rawLine(userInfo: userInfo))
   }
+
+  #if DEBUG
+  /// Test-only tap on the emitted line.
+  ///
+  /// `os_log` output cannot be read back from a unit test, and the defect this guards against is not
+  /// a malformed line — it is a line that never gets emitted because the code path that should dump
+  /// does not call `dump` at all. That is only observable by tapping the call.
+  nonisolated(unsafe) static var testSink: ((DitoPushLogEvent, DitoPushLogSource, String) -> Void)?
+  #endif
 
   /// Builds the summary line. Exposed for tests so the format stays pinned.
   static func line(

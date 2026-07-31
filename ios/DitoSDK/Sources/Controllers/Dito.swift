@@ -48,8 +48,18 @@ public class Dito {
     return created
   }
 
+  /// Turns SDK logging on or off, payload dumping included.
+  ///
+  /// The dump used to be reachable only through the `DitoPushDebugLog` Info.plist key, so calling
+  /// this was not enough to get it — which left the one instrument a delivery investigation needs
+  /// switched off in the very app being investigated.
+  ///
+  /// This only affects the host app's process. The Notification Service Extension runs separately
+  /// and cannot be reached from here: it still needs the Info.plist key in the extension's own
+  /// bundle.
   public static func enableDebugMode(_ enabled: Bool = true) {
     DitoLogger.isDebugEnabled = enabled
+    DitoPushDebugLog.isEnabled = enabled
   }
 
   public static func setNotificationOptions(_ options: DitoNotificationOptions) {
@@ -254,6 +264,11 @@ public class Dito {
     token: String,
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
+    // Dump do payload no processo do app, par da linha `source:"nse"` que a extensão emite. Fica
+    // aqui, na entrada pública, e não no caminho legado `DitoNotification.notificationRead`: era ele
+    // o único a dumpar, e ninguém que usa a API atual passa por lá — o diagnóstico ficava cego
+    // exatamente do lado do app.
+    DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
     let received = createNotificationReceived(from: userInfo)
     sendNotificationReceivedActivities(received, token: token, completion: completion)
     Dito.notificationReceivedListener?(userInfo)
@@ -336,12 +351,14 @@ public class Dito {
       return
     }
 
-    if !shouldDeliverReceiveNotification(
+    // Reivindicação, não consulta: a marcação só acontece depois do `await` da rede, e em primeiro
+    // plano dois callbacks disparam este caminho para o mesmo push.
+    guard DitoNotificationReceiveTracker.claimDelivery(
       notification: received.notification,
       logId: received.logId
-    ) {
+    ) else {
       #if DEBUG
-      DitoLogger.debug("receive-ios-notification já entregue para notification=\(received.notification)")
+      DitoLogger.debug("receive-ios-notification já entregue ou em vôo para notification=\(received.notification)")
       #endif
       completion?(.success(()))
       return
@@ -406,6 +423,12 @@ public class Dito {
       completion?(.success(()))
     } catch {
       DitoLogger.error(error.localizedDescription)
+      // A entrega não aconteceu: devolve a reivindicação para que a fila offline — ou uma nova
+      // chegada do mesmo push — possa tentar de novo.
+      DitoNotificationReceiveTracker.releaseClaim(
+        notification: received.notification,
+        logId: received.logId
+      )
       let pending = DitoNotificationReceivePending(
         userId: received.userId,
         token: token,

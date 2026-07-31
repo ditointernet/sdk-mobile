@@ -7,10 +7,13 @@ import br.com.dito.ditosdk.IdentifyOff
 import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
+import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -27,6 +30,9 @@ import org.robolectric.RobolectricTestRunner
 class TrackerRetryTest {
 
     private val testScope = TestScope()
+
+    /** Scheduler separado, para poder deixar o carregamento do identify pendente. */
+    private val trackerScheduler = TestCoroutineScheduler()
     private lateinit var context: Context
     private lateinit var tracker: Tracker
     private lateinit var trackerOffline: TrackerOffline
@@ -163,6 +169,87 @@ class TrackerRetryTest {
 
         advanceUntilIdle()
         verify { trackerOffline.delete(1, "NotificationRead") }
+    }
+
+    @Test
+    fun `checkEvent should drain the queue on cold start, before the identify is loaded`() = testScope.runTest {
+        every { trackerOffline.getIdentify() } returns storedIdentify()
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
+        val coldRetry = coldStartRetry()
+
+        coldRetry.uploadEvents()
+        advanceUntilIdle()
+
+        // O flush já correu inteiro com o `id` ainda nulo: é a ordem do cold start pelo push, e é
+        // aqui que ele voltava sem drenar nada.
+        verify(exactly = 0) { trackerOffline.delete(1, "Event") }
+
+        trackerScheduler.advanceUntilIdle()
+        advanceUntilIdle()
+        verify { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `checkNotificationRead should drain the queue on cold start, before the identify is loaded`() =
+        testScope.runTest {
+            every { trackerOffline.getIdentify() } returns storedIdentify()
+            every { trackerOffline.getAllNotificationRead() } returns
+                listOf(NotificationReadOff(1, "a1", "n1", "i1", 0))
+            val coldRetry = coldStartRetry()
+
+            coldRetry.uploadEvents()
+            advanceUntilIdle()
+
+            verify(exactly = 0) { trackerOffline.delete(1, "NotificationRead") }
+
+            trackerScheduler.advanceUntilIdle()
+            advanceUntilIdle()
+            verify { trackerOffline.delete(1, "NotificationRead") }
+        }
+
+    @Test
+    fun `checkNotificationRead should resend the action data with the click`() = testScope.runTest {
+        val notificationOff = NotificationReadOff(
+            1,
+            "a1",
+            "n1",
+            "i1",
+            0,
+            mapOf("action_id" to "botao_1", "action_label" to "Botão 1"),
+        )
+        every { trackerOffline.getAllNotificationRead() } returns listOf(notificationOff)
+        val request = slot<Api.Request>()
+        coEvery { mockClient.activity(capture(request)) } returns Api.Response.getDefaultInstance()
+
+        trackerRetry.uploadEvents()
+
+        advanceUntilIdle()
+        val data = request.captured.activitiesList.first { it.hasTrackPushClick() }.trackPushClick.dataMap
+        assertThat(data["action_id"]?.single?.stringValue).isEqualTo("botao_1")
+        assertThat(data["action_label"]?.single?.stringValue).isEqualTo("Botão 1")
+    }
+
+    private fun storedIdentify() = IdentifyOff(
+        id = "user123",
+        name = null,
+        email = null,
+        gender = null,
+        birthday = null,
+        location = null,
+        customDataJson = null,
+        send = true,
+    )
+
+    /**
+     * Retry apontando para um `Tracker` cujo carregamento do identify fica pendente num scheduler
+     * próprio. Sem isso os dois rodariam no mesmo dispatcher e o identify carregaria primeiro — a
+     * ordem oposta à do cold start, que é justamente a que se quer testar.
+     */
+    private fun coldStartRetry(): TrackerRetry {
+        val mapper = ActivityMapper(context)
+        val coldTracker = Tracker(trackerOffline, mockClient, mapper, scope = TestScope(trackerScheduler))
+        assertThat(coldTracker.idOrNull).isNull()
+        return TrackerRetry(coldTracker, trackerOffline, mockClient, mapper, 5, testScope)
     }
 
     @Test

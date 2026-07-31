@@ -1,4 +1,7 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.10
+// Não baixe deste número: o código usa `nonisolated(unsafe)`, que exige Swift 5.10.
+// Declarar 5.7 aqui fazia o SwiftPM aceitar um toolchain que não compila o pacote —
+// o erro aparecia na compilação, não na resolução, e sem dizer o porquê.
 
 import PackageDescription
 

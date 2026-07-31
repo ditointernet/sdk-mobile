@@ -1,4 +1,6 @@
-// swift-tools-version:5.7
+// swift-tools-version:5.10
+// Mantenha em par com o Package.swift da raiz, que é o manifesto que o Xcode resolve
+// a partir da URL do repositório. Piso real do código: `nonisolated(unsafe)` (5.10).
 
 import PackageDescription
 
