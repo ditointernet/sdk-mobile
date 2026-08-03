@@ -1,5 +1,9 @@
 ### Funcionalidades
 
+- feat: rich mobile push, consolidado e validado em dispositivo (E3–E7) (#29) (b23d2ee)
+
+### Funcionalidades
+
 - feat(ios): NSE de rich push e correções de CoreData, para release 3.6.0 (#31) (0f3577f)
 
 ### Funcionalidades
