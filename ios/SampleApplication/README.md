@@ -181,3 +181,11 @@ Dito.track(action: "...", data: [:])
 - Os dados no `Info.plist` são apenas para desenvolvimento/testes
 - Em produção, use variáveis de ambiente ou configuração segura
 - O `EnvLoader.swift` ainda existe para compatibilidade com arquivos `.env.development.local` se você preferir usá-los
+
+## 🧭 Playbooks
+
+Este app é um dos alvos dos playbooks de teste (Parte A e D do teste local):
+
+- **[Teste de push local](../../playbook/run-local-test.md)** — payload sintético no simulador e em aparelho físico.
+- **[Teste de push em produção](../../playbook/run-prod-test.md)** — push real disparado do painel. Exige aparelho físico e `aps-environment`.
+- **[Integração assistida](../../playbook/playbook-integracao.md)** — para instalar a SDK num app que **não** é deste repositório.

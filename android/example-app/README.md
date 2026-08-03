@@ -169,3 +169,11 @@ cd android
 ```
 
 Para mais detalhes sobre problemas comuns, consulte `TROUBLESHOOTING.md`.
+
+## 🧭 Playbooks
+
+Este app é um dos alvos dos playbooks de teste (Parte B do teste local):
+
+- **[Teste de push local](../../playbook/run-local-test.md)** — payload sintético pelos botões de debug deste app, sem depender do painel.
+- **[Teste de push em produção](../../playbook/run-prod-test.md)** — push real disparado do painel, com reconciliação aparelho ↔ painel.
+- **[Integração assistida](../../playbook/playbook-integracao.md)** — para instalar a SDK num app que **não** é deste repositório.

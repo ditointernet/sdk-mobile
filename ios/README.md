@@ -1049,6 +1049,15 @@ Este projeto está licenciado sob uma licença proprietária. Veja [LICENSE](../
 - ❌ Proíbe modificação do código fonte
 - ❌ Proíbe cópia e redistribuição do código
 
+## 🧭 Playbooks
+
+Roteiros de execução com fases e gates, escritos para serem operados por um agente LLM
+com acesso a shell e ao aparelho:
+
+- **[Integração assistida](../playbook/playbook-integracao.md)** — instala e configura a SDK num projeto: detecta a plataforma, entrevista, propõe um plano em fases e só depois aplica. A Fase 4 pega o `ApiKey`/`ApiSecret` no lugar de `AppKey`/`AppSecret`, e a Fase 6 cobre a Notification Service Extension.
+- **[Teste de push local](../playbook/run-local-test.md)** — payload sintético injetado no app, sem depender do painel.
+- **[Teste de push em produção](../playbook/run-prod-test.md)** — push real disparado do painel, com reconciliação aparelho ↔ painel. Exige aparelho físico.
+
 ## 🔗 Links Úteis
 
 - 🌐 [Website Dito](https://www.dito.com.br)
