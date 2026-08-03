@@ -1,5 +1,14 @@
 ### Funcionalidades
 
+- feat: rich mobile push, consolidado e validado em dispositivo (E3–E7) (#29) (b23d2ee)
+
+### Outros
+
+- chore(release): ios 3.7.0 (cf678ea)
+- chore(release): android 3.8.0 (bad0db9)
+
+### Funcionalidades
+
 - feat: update Android and iOS SDK with new features and improvements  (#15) (6da26b7)
 
 ### Push rico: imagem, botões de ação e custom data
