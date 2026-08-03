@@ -344,14 +344,21 @@ ls <caminho>/Sample.app/PlugIns/                                  # a .appex
 ls <caminho>/Sample.app/Frameworks/ | grep DitoSDKNotificationService
 ```
 
-## 0.5-D · Flutter e RN: as duas falhas que aparecem quase sempre
+## 0.5-D · Flutter e RN: as falhas que aparecem quase sempre
 
 Encontradas neste repo, e são o retrato do problema:
 
 | Onde | Estado | Consequência |
 | --- | --- | --- |
 | `flutter/sample_application/android/app/src/main/AndroidManifest.xml` | tem `API_KEY`, mas via `${DITO_API_KEY}` | resolve vazio sem a env/`local.properties` — quebra silenciosa |
-| `flutter/sample_application/ios/Runner/Info.plist` | **sem `AppKey`** | cold start por push não tem credencial; só `configure()` pelo Dart |
+| `flutter/sample_application/ios/Runner/Info.plist` | corrigido: tem `AppKey`/`AppSecret` via `$(DITO_APP_KEY)`, gerados por `ios/generate-dito-xcconfig.sh` a partir do mesmo `.env.development.local` que o Dart lê | sem rodar o script, o cold start por push fica sem credencial |
+| **target de NSE no projeto iOS** | corrigido: `flutter/sample_application/ios/NotificationServiceExtension/` | sem o target, o push rico chega **só com título e corpo** — imagem e botões não renderizam, sem erro nenhum |
+
+A terceira linha é a que mais engana num teste manual, porque não produz falha: no
+Android o push rico aparece completo, no iOS o **mesmo** push chega só com texto, e o
+relatório de envio/entrega/clique fica todo verde. Num app híbrido de cliente, é o
+primeiro lugar a olhar antes de suspeitar do payload ou da SDK — e vale checar que o
+target é irmão do target do app no `Podfile`, não aninhado nele.
 
 Compare com `ios/SampleApplication/Info.plist`, que tem `AppKey`, e com
 `android/example-app/src/main/AndroidManifest.xml`, que tem `API_KEY` e `API_SECRET`

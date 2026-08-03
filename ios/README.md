@@ -787,6 +787,20 @@ end
 > O `DitoSDK` já depende de `DitoSDKNotificationService`, por isso a app não
 > precisa de o declarar — só o target da extensão é que o faz.
 
+Note que o target da extensão é **irmão** do target da app, no topo do `Podfile`, e nunca
+aninhado dentro dele: aninhar herdaria os pods da app, e há pods que uma app extension não
+pode linkar.
+
+> **Num app híbrido (Flutter, React Native) isto é exactamente igual.** A extensão corre num
+> processo próprio, sem Flutter engine e sem bridge JS, e é onde o passo é esquecido com mais
+> frequência — o push rico aparece completo no Android e só com texto no iOS. No caso do
+> Flutter há um detalhe a mais: o bloco da extensão **não** chama
+> `flutter_install_all_ios_pods`, porque uma app extension não pode linkar o Flutter.
+> Referência a funcionar:
+> [`flutter/sample_application/ios/NotificationServiceExtension/`](../flutter/sample_application/ios/NotificationServiceExtension/)
+> e o bloco correspondente no
+> [`Podfile`](../flutter/sample_application/ios/Podfile) ao lado.
+
 ### 3. Herdar da classe base
 
 Substitua o conteúdo do `NotificationService.swift` gerado pelo Xcode por:

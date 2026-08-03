@@ -135,6 +135,21 @@ web-build/
 !default.xcworkspace
 *.xcodeproj
 !default.xcproject
+
+# Exceção: no sample app Flutter o projeto Xcode é **fonte**, não gerado. É lá que vive o
+# target da Notification Service Extension, sem o qual o push rico no iOS degrada para
+# título e corpo — sem imagem e sem botões. Ignorá-lo significava que o target existia só
+# na máquina de quem o criou.
+#
+# As duas regras acima continuam a valer para `ios/DitoSDK.xcodeproj`, que é gerado pelo
+# XcodeGen a partir de `ios/project.yml` e não deve ser versionado.
+#
+# `*.xcodeproj` casa com o **diretório**, e o git não desce num diretório excluído: tem de
+# se desfazer a exclusão do diretório, não basta liberar o `project.pbxproj`. O estado de
+# usuário lá dentro (`xcuserdata/`, `project.xcworkspace/`) segue ignorado pelas regras
+# abaixo.
+!flutter/sample_application/ios/Runner.xcodeproj/
+!flutter/sample_application/ios/Runner.xcworkspace/
 xcuserdata/
 *.xcuserstate
 *.hmap

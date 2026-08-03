@@ -322,8 +322,21 @@ messaging().onMessage(async (message) => {
 | `customData` | `Record<string, string>` | `data.custom_data`, variáveis já substituídas |
 
 No iOS, imagem e botões exigem uma Notification Service Extension no app, linkando o pod
-`DitoSDKNotificationService`. Sem ela o push degrada para título e corpo. O passo a passo
-está em [`ios/README.md`](../ios/README.md).
+`DitoSDKNotificationService`. Sem ela o push degrada para título e corpo — **sem erro
+nenhum**, e o mesmo push continua a aparecer completo no Android. É o sintoma clássico de
+extension ausente, e num app híbrido é o passo esquecido com mais frequência: a extension
+roda num processo próprio, sem bridge JS, e nada disso passa pelo JavaScript.
+
+Dois detalhes do `Podfile` que decidem se isso funciona:
+
+- o target da extension é **irmão** do target do app, no topo do arquivo, nunca aninhado
+  dentro dele — aninhar herdaria os pods do app, que uma app extension não pode linkar;
+- ele declara **só** `DitoSDKNotificationService`, nunca o `DitoSDK` completo, que usa
+  `UIApplication` e CoreData.
+
+O passo a passo está em [`ios/README.md`](../ios/README.md), e há uma referência a funcionar
+em [`flutter/sample_application/ios/NotificationServiceExtension/`](../flutter/sample_application/ios/NotificationServiceExtension/)
+— o lado nativo é idêntico em Flutter e React Native.
 
 ### 👆 Clique em notificação e em botão de ação
 

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>NotificationService</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Emite o dump DITO_PUSH_PAYLOAD a partir do processo da extensão, que é o único
+	     lugar de onde se vê o payload que o iOS entregou à NSE.
+
+	     Ligado aqui, ao contrário do sample nativo (ios/SampleApplication/
+	     NotificationServiceExtension/Info.plist), onde o default é `false`: este app
+	     existe para diagnosticar push e é buildado só com credenciais de teste. O dump
+	     vai para o log unificado do aparelho, que é persistido e viaja num sysdiagnose —
+	     num app real deixe `false` e ligue apenas durante uma investigação.
+
+	     Para ler:  log stream --predicate 'eventMessage CONTAINS "DITO_PUSH_PAYLOAD"' -->
+	<key>DitoPushDebugLog</key>
+	<true/>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.usernotifications.service</string>
+		<key>NSExtensionPrincipalClass</key>
+		<string>$(PRODUCT_MODULE_NAME).NotificationService</string>
+	</dict>
+</dict>
+</plist>

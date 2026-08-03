@@ -31,17 +31,19 @@ def dito_use_local_ios_sdk?
     File.exist?(File.expand_path('../../ios/.use_local_dito_ios_sdk', __dir__))
 end
 
+# Both podspecs live at the repo root, and their file patterns (ios/DitoSDK/...) are
+# root-relative, so :path has to be the repo root — never the ios/ directory.
+def dito_repo_root
+  File.expand_path('../../..', __dir__)
+end
+
 target 'Runner' do
   use_frameworks!
 
   if dito_use_local_ios_sdk?
-    # Both podspecs live at the repo root, and their file patterns (ios/DitoSDK/...)
-    # are root-relative, so :path has to be the repo root.
-    #
     # The extension-safe pod is declared too, not just implied: DitoSDK depends on
     # it at an exact version, and without a local path CocoaPods goes looking for
     # that version on trunk — where it does not exist yet.
-    dito_repo_root = File.expand_path('../../..', __dir__)
     pod 'DitoSDK', :path => dito_repo_root
     pod 'DitoSDKNotificationService', :path => dito_repo_root
   end
@@ -49,6 +51,36 @@ target 'Runner' do
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
     inherit! :search_paths
+  end
+end
+
+# Sem este target, imagem e botões do push rico não aparecem no iOS: quem baixa a imagem
+# e registra a categoria com as actions é a Notification Service Extension, num processo
+# próprio, e nada disso passa pelo Dart. O push continua a ser entregue — degrada para
+# título e corpo, sem erro nenhum.
+#
+# Três coisas que este bloco deliberadamente **não** faz:
+#
+#   - não declara `DitoSDK`: o SDK completo usa UIApplication e CoreData, indisponíveis
+#     numa app extension. O pod extension-safe é separado exatamente por isso;
+#   - não chama `flutter_install_all_ios_pods`: uma app extension não pode linkar o
+#     Flutter, e a NSE não precisa dele;
+#   - não fica aninhado no target 'Runner'. Aninhar herdaria os pods do app, incluindo o
+#     Flutter.
+#
+# Quem embebe o framework é o Runner, não a extension: `DitoSDK` já arrasta
+# `DitoSDKNotificationService` para dentro do app, e o LD_RUNPATH_SEARCH_PATHS deste
+# target aponta para `@executable_path/../../Frameworks`, que é onde ele acaba.
+target 'NotificationServiceExtension' do
+  use_frameworks!
+
+  if dito_use_local_ios_sdk?
+    pod 'DitoSDKNotificationService', :path => dito_repo_root
+  else
+    # `~> 3.6` acompanha o pin de `flutter/ios/dito_sdk.podspec`. A versão exata é
+    # decidida pelo `DitoSDK` do app, que depende desta num `=`: as duas metades do SDK
+    # têm de andar na mesma versão.
+    pod 'DitoSDKNotificationService', '~> 3.6'
   end
 end
 
