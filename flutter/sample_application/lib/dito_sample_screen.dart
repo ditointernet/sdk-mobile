@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'sample_app_state.dart';
 import 'sections/configuration_section.dart';
 import 'sections/event_section.dart';
+import 'sections/last_push_section.dart';
 import 'sections/status_section.dart';
 import 'sections/notification_inbox_section.dart';
 import 'sections/notification_options_section.dart';
@@ -76,6 +77,9 @@ class _DitoSampleScreenState extends State<DitoSampleScreen> {
             TokenSection(state: _state),
             const SizedBox(height: 16),
             NotificationOptionsSection(state: _state),
+            const SizedBox(height: 16),
+            // Antes do inbox: numa sessão de validação é a seção mais consultada.
+            LastPushSection(state: _state),
             const SizedBox(height: 16),
             NotificationInboxSection(state: _state),
           ],

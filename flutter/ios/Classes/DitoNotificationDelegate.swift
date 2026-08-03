@@ -269,9 +269,13 @@ extension DitoNotificationDelegate {
     let normalized = Self.normalizedDitoUserInfo(userInfo)
     if Self.isDitoChannel(normalized) {
       deliverReceiveIfNeeded(userInfo: userInfo)
-      _ = DitoSdkPlugin.didReceiveNotificationClick(userInfo: userInfo) { deeplink in
-        DitoSdkPlugin.emitNotificationClickEvent(userInfo: userInfo, deeplink: deeplink)
-      }
+      // response.actionIdentifier é o único lugar de onde sai qual botão foi tocado.
+      // O SDK descarta os identifiers de default/dismiss do sistema, então um toque no
+      // corpo continua chegando no Dart como clique comum.
+      DitoSdkPlugin.didReceiveNotificationClick(
+        userInfo: userInfo,
+        actionIdentifier: response.actionIdentifier
+      )
     }
     if let orig = originalDelegate, orig.responds(to: #selector(UNUserNotificationCenterDelegate.userNotificationCenter(_:didReceive:withCompletionHandler:))) {
       orig.userNotificationCenter?(center, didReceive: response, withCompletionHandler: completionHandler)

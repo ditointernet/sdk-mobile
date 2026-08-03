@@ -1,4 +1,8 @@
-import { NativeModules } from 'react-native';
+import {
+  NativeEventEmitter,
+  NativeModules,
+  type EmitterSubscription,
+} from 'react-native';
 import {
   validateApiKey,
   validateApiSecret,
@@ -8,6 +12,13 @@ import {
   validateEmail,
 } from './parameter_validator';
 import { createError, mapNativeError, DitoErrorCode } from './error_handler';
+import {
+  NOTIFICATION_CLICK_EVENT,
+  parseNotificationClick,
+  parseNotificationInfo,
+  type DitoNotificationClick,
+  type DitoNotificationInfo,
+} from './notification_events';
 
 const { DitoSdkModule } = NativeModules;
 
@@ -19,6 +30,7 @@ if (!DitoSdkModule) {
 
 class DitoSdk {
   private static _isInitialized = false;
+  private static _emitter: NativeEventEmitter | null = null;
 
   static get isInitialized(): boolean {
     return this._isInitialized;
@@ -242,6 +254,124 @@ class DitoSdk {
     }
   }
 
+  /**
+   * Subscribes to notification clicks, including taps on rich push action buttons.
+   *
+   * This is the only place JavaScript can tell an action-button tap apart from a tap on
+   * the notification body: on Android the button's `PendingIntent` targets the SDK's own
+   * activity, so `onMessageOpenedApp` from a Firebase library never fires for it.
+   *
+   * Deliberately **not** gated on {@link initialize}: a tap on a notification cold-starts
+   * the app, so the click can reach the native side before the app has had a chance to
+   * initialize the SDK. Subscribe as early as possible — ideally at module scope or in the
+   * root component — and pair this with {@link getInitialNotificationClick} for the click
+   * that arrived before any listener existed.
+   *
+   * @param listener - Called once per click
+   * @returns A subscription; call `remove()` to stop listening
+   *
+   * @example
+   * ```typescript
+   * const subscription = DitoSdk.onNotificationClick((click) => {
+   *   if (isActionClick(click)) {
+   *     console.log('button', click.actionId, 'opens', click.deeplink);
+   *   }
+   *   navigate(click.deeplink);
+   * });
+   * // later
+   * subscription.remove();
+   * ```
+   */
+  static onNotificationClick(
+    listener: (click: DitoNotificationClick) => void,
+  ): EmitterSubscription {
+    return this._notificationEmitter().addListener(
+      NOTIFICATION_CLICK_EVENT,
+      (event: unknown) => listener(parseNotificationClick(event)),
+    );
+  }
+
+  /**
+   * Returns the click that opened the app, when there was no listener to receive it.
+   *
+   * The native side holds a click only while no JavaScript listener is attached, and
+   * hands it over exactly once — so a click is delivered either here or through
+   * {@link onNotificationClick}, never both and never twice. Returns `null` when the app
+   * was not opened from a notification, or when the click already reached a listener.
+   *
+   * Same idea as `getInitialMessage()` in the Firebase libraries, and it is safe to call
+   * before {@link initialize}.
+   *
+   * @example
+   * ```typescript
+   * const click = await DitoSdk.getInitialNotificationClick();
+   * if (click) {
+   *   navigate(click.deeplink);
+   * }
+   * ```
+   */
+  static async getInitialNotificationClick(): Promise<DitoNotificationClick | null> {
+    try {
+      const event = await DitoSdkModule.getInitialNotificationClick();
+      return event ? parseNotificationClick(event) : null;
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  /**
+   * Lists the notifications stored in the SDK's local inbox, newest first.
+   *
+   * Each record carries the campaign's `image` and `customData`, so a rich push can be
+   * rendered again from the inbox after the system notification is gone.
+   *
+   * @throws {DitoError} Throws error with code NOT_INITIALIZED if SDK is not initialized
+   *
+   * @example
+   * ```typescript
+   * const notifications = await DitoSdk.getNotifications();
+   * ```
+   */
+  static async getNotifications(): Promise<DitoNotificationInfo[]> {
+    this._checkInitialized();
+    try {
+      const records = await DitoSdkModule.getNotifications();
+      return Array.isArray(records) ? records.map(parseNotificationInfo) : [];
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  /**
+   * Marks an inbox notification as read.
+   *
+   * @param id - Inbox record id, as returned by {@link getNotifications}
+   * @throws {DitoError} Throws error with code NOT_INITIALIZED if SDK is not initialized
+   * @throws {DitoError} Throws error with code INVALID_PARAMETERS if id is null or empty
+   */
+  static async markNotificationAsRead(id: string): Promise<void> {
+    this._checkInitialized();
+    validateId(id);
+    try {
+      await DitoSdkModule.markNotificationAsRead(id);
+    } catch (error: any) {
+      throw mapNativeError(error);
+    }
+  }
+
+  /**
+   * Emitter is built on first use, not at import time.
+   *
+   * `NativeEventEmitter` reaches into the native module as soon as it is constructed, and
+   * this file is imported by apps that never touch notifications.
+   */
+  private static _notificationEmitter(): NativeEventEmitter {
+    if (!this._emitter) {
+      this._emitter = new NativeEventEmitter(DitoSdkModule);
+    }
+    return this._emitter;
+  }
+
   private static _checkInitialized(): void {
     if (!this._isInitialized) {
       throw createError(
@@ -254,3 +384,19 @@ class DitoSdk {
 
 export default DitoSdk;
 export { DitoErrorCode, type DitoError } from './error_handler';
+export {
+  NOTIFICATION_CLICK_EVENT,
+  isActionClick,
+  parseNotificationClick,
+  parseNotificationInfo,
+  readCustomDataField,
+  type DitoNotificationClick,
+  type DitoNotificationInfo,
+} from './notification_events';
+export {
+  parsePushPayload,
+  hasRichContent,
+  MAX_PUSH_ACTIONS,
+  type DitoPushAction,
+  type DitoPushPayload,
+} from './push_payload';

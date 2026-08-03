@@ -14,7 +14,8 @@ module.exports = {
     [
       '@semantic-release/git',
       {
-        assets: ['flutter/CHANGELOG.md', 'flutter/pubspec.yaml'],
+        // O podspec do plugin carrega a mesma versão do pacote, e bump-version.sh o escreve.
+        assets: ['flutter/CHANGELOG.md', 'flutter/pubspec.yaml', 'flutter/ios/dito_sdk.podspec'],
         message: 'chore(release): flutter ${nextRelease.version}\n\n${nextRelease.notes}',
       },
     ],

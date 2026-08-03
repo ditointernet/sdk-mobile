@@ -1,22 +1,34 @@
-buildscript {
-    ext.kotlin_version = '1.9.0'
-    repositories {
-        google()
-        mavenCentral()
-    }
-
-    dependencies {
-        classpath 'com.android.tools.build:gradle:8.5.2'
-        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
-    }
+// Plugin e versões vêm do version catalog do build `android/`, declarado no settings.gradle
+// deste módulo. O bloco `buildscript` que estava aqui fixava AGP 8.5.2 e Kotlin 1.9.0
+// enquanto a :dito-sdk pede AGP 8.7.0 e Kotlin 2.0.0 pelo catalog — duas versões do mesmo
+// plugin no mesmo build, o que fazia o Gradle recusar a resolução. Um catalog só para os
+// dois projetos remove a divergência pela raiz.
+plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.jetbrains.kotlin.android)
 }
 
-apply plugin: 'com.android.library'
-apply plugin: 'kotlin-android'
+import groovy.json.JsonSlurper
+
+// Segue a versão do react-native instalado, seja no node_modules deste pacote (build
+// isolado, para rodar `:compileDebugKotlin` sem um app em volta) ou no do app que consome
+// o pacote pelo autolinking. O fallback é a versão declarada em `peerDependencies`.
+def resolveReactNativeVersion() {
+    for (candidate in ['../node_modules/react-native/package.json',
+                       '../../react-native/package.json']) {
+        def manifest = file(candidate)
+        if (manifest.exists()) {
+            return new JsonSlurper().parseText(manifest.text).version
+        }
+    }
+    return '0.72.0'
+}
+
+def reactNativeVersion = resolveReactNativeVersion()
 
 android {
     namespace 'br.com.dito'
-    compileSdk 34
+    compileSdk 36
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -32,19 +44,24 @@ android {
     }
 
     defaultConfig {
-        minSdk 25
+        // Acompanha o minSdk da :dito-sdk; era 25, abaixo do que a SDK nativa exige.
+        minSdk 26
     }
-}
-
-repositories {
-    google()
-    mavenCentral()
-    maven { url 'https://jitpack.io' }
 }
 
 dependencies {
     implementation project(':dito-sdk')
-    implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-    implementation 'com.facebook.react:react-native:+'
+    // `com.facebook.react:react-native` congelou na 0.20.1 no Maven Central: a partir da
+    // 0.71 o artefato do Android passou a ser `react-android`. O `:+` que estava aqui
+    // resolvia aquela versão de 2015, em que metade da API que esta bridge usa não existe.
+    //
+    // `compileOnly` porque quem fornece o React em runtime é o app: nada aqui pode competir
+    // com a versão do react-android que o app já traz.
+    compileOnly "com.facebook.react:react-android:$reactNativeVersion"
     implementation 'com.google.firebase:firebase-messaging:23.4.0'
+    // O inbox da SDK é `suspend`, então a bridge precisa de um escopo para chamá-lo.
+    // Declarado aqui de propósito em vez de contar com o que vem transitivamente da
+    // :dito-sdk: as dependências dela são `implementation`, então só estão no classpath
+    // de runtime do consumidor, não no de compilação.
+    implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1'
 }

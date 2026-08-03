@@ -135,6 +135,21 @@ web-build/
 !default.xcworkspace
 *.xcodeproj
 !default.xcproject
+
+# Exceção: no sample app Flutter o projeto Xcode é **fonte**, não gerado. É lá que vive o
+# target da Notification Service Extension, sem o qual o push rico no iOS degrada para
+# título e corpo — sem imagem e sem botões. Ignorá-lo significava que o target existia só
+# na máquina de quem o criou.
+#
+# As duas regras acima continuam a valer para `ios/DitoSDK.xcodeproj`, que é gerado pelo
+# XcodeGen a partir de `ios/project.yml` e não deve ser versionado.
+#
+# `*.xcodeproj` casa com o **diretório**, e o git não desce num diretório excluído: tem de
+# se desfazer a exclusão do diretório, não basta liberar o `project.pbxproj`. O estado de
+# usuário lá dentro (`xcuserdata/`, `project.xcworkspace/`) segue ignorado pelas regras
+# abaixo.
+!flutter/sample_application/ios/Runner.xcodeproj/
+!flutter/sample_application/ios/Runner.xcworkspace/
 xcuserdata/
 *.xcuserstate
 *.hmap
@@ -220,8 +235,24 @@ serviceAccountKey.json
 send_test_notification
 flutter/sample_application/ios/Runner/GoogleService-Info.plist
 flutter/ios/.use_local_dito_ios_sdk
+flutter/android/.use_local_dito_android_sdk
+# Gerado por ios/generate-dito-xcconfig.sh. Carrega a credencial que o Info.plist
+# versionado referencia como $(DITO_APP_KEY) — o valor nunca entra no repositório.
+flutter/sample_application/ios/Flutter/Dito.xcconfig
 .gitignore
 doc/memory.md
 android/dito-sdk/proto/mobileingest/mobileingest/v1/api.proto
 android/.kotlin/sessions/kotlin-compiler-4807540833847664787.salive
 .cursor/memory
+
+# Relatórios de validação salvos localmente (scripts/save-report.py).
+# Cópias offline dos artifacts publicados, para acompanhar o que já foi resolvido sem
+# depender do scratchpad de uma sessão. Ficam de fora do repo por peso: cada um traz os
+# prints de tela embutidos como data URI.
+.reports/
+
+# Réplica híbrida local, montada para reproduzir a perda de entrega/clique fora do
+# sample oficial. Fica de fora do repo por três motivos: traz `.env.development.local`
+# com credenciais de produção reais, carrega ~2.8 GB de `build/` e `.dart_tool/`, e é
+# um banco de provas descartável — não um sample que a gente mantenha.
+flutter/SampleAppAbstration/

@@ -1,12 +1,14 @@
 export 'dito_notification_info.dart';
 export 'dito_notification_listener.dart';
 export 'dito_notification_options.dart';
+export 'dito_push_payload.dart';
 
 import 'package:flutter/services.dart';
 
 import 'dito_notification_info.dart';
 import 'dito_notification_listener.dart';
 import 'dito_notification_options.dart';
+import 'dito_push_payload.dart';
 import 'dito_sdk_platform_interface.dart';
 import 'error_handler.dart';
 import 'parameter_validator.dart';
@@ -18,6 +20,14 @@ class DitoSdk {
 
   static Stream<DitoNotificationClick> get onNotificationClick =>
       DitoNotificationListener.onNotificationClick;
+
+  /// Extrai imagem, botões e custom data de um data map de push.
+  ///
+  /// Atalho para [DitoPushPayload.fromData], para quem recebe o payload cru de um
+  /// handler do `firebase_messaging` (`RemoteMessage.data`). Não fala com o nativo:
+  /// é parsing puro, então pode rodar em background handler e em teste.
+  static DitoPushPayload parsePushPayload(Map<dynamic, dynamic>? data) =>
+      DitoPushPayload.fromData(data);
 
   Future<String?> getPlatformVersion() {
     return DitoSdkPlatform.instance.getPlatformVersion();

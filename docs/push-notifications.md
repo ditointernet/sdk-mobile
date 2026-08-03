@@ -497,6 +497,15 @@ Cada plataforma tem sua própria forma de processar deeplinks:
 }
 ```
 
+## 🧭 Playbooks
+
+Este guia descreve *como* o push funciona. Para **executar** a configuração ou o teste,
+com fases, gates e critérios de parada:
+
+- **[Integração assistida](../playbook/playbook-integracao.md)** — instala e configura a SDK, incluindo Firebase, permissão, Notification Service Extension no iOS e o conflito de `FirebaseMessagingService` no Android.
+- **[Teste de push local](../playbook/run-local-test.md)** — payload sintético injetado no app: prova renderização e clique sem depender do painel.
+- **[Teste de push em produção](../playbook/run-prod-test.md)** — push real disparado do painel, e a reconciliação aparelho ↔ painel que só ele consegue produzir.
+
 ## 🔗 Links Úteis
 
 - 🔥 [Firebase Cloud Messaging Documentation](https://firebase.google.com/docs/cloud-messaging)

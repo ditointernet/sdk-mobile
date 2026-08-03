@@ -1,12 +1,14 @@
 PODS:
   - Connect-Swift (0.14.0):
     - SwiftProtobuf (~> 1.26.0)
-  - dito_sdk (3.4.0):
-    - DitoSDK (~> 3.4.0)
+  - dito_sdk (3.3.0):
+    - DitoSDK (~> 3.6)
     - Firebase/Messaging
     - Flutter
-  - DitoSDK (3.4.1):
+  - DitoSDK (3.6.0):
     - Connect-Swift (~> 0.14.0)
+    - DitoSDKNotificationService (= 3.6.0)
+  - DitoSDKNotificationService (3.6.0)
   - Firebase/CoreOnly (12.8.0):
     - FirebaseCore (~> 12.8.0)
   - Firebase/Messaging (12.8.0):
@@ -77,7 +79,7 @@ PODS:
 
 DEPENDENCIES:
   - dito_sdk (from `.symlinks/plugins/dito_sdk/ios`)
-  - DitoSDK (from `/Users/igor.duarte/workspace/projects/sdk-mobile`)
+  - DitoSDKNotificationService (~> 3.6)
   - firebase_core (from `.symlinks/plugins/firebase_core/ios`)
   - firebase_messaging (from `.symlinks/plugins/firebase_messaging/ios`)
   - Flutter (from `Flutter`)
@@ -85,6 +87,8 @@ DEPENDENCIES:
 SPEC REPOS:
   trunk:
     - Connect-Swift
+    - DitoSDK
+    - DitoSDKNotificationService
     - Firebase
     - FirebaseCore
     - FirebaseCoreInternal
@@ -99,8 +103,6 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   dito_sdk:
     :path: ".symlinks/plugins/dito_sdk/ios"
-  DitoSDK:
-    :path: "/Users/igor.duarte/workspace/projects/sdk-mobile"
   firebase_core:
     :path: ".symlinks/plugins/firebase_core/ios"
   firebase_messaging:
@@ -110,8 +112,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   Connect-Swift: 6b4b5267a58ab231531935fd3331b1eeac726b45
-  dito_sdk: 526ee6aec2745e857d2d9828dc2afafe60e84e96
-  DitoSDK: 4aff210b0bbea92e07063aaa189b44844921728a
+  dito_sdk: 28ab04a313520de8b8bbd93eb2c2ca91932fca66
+  DitoSDK: 84df307cfc8b8979f7d6df1e2f9e10ab202c041e
+  DitoSDKNotificationService: 022ee2a1a811bad408f4c2aa6d52a7e7f3ff006a
   Firebase: 9a58fdbc9d8655ed7b79a19cf9690bb007d3d46d
   firebase_core: ee30637e6744af8e0c12a6a1e8a9718506ec2398
   firebase_messaging: 343de01a8d3e18b60df0c6d37f7174c44ae38e02
@@ -126,6 +129,6 @@ SPEC CHECKSUMS:
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   SwiftProtobuf: 5e8349171e7c2f88f5b9e683cb3cb79d1dc780b3
 
-PODFILE CHECKSUM: bca9c1c9fb7b9d543ff3f97eba72719ea288f71e
+PODFILE CHECKSUM: 4b586620d6dfb143aab70bbfacb24b144887c5a4
 
 COCOAPODS: 1.16.2

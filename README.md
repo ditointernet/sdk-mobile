@@ -30,6 +30,10 @@ dito_sdk_flutter/
 ├── docs/             # Documentação adicional
 │   ├── push-notifications.md  # Guia unificado de Push Notifications
 │   └── todos.md      # Lista de TODOs/FIXMEs
+├── playbook/         # Roteiros de execução para agentes LLM
+│   ├── playbook-integracao.md  # Integrar a SDK num projeto
+│   ├── run-local-test.md       # Teste de push local (payload sintético)
+│   └── run-prod-test.md        # Teste de push real, disparado do painel
 ├── scripts/          # Scripts de build e release
 ├── LICENSE           # Licença do repositório
 └── README.md         # Este arquivo
@@ -43,6 +47,21 @@ dito_sdk_flutter/
 - **[React Native Plugin](./react-native/README.md)** - Plugin React Native com guia completo
 - **[Guia de Push Notifications](./docs/push-notifications.md)** - Guia unificado para todas as plataformas
 - **[Lista de TODOs/FIXMEs](./docs/todos.md)** - Itens pendentes e melhorias planejadas
+
+## 🧭 Playbooks
+
+Roteiros de execução escritos para serem operados por um agente LLM com acesso a shell,
+ao projeto e ao aparelho. Cada um tem fases, gates e critérios de parada — não são
+tutoriais para ler de ponta a ponta.
+
+| Playbook | Para quê | Precisa de |
+| --- | --- | --- |
+| **[Integração assistida](./playbook/playbook-integracao.md)** | instalar e configurar a SDK num projeto: detecta a plataforma (nativa ou Flutter/RN), entrevista, propõe um plano em fases e só então aplica | o projeto alvo e as credenciais Dito |
+| **[Teste de push local](./playbook/run-local-test.md)** | provar renderização e clique com payload sintético injetado no app | emulador/simulador basta para parte dos casos |
+| **[Teste de push em produção](./playbook/run-prod-test.md)** | provar entrega e clique reais, com reconciliação aparelho ↔ painel | aparelho físico e alguém disparando no painel |
+
+O de integração termina onde os outros dois começam: ele prova que a SDK está instalada
+e inicializa, não que a campanha chega.
 
 ## ⚡ Início Rápido
 

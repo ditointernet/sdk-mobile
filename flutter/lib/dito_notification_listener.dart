@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import 'dito_notification_info.dart';
+
 class DitoNotificationClick {
   const DitoNotificationClick({
     required this.deeplink,
@@ -8,6 +10,9 @@ class DitoNotificationClick {
     required this.logId,
     required this.notificationName,
     required this.userId,
+    this.actionId = '',
+    this.actionLabel = '',
+    this.customData = const {},
   });
 
   final String deeplink;
@@ -16,6 +21,21 @@ class DitoNotificationClick {
   final String logId;
   final String notificationName;
   final String userId;
+
+  /// Id do botão tocado; vazio quando o clique foi no corpo da notificação.
+  ///
+  /// O [deeplink] deste evento já é o link do próprio botão, resolvido para o OS
+  /// do device pelo backend — não é preciso escolher entre destinos aqui.
+  final String actionId;
+
+  /// Label do botão tocado; vazio quando o clique foi no corpo da notificação.
+  final String actionLabel;
+
+  /// Custom data da campanha, com as variáveis já substituídas pelo backend.
+  final Map<String, String> customData;
+
+  /// True quando o clique veio de um botão de ação, não do corpo da notificação.
+  bool get isActionClick => actionId.isNotEmpty;
 
   factory DitoNotificationClick.fromMap(Map<Object?, Object?> map) {
     String readString(String key) {
@@ -30,6 +50,9 @@ class DitoNotificationClick {
       logId: readString('logId'),
       notificationName: readString('notificationName'),
       userId: readString('userId'),
+      actionId: readString('actionId'),
+      actionLabel: readString('actionLabel'),
+      customData: readCustomDataField(map['customData']),
     );
   }
 }
@@ -44,4 +67,3 @@ class DitoNotificationListener {
     });
   }
 }
-

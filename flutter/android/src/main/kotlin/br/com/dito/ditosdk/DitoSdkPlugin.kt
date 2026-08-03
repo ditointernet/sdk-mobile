@@ -34,6 +34,21 @@ class DitoSdkPlugin :
         @Volatile
         private var notificationEventSink: EventChannel.EventSink? = null
 
+        @Volatile
+        private var clickDataListenerInstalled: Boolean = false
+
+        /**
+         * userInfo do clique que está sendo processado neste exato momento.
+         *
+         * [NotificationResult] não carrega `log_id`, `notification_name` nem `user_id`, e o
+         * stream Dart expõe os três desde sempre. Quando o clique entra pelo method channel
+         * temos o mapa completo em mãos, então ele fica aqui para o listener completar o
+         * evento. `Dito.notificationClick` invoca o listener de forma síncrona, então não há
+         * janela para o valor vazar para outro clique.
+         */
+        @Volatile
+        private var pendingClickUserInfo: Map<String, String>? = null
+
         @JvmStatic
         fun handleNotification(context: Context, message: RemoteMessage): Boolean {
             if (!isDitoChannel(message)) {
@@ -44,6 +59,28 @@ class DitoSdkPlugin :
             return true
         }
 
+        /**
+         * Encaminha para o stream Dart **todo** clique que o SDK nativo processa.
+         *
+         * Sem isso o Flutter só vê os cliques que ele mesmo entrega via
+         * `handleNotificationClick`, e um toque em botão de ação nunca passa por lá: o
+         * `PendingIntent` do botão vai para a `NotificationOpenedActivity` do SDK, então o
+         * `FirebaseMessaging.onMessageOpenedApp` — que é o que o app Flutter escuta — não
+         * dispara. O listener nativo é o único ponto por onde os dois caminhos passam.
+         *
+         * Um listener já registrado pelo app host é preservado e chamado antes.
+         */
+        @JvmStatic
+        private fun installClickDataListener() {
+            if (clickDataListenerInstalled) return
+            clickDataListenerInstalled = true
+            val previous = Dito.notificationClickDataListener
+            Dito.notificationClickDataListener = { result ->
+                previous?.invoke(result)
+                emitNotificationClickEvent(result, pendingClickUserInfo ?: emptyMap())
+            }
+        }
+
         @JvmStatic
         private fun isDitoChannel(message: RemoteMessage): Boolean {
             val channel = message.data["channel"]
@@ -52,6 +89,7 @@ class DitoSdkPlugin :
 
         @JvmStatic
         private fun ensureDitoInitialized(context: Context) {
+            installClickDataListener()
             if (!ditoInitialized) {
                 try {
                     Dito.init(context, null)
@@ -119,8 +157,13 @@ class DitoSdkPlugin :
             }
             ensureDitoInitialized(context)
             val normalizedUserInfo = normalizeClickUserInfo(userInfo)
-            Dito.notificationClick(normalizedUserInfo) { deeplink ->
-                emitNotificationClickEvent(deeplink, normalizedUserInfo)
+            // A emissão para o Dart acontece no notificationClickDataListener, que cobre
+            // este caminho e o do toque em botão. Emitir aqui também duplicaria o evento.
+            pendingClickUserInfo = normalizedUserInfo
+            try {
+                Dito.notificationClick(normalizedUserInfo, null)
+            } finally {
+                pendingClickUserInfo = null
             }
             return true
         }
@@ -133,16 +176,31 @@ class DitoSdkPlugin :
             }
         }
 
+        /**
+         * Monta o evento do stream Dart a partir do [NotificationResult] do SDK.
+         *
+         * [userInfo] é o mapa cru do clique quando ele veio pelo method channel, e serve só
+         * para completar os campos que o [NotificationResult] não carrega. Quando o clique
+         * nasce na notificação nativa esses três campos vêm vazios — o `PendingIntent` não
+         * transporta `log_id`/`notification_name`. Antes desta mudança o evento nem existia
+         * nesse caminho, então não há regressão.
+         */
         @JvmStatic
-        private fun emitNotificationClickEvent(deeplink: String, userInfo: Map<String, String>) {
+        private fun emitNotificationClickEvent(
+            result: NotificationResult,
+            userInfo: Map<String, String>,
+        ) {
             val payload: MutableMap<String, Any?> = HashMap()
             payload["type"] = NOTIFICATION_CLICK_EVENT
-            payload["deeplink"] = deeplink
-            payload["notificationId"] = userInfo["notification"] ?: ""
-            payload["reference"] = userInfo["reference"] ?: ""
+            payload["deeplink"] = result.deepLink
+            payload["notificationId"] = result.notificationId
+            payload["reference"] = result.reference
             payload["logId"] = userInfo["log_id"] ?: ""
             payload["notificationName"] = userInfo["notification_name"] ?: ""
             payload["userId"] = userInfo["user_id"] ?: ""
+            payload["actionId"] = result.actionId
+            payload["actionLabel"] = result.actionLabel
+            payload["customData"] = result.customData
             notificationEventSink?.success(payload)
         }
     }
@@ -154,6 +212,9 @@ class DitoSdkPlugin :
             EventChannel(flutterPluginBinding.binaryMessenger, NOTIFICATION_EVENTS_CHANNEL)
         notificationEventsChannel.setStreamHandler(this)
         context = flutterPluginBinding.applicationContext
+        // O app pode já ter inicializado o SDK por conta própria, e o clique pode chegar
+        // antes de qualquer chamada que passe por ensureDitoInitialized.
+        installClickDataListener()
     }
 
     override fun onMethodCall(
@@ -408,7 +469,9 @@ class DitoSdkPlugin :
                                 "message" to info.message,
                                 "link" to info.link,
                                 "receivedAt" to info.receivedAt,
-                                "isRead" to info.isRead
+                                "isRead" to info.isRead,
+                                "image" to info.image,
+                                "customData" to info.customData
                             )
                         }
                         Handler(Looper.getMainLooper()).post { result.success(maps) }

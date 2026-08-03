@@ -117,7 +117,22 @@ DITO_USE_LOCAL_IOS_SDK=1 flutter run
 # ou: touch flutter/ios/.use_local_dito_ios_sdk && flutter run
 ```
 
-Exemplo no `flutter/sample_application/ios/Podfile`: declarar `pod 'DitoSDK', :path => ...` antes de `flutter_install_all_ios_pods` quando estiver em modo local.
+No `flutter/sample_application/ios/Podfile`, em modo local, os **dois** pods são declarados por
+path antes de `flutter_install_all_ios_pods`:
+
+```ruby
+dito_repo_root = File.expand_path('../../..', __dir__)
+pod 'DitoSDK', :path => dito_repo_root
+pod 'DitoSDKNotificationService', :path => dito_repo_root
+```
+
+O `:path` é a **raiz do repositório**, não `ios/`: é onde ficam `DitoSDK.podspec` e
+`DitoSDKNotificationService.podspec`, e os `source_files` deles são relativos a essa raiz. E o
+pod da extensão precisa estar ali explicitamente — o `DitoSDK` depende dele numa versão exata,
+e sem o path local o CocoaPods vai procurar essa versão no trunk.
+
+A versão que o plugin pede em `s.dependency 'DitoSDK'` tem que existir no repositório;
+`scripts/check-version-pins.sh` verifica isso em CI.
 
 ## ⚙️ Configuração Inicial
 
@@ -548,6 +563,8 @@ Future<List<DitoNotificationInfo>> getNotifications()
 | `link` | String | Deeplink associado |
 | `receivedAt` | DateTime | Data/hora de recebimento |
 | `isRead` | bool | Se foi marcada como lida |
+| `image` | String | URL da imagem do push rico; vazio quando não há |
+| `customData` | Map&lt;String, String&gt; | Custom data da campanha; vazio quando não há |
 
 **Exemplo**:
 ```dart
@@ -592,6 +609,18 @@ static Stream<DitoNotificationClick> get onNotificationClick
 | `logId` | String | ID de log/dispatch |
 | `notificationName` | String | Nome da campanha/notificação |
 | `userId` | String | ID do usuário associado |
+| `actionId` | String | Id do botão tocado; vazio no clique no corpo |
+| `actionLabel` | String | Label do botão tocado; vazio no clique no corpo |
+| `customData` | Map&lt;String, String&gt; | Custom data da campanha |
+| `isActionClick` | bool | Atalho para `actionId.isNotEmpty` |
+
+Num clique em botão, `deeplink` **já é o link do próprio botão**, resolvido para o OS do
+device pelo backend — não é preciso escolher entre destinos no Dart.
+
+> `logId`, `notificationName` e `userId` vêm vazios quando o clique nasce na notificação
+> nativa (o caso do toque em botão no Android), porque o `PendingIntent` do sistema não
+> transporta esses campos. Vêm preenchidos quando o clique passa por
+> `handleNotificationClick`.
 
 **Exemplo**: veja a seção [Click em notificação e deeplink](#-click-em-notificação-e-deeplink-callback-no-dart).
 
@@ -800,6 +829,168 @@ override func application(
 ```
 
 Para troubleshooting de `receive-ios-notification` em app morto, veja [Evento receive-ios-notification não dispara em background / app morto](#evento-receive-ios-notification-não-dispara-em-background--app-morto).
+
+### 🖼️ Push rico: imagem, botões e custom data
+
+Uma campanha pode trazer três campos extras: uma **imagem**, até **dois botões de ação** e
+**custom data** (pares chave/valor definidos na campanha). Eles chegam no data map do push
+como chaves aditivas, então um app que não trata nenhuma delas continua funcionando igual.
+
+**Requer versão nativa nova nas duas plataformas** — Android `4.1.0`, iOS `3.6.0`. Com uma
+SDK nativa anterior, as chaves chegam no payload mas nada as renderiza.
+
+#### Lendo os campos do payload
+
+```dart
+FirebaseMessaging.onMessage.listen((message) {
+  final payload = DitoSdk.parsePushPayload(message.data);
+
+  if (payload.hasRichContent) {
+    print('imagem: ${payload.image}');
+    for (final action in payload.actions) {
+      print('botão ${action.id}: ${action.label} → ${action.link}');
+    }
+    print('custom data: ${payload.customData}');
+  }
+});
+```
+
+`parsePushPayload` é parsing puro — não fala com o nativo, então roda em background handler
+e em teste. `actions` e `custom_data` viajam como **strings JSON** dentro do data map;
+payload malformado devolve o campo vazio em vez de lançar.
+
+| Campo de `DitoPushPayload` | Tipo | Origem |
+|---|---|---|
+| `image` | String | `data.image` |
+| `actions` | List&lt;DitoPushAction&gt; | `data.actions` (máx. 2, ordem significativa) |
+| `customData` | Map&lt;String, String&gt; | `data.custom_data`, variáveis já substituídas |
+| `hasRichContent` | bool | true se qualquer um dos três veio preenchido |
+
+`DitoPushAction` tem `id`, `label` e `link` — um destino só por botão, já resolvido para o
+OS do device.
+
+#### Reagindo ao toque no botão
+
+O toque em botão chega no mesmo stream do clique comum, com `actionId` preenchido:
+
+```dart
+DitoSdk.onNotificationClick.listen((click) {
+  if (click.isActionClick) {
+    print('botão ${click.actionId} (${click.actionLabel})');
+  }
+  // Em ambos os casos, click.deeplink já é o destino certo.
+  abrirDeeplink(click.deeplink);
+});
+```
+
+O tracking é do SDK nativo: um toque em botão emite `click-notification` com `action_id` e
+`action_label` na custom data do evento, e **não** um evento novo. Consequência aceita: o
+CTR soma corpo e botão; a segmentação por `action_id` é o que separa os dois nos relatórios.
+
+#### iOS: a Notification Service Extension não é opcional
+
+No iOS, **imagem e botões só aparecem se o app tiver uma NSE**. Sem ela o push degrada para
+título e corpo — nenhum erro, só não renderiza. É o sintoma clássico: no Android o push rico
+aparece completo, no iOS chega o mesmo push só com texto.
+
+A razão é onde o conteúdo rico é montado. No Android, é o processo do app que renderiza. No
+iOS, quem baixa a imagem e registra a `UNNotificationCategory` com os botões é uma app
+extension, num processo próprio, antes de a notificação ser exibida. Não existe caminho por
+Dart: nem o plugin nem o Flutter engine participam disso.
+
+Um app Flutter cria o target como qualquer app nativo:
+
+1. No Xcode, **File → New → Target → Notification Service Extension**.
+2. No `Podfile` do app, num target **no topo do arquivo, irmão do `Runner`** — não aninhado
+   dentro dele:
+   ```ruby
+   target 'NotificationServiceExtension' do
+     use_frameworks!
+     pod 'DitoSDKNotificationService'
+   end
+   ```
+   Três coisas que este bloco não faz, todas de propósito:
+
+   - **não declara `DitoSDK`.** O pod é separado porque o SDK completo usa `UIApplication`
+     e CoreData, indisponíveis numa app extension. Declarar o SDK inteiro aqui não compila;
+   - **não chama `flutter_install_all_ios_pods`.** Uma app extension não pode linkar o
+     Flutter — e a NSE não precisa dele;
+   - **não fica aninhado no target `Runner`.** Aninhar herdaria os pods do app, incluindo o
+     Flutter, caindo no item anterior.
+3. Faça a classe da extension herdar de `DitoNotificationService`:
+   ```swift
+   import DitoSDKNotificationService
+
+   class NotificationService: DitoNotificationService {}
+   ```
+   Herdar é a integração inteira: não há nada para chamar, registrar ou inicializar.
+
+Quem **embebe** o framework é o app hospedeiro, não a extension: o `DitoSDK` do app já
+arrasta o `DitoSDKNotificationService`, e o CocoaPods põe
+`@executable_path/../../Frameworks` no `LD_RUNPATH_SEARCH_PATHS` da extension — que é onde
+ele acaba. Se você declarar o pod só na extension e o app não linkar o SDK, o dyld falha no
+arranque do processo da extensão e o push volta a chegar sem imagem, agora por outro motivo.
+
+Referência funcionando, com os comentários do porquê de cada parte:
+[`flutter/sample_application/ios/NotificationServiceExtension/`](sample_application/ios/NotificationServiceExtension/)
+e o bloco correspondente em
+[`flutter/sample_application/ios/Podfile`](sample_application/ios/Podfile). O passo a passo
+completo, com o que acontece em cada falha, está em [`ios/README.md`](../ios/README.md).
+
+**Como confirmar que o target está de fato no build** — o erro silencioso aqui é ter criado
+a extension e ela não ir dentro do `.app`:
+
+```bash
+# O .appex tem de estar em PlugIns/ do app instalado
+find build/ios -name '*.appex'
+
+# E o framework extension-safe em Frameworks/ do app (não da extension)
+ls build/ios/iphoneos/Runner.app/Frameworks | grep DitoSDKNotificationService
+```
+
+Para ver o payload exatamente como o iOS o entregou à extensão, adicione
+`DitoPushDebugLog` como booleano `true` no `Info.plist` da NSE e leia o log do aparelho:
+
+```bash
+log stream --predicate 'eventMessage CONTAINS "DITO_PUSH_PAYLOAD"'
+```
+
+Linha nenhuma significa que a extensão não foi acordada — aí o problema está no payload
+(falta `mutable-content: 1`) ou no target, não no SDK. Deixe a flag ligada só durante uma
+investigação: o dump vai para o log unificado do aparelho, que é persistido.
+
+#### `custom_data`: onde ele aparece, e onde não
+
+Ao contrário de imagem e botões, `custom_data` **não** depende da NSE — ele viaja no payload
+e é lido no processo do app. O que engana é *quando* cada stream entrega:
+
+| Como o app recebeu | `FirebaseMessaging.onMessage` | `DitoSdk.onNotificationClick` |
+|---|---|---|
+| App em foreground | ✅ payload completo | no toque |
+| App em background ou fechado | ❌ **não dispara no iOS** | ✅ no toque, com `customData` |
+
+Um teste de push rico é feito, por natureza, com o app em background — é preciso que a
+notificação seja renderizada pelo sistema. Então um painel de debug alimentado só por
+`onMessage` aparece vazio, e é fácil ler isso como "o `custom_data` não chegou". Chegou: ele
+está no `DitoNotificationClick.customData` quando o push é tocado.
+
+Se você precisa do `custom_data` sem depender do toque, com o app em background, o caminho é
+um background handler do FCM (`onBackgroundMessage`), que exige `content-available` no
+payload — configuração do lado do envio, não do app.
+
+#### Quando o botão não aparece no Android
+
+A renderização depende do modo de entrega configurado para o brand
+(`firebase_notification_type`), e isso é configuração de backend, não do app:
+
+| Modo | Imagem | Botões | Custom data |
+|---|---|---|---|
+| `DATA` | ✅ | ✅ | ✅ |
+| default | ✅ | ⚠️ só com o app em foreground | ✅ |
+| `NOTIFICATION` | ✅ (nativa) | ❌ | ❌ |
+
+Se os botões não aparecem e o payload está correto, o modo do brand é o primeiro lugar a
+olhar. Não há nada a corrigir no app nesse caso.
 
 ### Personalização de notificações
 
@@ -1030,6 +1221,15 @@ Este projeto está licenciado sob uma licença proprietária. Veja [LICENSE](../
 - ✅ Permite uso em aplicações próprias dos clientes
 - ❌ Proíbe modificação do código fonte
 - ❌ Proíbe cópia e redistribuição do código
+
+## 🧭 Playbooks
+
+Roteiros de execução com fases e gates, escritos para serem operados por um agente LLM
+com acesso a shell e ao aparelho:
+
+- **[Integração assistida](../playbook/playbook-integracao.md)** — instala e configura a SDK num projeto: detecta a plataforma, entrevista, propõe um plano em fases e só depois aplica. Trata explicitamente o que quebra em app híbrido: credencial no manifest e no `Info.plist` mesmo inicializando por código, e a Notification Service Extension no iOS.
+- **[Teste de push local](../playbook/run-local-test.md)** — payload sintético injetado no app, sem depender do painel.
+- **[Teste de push em produção](../playbook/run-prod-test.md)** — push real disparado do painel, com reconciliação aparelho ↔ painel.
 
 ## 🔗 Links Úteis
 

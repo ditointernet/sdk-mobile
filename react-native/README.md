@@ -292,6 +292,134 @@ if (token) {
 
 Para um guia completo de configuração de Push Notifications, consulte o [guia unificado](../docs/push-notifications.md).
 
+### 🖼️ Push rico: imagem, botões de ação e custom data
+
+Uma campanha pode trazer uma imagem, até dois botões de ação e custom data. As SDKs nativas
+(Android 4.1.0, iOS 3.6.0) renderizam esses campos; do lado JavaScript, o que existe hoje é
+o parsing do payload:
+
+```typescript
+import messaging from '@react-native-firebase/messaging';
+import { parsePushPayload, hasRichContent } from '@ditointernet/dito-sdk';
+
+messaging().onMessage(async (message) => {
+  const payload = parsePushPayload(message.data);
+  if (hasRichContent(payload)) {
+    console.log('imagem:', payload.image);
+    payload.actions.forEach((a) => console.log(a.id, a.label, a.link));
+    console.log('custom data:', payload.customData);
+  }
+});
+```
+
+`actions` e `custom_data` viajam como **strings JSON** dentro do data map. `parsePushPayload`
+é puro TypeScript e leniente: payload malformado devolve o campo vazio em vez de lançar.
+
+| Campo de `DitoPushPayload` | Tipo | Origem |
+|---|---|---|
+| `image` | `string` | `data.image` |
+| `actions` | `DitoPushAction[]` | `data.actions` (máx. 2, ordem significativa) |
+| `customData` | `Record<string, string>` | `data.custom_data`, variáveis já substituídas |
+
+No iOS, imagem e botões exigem uma Notification Service Extension no app, linkando o pod
+`DitoSDKNotificationService`. Sem ela o push degrada para título e corpo — **sem erro
+nenhum**, e o mesmo push continua a aparecer completo no Android. É o sintoma clássico de
+extension ausente, e num app híbrido é o passo esquecido com mais frequência: a extension
+roda num processo próprio, sem bridge JS, e nada disso passa pelo JavaScript.
+
+Dois detalhes do `Podfile` que decidem se isso funciona:
+
+- o target da extension é **irmão** do target do app, no topo do arquivo, nunca aninhado
+  dentro dele — aninhar herdaria os pods do app, que uma app extension não pode linkar;
+- ele declara **só** `DitoSDKNotificationService`, nunca o `DitoSDK` completo, que usa
+  `UIApplication` e CoreData.
+
+O passo a passo está em [`ios/README.md`](../ios/README.md), e há uma referência a funcionar
+em [`flutter/sample_application/ios/NotificationServiceExtension/`](../flutter/sample_application/ios/NotificationServiceExtension/)
+— o lado nativo é idêntico em Flutter e React Native.
+
+### 👆 Clique em notificação e em botão de ação
+
+`onNotificationClick` é o **único** lugar onde o JavaScript consegue distinguir um toque em
+botão de um toque no corpo da notificação. No Android o `PendingIntent` do botão aponta para
+a Activity da própria SDK, então o `onMessageOpenedApp` do `@react-native-firebase/messaging`
+não dispara para ele.
+
+```typescript
+import DitoSdk, { isActionClick } from '@ditointernet/dito-sdk';
+
+const subscription = DitoSdk.onNotificationClick((click) => {
+  if (isActionClick(click)) {
+    console.log('botão', click.actionId, '→', click.deeplink);
+  }
+  navigate(click.deeplink);
+  console.log('custom data:', click.customData);
+});
+
+// ao desmontar
+subscription.remove();
+```
+
+O `deeplink` do evento já é o destino certo: num toque em botão é o link do próprio botão,
+resolvido para o sistema operacional pelo backend; num toque no corpo é o deeplink da
+notificação. Não é preciso escolher entre destinos.
+
+#### O clique que abriu o app
+
+Um toque em notificação faz cold start do app, e o clique pode chegar ao nativo antes de
+existir listener em JavaScript. Nesse caso ele fica guardado e sai por
+`getInitialNotificationClick()`:
+
+```typescript
+const click = await DitoSdk.getInitialNotificationClick();
+if (click) {
+  navigate(click.deeplink);
+}
+```
+
+O nativo só guarda o clique enquanto não há listener, e o entrega uma única vez — então cada
+clique chega **ou** pelo stream **ou** por aqui, nunca nos dois e nunca duas vezes. Mesma
+ideia do `getInitialMessage()` das bibliotecas de Firebase.
+
+As duas APIs podem ser chamadas antes do `initialize()`, justamente porque o clique
+antecede a inicialização nesse caminho.
+
+No Android, o cold start tem uma janela anterior a essa: se a SDK nativa processar o clique
+antes de o módulo React existir, nem o buffer é alcançado. Para fechá-la, chame do
+`onCreate` da sua `Application`:
+
+```kotlin
+import br.com.dito.DitoSdkModule
+
+class MainApplication : Application(), ReactApplication {
+    override fun onCreate() {
+        super.onCreate()
+        DitoSdkModule.installNotificationClickListener(this)
+    }
+}
+```
+
+| Campo de `DitoNotificationClick` | Tipo | Observação |
+|---|---|---|
+| `deeplink` | `string` | destino já resolvido para esta interação |
+| `notificationId`, `reference` | `string` | ids da notificação |
+| `logId`, `notificationName`, `userId` | `string` | vazios quando o clique nasce na notificação nativa — o `PendingIntent` não transporta esses campos |
+| `actionId`, `actionLabel` | `string` | vazios num toque no corpo |
+| `customData` | `Record<string, string>` | custom data da campanha |
+
+### 📥 Inbox
+
+Os pushes recebidos ficam num inbox local, com imagem e custom data, o que permite
+renderizar uma campanha rica depois que a notificação do sistema já saiu da tela.
+
+```typescript
+const notifications = await DitoSdk.getNotifications();
+await DitoSdk.markNotificationAsRead(notifications[0].id);
+```
+
+`receivedAt` chega como `Date` nas duas plataformas. Diferente das APIs de clique, estas
+duas exigem `initialize()` antes.
+
 ### Configuração Básica
 
 1. Configure o Firebase no seu projeto React Native
@@ -551,6 +679,15 @@ Este projeto está licenciado sob uma licença proprietária. Veja [LICENSE](../
 - ✅ Permite uso em aplicações próprias dos clientes
 - ❌ Proíbe modificação do código fonte
 - ❌ Proíbe cópia e redistribuição do código
+
+## 🧭 Playbooks
+
+Roteiros de execução com fases e gates, escritos para serem operados por um agente LLM
+com acesso a shell e ao aparelho:
+
+- **[Integração assistida](../playbook/playbook-integracao.md)** — instala e configura a SDK num projeto: detecta a plataforma, entrevista, propõe um plano em fases e só depois aplica. Trata explicitamente o que quebra em app híbrido: credencial no manifest e no `Info.plist` mesmo inicializando por código, a Notification Service Extension no iOS, e o caso Expo managed.
+- **[Teste de push local](../playbook/run-local-test.md)** — payload sintético injetado no app, sem depender do painel.
+- **[Teste de push em produção](../playbook/run-prod-test.md)** — push real disparado do painel, com reconciliação aparelho ↔ painel.
 
 ## 🔗 Links Úteis
 

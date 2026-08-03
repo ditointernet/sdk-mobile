@@ -14,8 +14,31 @@ buildscript {
     }
 }
 
+// A bridge Flutter consome a SDK Android como artefato publicado, não como módulo do
+// repo, então recurso novo na SDK nativa só compila aqui depois de publicado. Isso
+// tornava impossível compilar ou validar em device o push rico antes de um release —
+// e a sessão do E9 roda justamente no sample do Flutter.
+//
+// O escape hatch espelha o que o iOS já tinha (ver flutter/sample_application/ios/Podfile
+// e o marcador flutter/ios/.use_local_dito_ios_sdk):
+//
+//   1. cd android && VERSION_NAME=3.7.0 ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal
+//   2. touch flutter/android/.use_local_dito_android_sdk
+//   3. export DITO_ANDROID_SDK_VERSION=3.7.0
+//
+// Sem o marcador nada muda: resolve de google()/mavenCentral() como antes.
+//
+// O default abaixo tem de ser a versão que existe em android/dito-sdk/build.gradle.kts —
+// scripts/check-version-pins.sh reprova o contrário. Pedir uma versão inventada quebra até
+// o modo local, porque o `mavenLocal()` também só tem o que foi publicado dali.
+def useLocalDitoAndroidSdk = new File(projectDir, ".use_local_dito_android_sdk").exists()
+def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "3.7.0"
+
 allprojects {
     repositories {
+        if (useLocalDitoAndroidSdk) {
+            mavenLocal()
+        }
         google()
         mavenCentral()
     }
@@ -48,7 +71,11 @@ android {
     }   
 
     dependencies {
-        implementation("br.com.dito:ditosdk:3.4.1")
+        // 3.7.0 está publicada no Maven Central e é a primeira versão com o push rico
+        // (imagem, botões, custom data), a redação do dump e as correções de offline/retry.
+        // O escape hatch no topo deste arquivo só é necessário para validar mudança da SDK
+        // nativa que ainda não passou por release.
+        implementation("br.com.dito:ditosdk:$ditoAndroidSdkVersion")
         implementation("com.google.firebase:firebase-messaging:23.4.0")
         testImplementation("org.jetbrains.kotlin:kotlin-test")
         testImplementation("org.mockito:mockito-core:5.0.0")

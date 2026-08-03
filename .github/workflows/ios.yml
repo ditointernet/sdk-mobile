@@ -103,11 +103,11 @@ jobs:
         echo "IOS_SIMULATOR_UDID=$UDID" >> "$GITHUB_ENV"
         echo "Simulador escolhido (UDID): $UDID"
 
-    # NOTA: o guard `scripts/check-version-pins.sh` fica de fora desta branch de
-    # propósito. Ele compara a versão do podspec com o `~> ` que o plugin Flutter
-    # pede, e o plugin só é atualizado na PR de Flutter/RN — aqui ele reprovaria
-    # publicar o iOS sozinho, que é justamente o objetivo. O guard entra junto com
-    # o lado Flutter, onde o par passa a fechar.
+    # Um bump só do iOS deixa o plugin Flutter pedindo uma versão que não existe, e o
+    # sintoma aparece na mão de quem integra. Falhar aqui é mais barato.
+    - name: Check the DitoSDK version the Flutter plugin asks for
+      if: steps.check-changes.outputs.has_changes == 'true'
+      run: ./scripts/check-version-pins.sh
 
     - name: Run Tests
       if: steps.check-changes.outputs.has_changes == 'true'
