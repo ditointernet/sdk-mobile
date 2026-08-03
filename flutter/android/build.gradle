@@ -32,7 +32,7 @@ buildscript {
 // scripts/check-version-pins.sh reprova o contrário. Pedir uma versão inventada quebra até
 // o modo local, porque o `mavenLocal()` também só tem o que foi publicado dali.
 def useLocalDitoAndroidSdk = new File(projectDir, ".use_local_dito_android_sdk").exists()
-def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "3.7.0"
+def ditoAndroidSdkVersion = System.getenv("DITO_ANDROID_SDK_VERSION") ?: "3.8.0"
 
 allprojects {
     repositories {
