@@ -20,7 +20,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/ditointernet/dito_sdk_flutter.git",
+    "url": "git+https://github.com/ditointernet/sdk-mobile.git",
     "directory": "react-native"
   },
   "peerDependencies": {
