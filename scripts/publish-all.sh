@@ -40,20 +40,31 @@ FAILED_PROJECTS=()
 SUCCESSFUL_PROJECTS=()
 
 # Pushes a podspec to trunk, treating an already-published version as success so a
-# re-run of a partially completed release is not fatal.
+# re-run of a partially completed release is not fatal. With more than one attempt,
+# it retries when a dependency is not on the trunk CDN yet (a freshly pushed pod takes
+# a few minutes to propagate there) and when trunk answers with an intermittent 500,
+# which sometimes still publishes the version and then reads as a duplicate entry.
 push_pod() {
     local spec="$1"
+    local attempts="${2:-1}"
     local out
-    if out="$(pod trunk push "$spec" --allow-warnings 2>&1)"; then
+    for ((attempt = 1; attempt <= attempts; attempt++)); do
+        if out="$(pod trunk push "$spec" --allow-warnings 2>&1)"; then
+            echo "$out"
+            return 0
+        fi
         echo "$out"
-        return 0
-    fi
-    echo "$out"
-    if echo "$out" | grep -qi "duplicate entry"; then
-        echo "$spec already published at this version, continuing"
-        return 0
-    fi
-    return 1
+        if echo "$out" | grep -qi "duplicate entry"; then
+            echo "$spec already published at this version, continuing"
+            return 0
+        fi
+        if [ "$attempt" -lt "$attempts" ] && echo "$out" | grep -qE "None of your spec sources contain a spec satisfying|An internal server error occurred"; then
+            echo "Trunk could not take $spec yet, retrying in 60s ($attempt/$attempts)"
+            sleep 60
+            continue
+        fi
+        return 1
+    done
 }
 
 if [ "$PUBLISH_IOS" = true ]; then
@@ -64,7 +75,7 @@ if [ "$PUBLISH_IOS" = true ]; then
     else
         # DitoSDK depends on DitoSDKNotificationService at an exact version, so the
         # extension-safe pod has to reach trunk first or DitoSDK cannot even lint.
-        if push_pod DitoSDKNotificationService.podspec && push_pod DitoSDK.podspec; then
+        if push_pod DitoSDKNotificationService.podspec && push_pod DitoSDK.podspec 10; then
             SUCCESSFUL_PROJECTS+=("ios")
             echo "✅ iOS SDK published successfully"
         else
