@@ -180,23 +180,17 @@ fi
 
 if [ "$PUBLISH_REACT_NATIVE" = true ]; then
     echo "⚛️  Publishing React Native plugin to npm..."
-    if [ -z "$NPM_TOKEN" ]; then
-        echo "Error: NPM_TOKEN not set" >&2
-        FAILED_PROJECTS+=("react-native")
+    # No token: npm authenticates through npm trusted publishing, exchanging the
+    # GitHub Actions OIDC token of release-react-native.yml (needs id-token: write).
+    cd react-native
+    if npm publish --access public; then
+        SUCCESSFUL_PROJECTS+=("react-native")
+        echo "✅ React Native plugin published successfully"
     else
-        cd react-native
-        echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" > .npmrc
-        if npm publish --access public; then
-            SUCCESSFUL_PROJECTS+=("react-native")
-            echo "✅ React Native plugin published successfully"
-            rm -f .npmrc
-        else
-            FAILED_PROJECTS+=("react-native")
-            echo "❌ Failed to publish React Native plugin"
-            rm -f .npmrc
-        fi
-        cd ..
+        FAILED_PROJECTS+=("react-native")
+        echo "❌ Failed to publish React Native plugin"
     fi
+    cd ..
 fi
 
 echo ""
