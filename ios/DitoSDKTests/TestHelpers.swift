@@ -54,6 +54,7 @@ class TestHelpers {
         }
 
         UserDefaults.lastPushToken = nil
+        UserDefaults.lastUserTokenRegister = nil
         UserDefaults.anonymousIdentifyMark = nil
         #if DEBUG
         DeviceIdProvider.resetForTests()
@@ -66,7 +67,7 @@ class TestHelpers {
         DitoIdentifyDataManager.shared.deleteIdentifyStamp()
         DitoIdentifyOffline.shared.finishIdentify()
         #if DEBUG
-        // The retry now sends anonymous rows without an identify; it must never reach the real ingest.
+        // Tests must never reach the real ingest: the retry sends anonymous rows without an identify.
         Dito.testIdentifyTrackIngestClient = MockMobileIngestClient()
         Dito.invalidateRetryCacheForTests()
         #endif

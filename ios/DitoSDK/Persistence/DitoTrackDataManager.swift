@@ -82,7 +82,8 @@ struct DitoTrackDataManager {
     return success
   }
 
-  func fetchOfflinePersistedTracks() -> [OfflinePersistedTrack] {
+  /// nil fetches all rows; false fetches rows with an owner (stored as nil, like legacy rows).
+  func fetchOfflinePersistedTracks(anonymous: Bool? = nil) -> [OfflinePersistedTrack] {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext()
     else {
       DitoLogger.error("Failed to create background context for fetch")
@@ -93,6 +94,11 @@ struct DitoTrackDataManager {
     context.performAndWait {
       let fetchRequest = NSFetchRequest<Track>(entityName: "Track")
       fetchRequest.returnsObjectsAsFaults = false
+      if let anonymous {
+        fetchRequest.predicate = anonymous
+          ? NSPredicate(format: "anonymous == YES")
+          : NSPredicate(format: "anonymous == nil OR anonymous == NO")
+      }
 
       do {
         let fetched = try context.fetch(fetchRequest)

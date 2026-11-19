@@ -65,6 +65,10 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         }
     }
 
+    private func makeTokenRequest(token: String) -> DitoTokenRequest {
+        DitoTokenRequest(platformAppKey: Dito.appKey, sha1Signature: Dito.signature, token: token)
+    }
+
     private func makeEventRequest(action: String) -> DitoEventRequest {
         DitoEventRequest(
             platformAppKey: Dito.appKey,
@@ -114,14 +118,24 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         let mock = MockMobileIngestClient()
         let sut = DitoTrack(client: mock)
 
-        var completed = false
-        sut.track(data: DitoEvent(action: "saving_identify_evt", customData: nil)) { _ in completed = true }
-        try await Task.sleep(nanoseconds: 300_000_000)
+        let identifyFinished = LockedFlag()
+        let completedEarly = expectation(description: "track completion before identify")
+        completedEarly.isInverted = true
+        let completedAfterIdentify = expectation(description: "track completion after identify")
+        sut.track(data: DitoEvent(action: "saving_identify_evt", customData: nil)) { _ in
+            if identifyFinished.isSet {
+                completedAfterIdentify.fulfill()
+            } else {
+                completedEarly.fulfill()
+            }
+        }
+        await fulfillment(of: [completedEarly], timeout: 0.3)
         XCTAssertEqual(mock.activityCallCount, 0)
-        XCTAssertFalse(completed)
 
         XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: "uid-saving-1", reference: nil, json: nil, send: false))
+        identifyFinished.set()
         DitoIdentifyOffline.shared.finishIdentify()
+        await fulfillment(of: [completedAfterIdentify], timeout: 10)
         await waitForTrackRowsWithEvents(1)
 
         XCTAssertEqual(mock.activityCallCount, 0)
@@ -236,7 +250,155 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         await tokenAndWait(sut, token: "fcm-rotation-new", register: false)
         XCTAssertNil(UserDefaults.lastPushToken)
     }
+
+    func testQueuedRegister_thenUnregisterSameTokenSucceeds_retryDoesNotRegisterAgain() async throws {
+        DeviceIdProvider.setForTests("device-register-then-unregister-1")
+        let token = "fcm-register-then-unregister"
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        await tokenAndWait(DitoNotification(client: failing), token: token, register: true)
+        XCTAssertNotNil(DitoNotificationRegisterDataManager().fetch)
+
+        await tokenAndWait(DitoNotification(client: MockMobileIngestClient()), token: token, register: false)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+
+        let mock = MockMobileIngestClient()
+        await DitoRetry(client: mock).runLoadOffline()
+        XCTAssertEqual(tokenRegisterCount(mock, userId: "", token: token), 0)
+    }
+
+    func testQueuedUnregister_thenRegisterSameTokenSucceeds_retryDoesNotUnregister() async throws {
+        DeviceIdProvider.setForTests("device-unregister-then-register-1")
+        let token = "fcm-unregister-then-register"
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        await tokenAndWait(DitoNotification(client: failing), token: token, register: false)
+        XCTAssertNotNil(DitoNotificationUnregisterDataManager().fetch)
+
+        await tokenAndWait(DitoNotification(client: MockMobileIngestClient()), token: token, register: true)
+        XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
+
+        let mock = MockMobileIngestClient()
+        await DitoRetry(client: mock).runLoadOffline()
+        XCTAssertEqual(mock.activityCallCount, 0)
+    }
+
+    func testAnonymousUnregisterFailsAfterLoginDuringSend_isQueuedAsAnonymous() async throws {
+        DeviceIdProvider.setForTests("device-unregister-login-during-send-1")
+        let userId = "uid-unregister-login-during-send-1"
+        let sut = DitoNotification(client: FailsAfterClient {
+            DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true)
+        })
+
+        await tokenAndWait(sut, token: "fcm-unregister-login-during-send", register: false)
+
+        let unregister = try XCTUnwrap(DitoNotificationUnregisterDataManager().fetch)
+        XCTAssertTrue(unregister.anonymous)
+    }
+
+    func testAnonymousRegisterOfOldTokenFailsAfterLoginDuringSend_isDropped() async throws {
+        DeviceIdProvider.setForTests("device-old-token-login-during-send-1")
+        let userId = "uid-old-token-login-during-send-1"
+        let sut = DitoNotification(client: FailsAfterClient {
+            DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true)
+            UserDefaults.lastPushToken = "fcm-newer-token"
+        })
+
+        await tokenAndWait(sut, token: "fcm-old-token-login-during-send", register: true)
+
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
+    func testAnonymousUnregisterFails_tokenRegisteredAgainDuringSend_isDropped() async throws {
+        DeviceIdProvider.setForTests("device-unregister-registered-again-1")
+        let token = "fcm-unregister-registered-again"
+        let sut = DitoNotification(client: FailsAfterClient {
+            UserDefaults.lastPushToken = token
+        })
+
+        await tokenAndWait(sut, token: token, register: false)
+
+        XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
+    }
+
+    func testRegisterSucceeds_logoutDuringSend_doesNotMarkTokenRegisteredForUser() async throws {
+        DeviceIdProvider.setForTests("device-register-logout-during-send-1")
+        let userId = "uid-register-logout-during-send-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        let sut = DitoNotification(client: SucceedsAfterClient {
+            DitoIdentifyOffline.shared.logout()
+        })
+
+        await tokenAndWait(sut, token: "fcm-register-logout-during-send", register: true)
+
+        XCTAssertNil(UserDefaults.lastUserTokenRegister)
+    }
+
+    func testIdentifiedRegisterFails_tokenReplacedDuringSend_isDropped() async throws {
+        let userId = "uid-register-replaced-during-send-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        let sut = DitoNotification(client: FailsAfterClient {
+            UserDefaults.lastPushToken = "fcm-register-replaced-newer"
+        })
+
+        await tokenAndWait(sut, token: "fcm-register-replaced-older", register: true)
+
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
     #endif
+
+    func testRegisterRetryFails_newerRegisterSavedDuringSend_keepsItsRetry() async throws {
+        let userId = "uid-register-retry-newer-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-register-retry-older").toString,
+            retry: 2
+        ))
+        let newerJson = makeTokenRequest(token: "fcm-register-retry-newer").toString
+        let client = FailsAfterClient {
+            DitoNotificationRegisterDataManager().save(with: newerJson, retry: 0)
+        }
+
+        await DitoRetry(client: client).runLoadOffline()
+
+        let pending = try XCTUnwrap(DitoNotificationRegisterDataManager().fetch)
+        XCTAssertEqual(pending.json, newerJson)
+        XCTAssertEqual(pending.retry, 0)
+    }
+
+    func testRegisterRetrySucceeds_logoutDuringSend_doesNotMarkTokenRegisteredForUser() async throws {
+        let userId = "uid-register-retry-logout-1"
+        let token = "fcm-register-retry-logout"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        UserDefaults.lastPushToken = token
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: makeTokenRequest(token: token).toString, retry: 0))
+        let client = SucceedsAfterClient {
+            DitoIdentifyOffline.shared.logout()
+        }
+
+        await DitoRetry(client: client).runLoadOffline()
+
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+        XCTAssertNil(UserDefaults.lastUserTokenRegister)
+    }
+
+    func testUnregisterRetrySucceeds_newerUnregisterSavedDuringSend_isKept() async throws {
+        let userId = "uid-unregister-retry-newer-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        XCTAssertTrue(DitoNotificationUnregisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-unregister-retry-older").toString,
+            retry: 0
+        ))
+        let newerJson = makeTokenRequest(token: "fcm-unregister-retry-newer").toString
+        let client = SucceedsAfterClient {
+            DitoNotificationUnregisterDataManager().save(with: newerJson, retry: 0)
+        }
+
+        await DitoRetry(client: client).runLoadOffline()
+
+        let pending = try XCTUnwrap(DitoNotificationUnregisterDataManager().fetch)
+        XCTAssertEqual(pending.json, newerJson)
+    }
 
     func testIdentifyThenLoadOffline_sendsSingleBatchForPendingTracks() async throws {
         XCTAssertTrue(DitoTrackDataManager().fetchOfflinePersistedTracks().isEmpty)
@@ -432,5 +594,35 @@ private final class FailsAfterClient: MobileIngestClientProtocol, @unchecked Sen
     func activity(_ request: Mobileingest_V1_Request) async throws -> Mobileingest_V1_Response {
         beforeFailing()
         throw MobileIngestError(message: "falha depois de mudar o identify")
+    }
+}
+
+private final class SucceedsAfterClient: MobileIngestClientProtocol, @unchecked Sendable {
+    private let beforeSucceeding: () -> Void
+
+    init(_ beforeSucceeding: @escaping () -> Void) {
+        self.beforeSucceeding = beforeSucceeding
+    }
+
+    func activity(_ request: Mobileingest_V1_Request) async throws -> Mobileingest_V1_Response {
+        beforeSucceeding()
+        return Mobileingest_V1_Response()
+    }
+}
+
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
     }
 }

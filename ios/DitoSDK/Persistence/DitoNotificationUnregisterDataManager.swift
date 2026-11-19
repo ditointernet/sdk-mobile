@@ -83,6 +83,37 @@ struct DitoNotificationUnregisterDataManager {
     return success
   }
 
+  @discardableResult
+  func delete(id: NSManagedObjectID) -> Bool {
+    guard let context = DitoCoreDataManager.shared.newBackgroundContext() else {
+      DitoLogger.error("Failed to create background context for delete")
+      return false
+    }
+
+    var success = false
+    context.performAndWait {
+      do {
+        guard
+          let notificationUnregister = try? context.existingObject(with: id)
+            as? NotificationUnregister
+        else {
+          success = true
+          return
+        }
+
+        context.delete(notificationUnregister)
+        try context.save()
+        DitoLogger.information("NotificationUnregister Deleted - Successfully!!!")
+        success = true
+      } catch {
+        DitoLogger.error("Error deleting NotificationUnregister: \(error.localizedDescription)")
+        success = false
+      }
+    }
+
+    return success
+  }
+
   var fetch: DitoNotificationUnregisterRow? {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext() else {
       DitoLogger.error("Failed to create background context for fetch")

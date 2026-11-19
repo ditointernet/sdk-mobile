@@ -17,8 +17,8 @@ struct DitoNotificationRegisterDataManager {
   }
 
   @discardableResult
-  func update(id: NSManagedObjectID? = nil, retry: Int16) -> Bool {
-    guard var pending = fetch else { return false }
+  func update(ifMatching expected: NotificationDefaults, retry: Int16) -> Bool {
+    guard var pending = fetch, pending == expected else { return false }
     pending.retry = retry
     UserDefaults.notificationRegister = pending
     return true

@@ -84,8 +84,8 @@ struct DitoNotificationOffline {
     return notificationRegisterDataManager.fetch
   }
 
-  func updateRegister(id: NSManagedObjectID? = nil, retry: Int16) {
-    notificationRegisterDataManager.update(id: id, retry: retry)
+  func updateRegister(ifMatching expected: NotificationDefaults, retry: Int16) {
+    notificationRegisterDataManager.update(ifMatching: expected, retry: retry)
   }
 
   func deleteRegister(ifMatching expected: NotificationDefaults) {
@@ -100,8 +100,8 @@ struct DitoNotificationOffline {
     notificationUnregisterDataManager.update(id: id, retry: retry)
   }
 
-  func deleteUnregister() {
-    notificationUnregisterDataManager.delete()
+  func deleteUnregister(id: NSManagedObjectID) {
+    notificationUnregisterDataManager.delete(id: id)
   }
 
   var getNotificationRead: [DitoNotificationReadRow] {

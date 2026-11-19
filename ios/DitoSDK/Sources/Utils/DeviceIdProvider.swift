@@ -5,12 +5,13 @@ enum DeviceIdProvider {
     private static let account = "br.com.dito.device_id"
     private static let lock = NSLock()
     nonisolated(unsafe) private static var cached: String?
+    typealias KeychainCall = (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus
     #if DEBUG
-    nonisolated(unsafe) static var copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching
-    nonisolated(unsafe) static var addItem: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemAdd
+    nonisolated(unsafe) private static var copyMatchingCall: KeychainCall = SecItemCopyMatching
+    nonisolated(unsafe) private static var addItemCall: KeychainCall = SecItemAdd
     #else
-    private static let copyMatching: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemCopyMatching
-    private static let addItem: (CFDictionary, UnsafeMutablePointer<CFTypeRef?>?) -> OSStatus = SecItemAdd
+    private static let copyMatchingCall: KeychainCall = SecItemCopyMatching
+    private static let addItemCall: KeychainCall = SecItemAdd
     #endif
 
     /// Returns "" when the Keychain cannot be read (e.g. before the first unlock); the next call retries.
@@ -34,7 +35,7 @@ enum DeviceIdProvider {
             kSecValueData as String: Data(newId.utf8),
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        switch addItem(addQuery as CFDictionary, nil) {
+        switch addItemCall(addQuery as CFDictionary, nil) {
         case errSecSuccess:
             cached = newId
             return newId
@@ -55,7 +56,7 @@ enum DeviceIdProvider {
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
         var result: CFTypeRef?
-        let status = copyMatching(query as CFDictionary, &result)
+        let status = copyMatchingCall(query as CFDictionary, &result)
         guard status == errSecSuccess,
               let data = result as? Data,
               let id = String(data: data, encoding: .utf8)
@@ -64,6 +65,17 @@ enum DeviceIdProvider {
     }
 
     #if DEBUG
+    // `get()` holds `lock` (not recursive), so it uses the stored calls, never these.
+    static var copyMatching: KeychainCall {
+        get { lock.lock(); defer { lock.unlock() }; return copyMatchingCall }
+        set { lock.lock(); defer { lock.unlock() }; copyMatchingCall = newValue }
+    }
+
+    static var addItem: KeychainCall {
+        get { lock.lock(); defer { lock.unlock() }; return addItemCall }
+        set { lock.lock(); defer { lock.unlock() }; addItemCall = newValue }
+    }
+
     static func setForTests(_ id: String?) {
         lock.lock()
         defer { lock.unlock() }

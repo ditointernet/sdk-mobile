@@ -1,3 +1,4 @@
+import Security
 import XCTest
 @testable import DitoSDK
 
@@ -420,6 +421,46 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
     }
 
+    func testAnonymousRows_withoutDeviceId_sendNothingAndKeepQueueAndRetry() async throws {
+        DeviceIdProvider.copyMatching = { _, _ in errSecInteractionNotAllowed }
+        saveTrack(action: "anon_no_device_evt", anonymous: true)
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-no-device-register").toString,
+            retry: 0,
+            anonymous: true
+        ))
+        XCTAssertTrue(DitoNotificationUnregisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-no-device-unregister").toString,
+            retry: 0,
+            anonymous: true
+        ))
+        await waitForTrackRowsWithEvents(1)
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        let tracks = DitoTrackOffline().offlinePersistedTracks
+        XCTAssertEqual(tracks.count, 1)
+        XCTAssertEqual(tracks.first?.retry, 1)
+        XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.retry, 0)
+        XCTAssertEqual(DitoNotificationUnregisterDataManager().fetch?.retry, 0)
+    }
+
+    func testPendingIdentify_anonymousTrackInQueue_isNotSentAndKeepsRetry() async throws {
+        DeviceIdProvider.setForTests("device-retry-pending-anon-track-1")
+        saveTrack(action: "pending_anon_evt", anonymous: true)
+        await waitForTrackRowsWithEvents(1)
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: "uid-retry-pending-anon-1", reference: nil, json: nil, send: false))
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        let tracks = DitoTrackOffline().offlinePersistedTracks
+        XCTAssertEqual(tracks.count, 1)
+        XCTAssertEqual(tracks.first?.retry, 1)
+    }
     #endif
 
     func testLegacyTrackWithoutMark_waitsForIdentify_thenIsSentWithUser() async throws {
@@ -507,6 +548,8 @@ final class DitoRetryTests: XCTestCase {
         await waitUntil {
             mock.allActivityRequests.contains { $0.userID == userId && self.hasTokenRegister($0, token: token) }
         }
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(tokenRegisterRequests(mock, userId: userId, token: token).count, 1)
     }
 
     #if DEBUG
@@ -611,5 +654,54 @@ final class DitoRetryTests: XCTestCase {
 
         XCTAssertEqual(tokenRegisterRequests(mock, userId: userId, token: token).count, 1)
         XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
+    private func identifyAndWait(_ sut: DitoIdentify, userId: String) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            sut.identify(id: userId, data: DitoUser(email: "repeat@example.com")) { _ in cont.resume() }
+        }
+    }
+
+    func testIdentifyTwiceWithSameUserAndToken_registersTokenOnce() async throws {
+        let token = "fcm-identify-twice"
+        let userId = "uid-identify-twice-1"
+        UserDefaults.lastPushToken = token
+        let mock = MockMobileIngestClient()
+        let sut = DitoIdentify(retry: DitoRetry(client: mock), client: mock)
+
+        await identifyAndWait(sut, userId: userId)
+        await waitUntil { UserDefaults.lastUserTokenRegister != nil }
+        await identifyAndWait(sut, userId: userId)
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(tokenRegisterRequests(mock, userId: userId, token: token).count, 1)
+    }
+
+    func testIdentifyWithAnotherUser_resendsToken() async throws {
+        let token = "fcm-identify-other-user"
+        UserDefaults.lastPushToken = token
+        let mock = MockMobileIngestClient()
+        let sut = DitoIdentify(retry: DitoRetry(client: mock), client: mock)
+
+        await identifyAndWait(sut, userId: "uid-identify-first-1")
+        await waitUntil { UserDefaults.lastUserTokenRegister != nil }
+        await identifyAndWait(sut, userId: "uid-identify-second-1")
+
+        await waitUntil { !self.tokenRegisterRequests(mock, userId: "uid-identify-second-1", token: token).isEmpty }
+        XCTAssertEqual(tokenRegisterRequests(mock, userId: "uid-identify-first-1", token: token).count, 1)
+    }
+
+    func testIdentifyAgainAfterTokenChange_registersNewToken() async throws {
+        let userId = "uid-identify-new-token-1"
+        UserDefaults.lastPushToken = "fcm-identify-token-a"
+        let mock = MockMobileIngestClient()
+        let sut = DitoIdentify(retry: DitoRetry(client: mock), client: mock)
+
+        await identifyAndWait(sut, userId: userId)
+        await waitUntil { UserDefaults.lastUserTokenRegister != nil }
+        UserDefaults.lastPushToken = "fcm-identify-token-b"
+        await identifyAndWait(sut, userId: userId)
+
+        await waitUntil { !self.tokenRegisterRequests(mock, userId: userId, token: "fcm-identify-token-b").isEmpty }
     }
 }

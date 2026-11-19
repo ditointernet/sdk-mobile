@@ -67,6 +67,9 @@ class DitoNotification {
         if UserDefaults.lastPushToken == token {
             UserDefaults.lastPushToken = nil
         }
+        if UserDefaults.lastUserTokenRegister?["token"] == token {
+            UserDefaults.lastUserTokenRegister = nil
+        }
 
         if notificationOffline.isSaving {
             notificationOffline.setRegisterAsCompletion {
@@ -83,13 +86,21 @@ class DitoNotification {
 
     func registerLastToken() {
         guard let token = UserDefaults.lastPushToken else { return }
+        if case .identified(let userId) = notificationOffline.identityState,
+           UserDefaults.lastUserTokenRegister == ["user_id": userId, "token": token] {
+            return
+        }
         // A queued register of this token with an owner is sent by the retry; sending here too would duplicate it.
         if let pending = notificationOffline.getNotificationRegister, pending.anonymous != true,
            pending.retry < DitoRetry.maxRetries,
-           pending.json?.convertToObject(type: DitoTokenRequest.self)?.token == token {
+           Self.token(of: pending.json) == token {
             return
         }
         registerToken(token: token)
+    }
+
+    private static func token(of json: String?) -> String? {
+        json?.convertToObject(type: DitoTokenRequest.self)?.token
     }
 
     private func processToken(
@@ -97,6 +108,14 @@ class DitoNotification {
         isRegister: Bool,
         completion: ((Result<DitoOperationStatus, Error>) -> Void)?
     ) {
+        // A queued opposite operation on this token would undo this one when the retry sends it.
+        if isRegister {
+            if let pending = notificationOffline.getNotificationUnregister, Self.token(of: pending.json) == token {
+                notificationOffline.deleteUnregister(id: pending.id)
+            }
+        } else if let pending = notificationOffline.getNotificationRegister, Self.token(of: pending.json) == token {
+            notificationOffline.deleteRegister(ifMatching: pending)
+        }
         let label = isRegister ? "REGISTER TOKEN" : "UNREGISTER TOKEN"
         let tokenRequest = makeTokenRequest(token: token)
         let state = notificationOffline.identityState
@@ -111,6 +130,9 @@ class DitoNotification {
             do {
                 if case .identified(let userId) = state {
                     try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
+                    if isRegister, notificationOffline.identityState == state, UserDefaults.lastPushToken == token {
+                        UserDefaults.lastUserTokenRegister = ["user_id": userId, "token": token]
+                    }
                 } else {
                     try await client.sendAnonymous([activity], mapper: mapper, allowIdentify: true)
                 }
@@ -126,17 +148,21 @@ class DitoNotification {
         }
     }
 
-    /// Whether a failed send is queued as anonymous, or nil to drop it. A login during the send makes the token
-    /// the user's: the identify confirmation already re-sends the last token (`registerLastToken`).
+    /// Whether a failed send is queued as anonymous, or nil to drop it. Dropped when a later call superseded it
+    /// (a register of a token no longer the last one, an unregister of a token registered again). A send started
+    /// anonymous stays anonymous, except a register of the last token after a login: the identify confirmation
+    /// re-sends it (`registerLastToken`).
     private func offlineOwner(startedAs state: DitoIdentityState, token: String, isRegister: Bool) -> Bool? {
+        guard isRegister == (token == UserDefaults.lastPushToken) else { return nil }
         guard state == .anonymous else { return false }
+        guard isRegister else { return true }
         switch notificationOffline.identityState {
         case .anonymous:
             return true
         case .pending:
             return false
         case .identified:
-            return isRegister && token == UserDefaults.lastPushToken ? nil : false
+            return nil
         }
     }
 

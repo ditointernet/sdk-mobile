@@ -57,6 +57,10 @@ struct DitoTrackOffline {
         trackDataManager.fetchOfflinePersistedTracks()
     }
 
+    func persistedTracks(anonymous: Bool) -> [OfflinePersistedTrack] {
+        trackDataManager.fetchOfflinePersistedTracks(anonymous: anonymous)
+    }
+
     func update(id: NSManagedObjectID, event: DitoEventRequest, retry: Int16) {
         Self.persistenceQueue.sync {
             let json = event.toString

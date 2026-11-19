@@ -8,6 +8,7 @@ extension UserDefaults {
     static let savingState = "savingState"
     static let notificationRegisterKey = "notificationRegister"
     static let lastPushToken = "lastPushToken"
+    static let lastUserTokenRegister = "lastUserTokenRegister"
     static let anonymousIdentifyMark = "anonymousIdentifyMark"
   }
 
@@ -128,6 +129,16 @@ extension UserDefaults {
     }
   }
 
+  /// ["user_id", "token"] of the last register confirmed with a logged-in user.
+  class var lastUserTokenRegister: [String: String]? {
+    get {
+      UserDefaults.standard.dictionary(forKey: Keys.lastUserTokenRegister) as? [String: String]
+    }
+    set {
+      UserDefaults.standard.set(newValue, forKey: Keys.lastUserTokenRegister)
+    }
+  }
+
   class var anonymousIdentifyMark: [String: String]? {
     get {
       UserDefaults.standard.dictionary(forKey: Keys.anonymousIdentifyMark) as? [String: String]
@@ -139,6 +150,7 @@ extension UserDefaults {
 
   class func clearIdentityState() {
     identify = nil
+    lastUserTokenRegister = nil
     savingState = -1
   }
 }
