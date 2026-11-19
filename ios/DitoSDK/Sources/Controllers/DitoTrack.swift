@@ -38,43 +38,47 @@ class DitoTrack {
         completion: ((Result<DitoOperationStatus, Error>) -> Void)?
     ) {
         DispatchQueue.global().async {
-            guard let userId = self.trackOffline.reference, !userId.isEmpty else {
-                let eventRequest = DitoEventRequest(
-                    platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
-                    sha1Signature: Dito.signature,
-                    event: data
-                )
-                self.trackOffline.track(event: eventRequest)
+            switch self.trackOffline.identityState {
+            case .identified(let reference):
+                self.performTracking(userId: reference, data: data, completion: completion)
+            case .anonymous:
+                self.performTracking(userId: nil, data: data, completion: completion)
+            case .pending:
+                self.trackOffline.track(event: self.makeEventRequest(data))
                 DitoLogger.warning("⚠️ [TRACK] Usuário não identificado - salvando evento offline")
                 completion?(.success(.savedLocally))
-                return
             }
-            self.performTracking(userId: userId, data: data, completion: completion)
         }
     }
 
     private func performTracking(
-        userId: String,
+        userId: String?,
         data: DitoEvent,
         completion: ((Result<DitoOperationStatus, Error>) -> Void)?
     ) {
         Task {
             let activity = mapper.mapFromDitoEvent(data)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
             do {
-                try await client.activity(request)
+                if let userId {
+                    try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
+                } else {
+                    try await client.sendAnonymous([activity], mapper: mapper, allowIdentify: true)
+                }
                 DitoLogger.information("✅ [TRACK] Sucesso")
                 completion?(.success(.sent))
             } catch {
-                let eventRequest = DitoEventRequest(
-                    platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
-                    sha1Signature: Dito.signature,
-                    event: data
-                )
-                trackOffline.track(event: eventRequest)
+                trackOffline.track(event: makeEventRequest(data), anonymous: userId == nil)
                 DitoLogger.error(error.localizedDescription)
                 completion?(.success(.savedLocally))
             }
         }
+    }
+
+    private func makeEventRequest(_ data: DitoEvent) -> DitoEventRequest {
+        DitoEventRequest(
+            platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
+            sha1Signature: Dito.signature,
+            event: data
+        )
     }
 }

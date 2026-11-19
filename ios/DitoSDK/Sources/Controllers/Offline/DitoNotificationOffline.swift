@@ -27,14 +27,14 @@ struct DitoNotificationOffline {
     self.identifyOffline = identifyOffline
   }
 
-  func notificationRegister(_ notification: DitoTokenRequest) {
+  func notificationRegister(_ notification: DitoTokenRequest, anonymous: Bool = false) {
     let json = notification.toString
-    self.notificationRegisterDataManager.save(with: json)
+    self.notificationRegisterDataManager.save(with: json, anonymous: anonymous)
   }
 
-  func notificationUnregister(_ notification: DitoTokenRequest) {
+  func notificationUnregister(_ notification: DitoTokenRequest, anonymous: Bool = false) {
     let json = notification.toString
-    self.notificationUnregisterDataManager.save(with: json)
+    self.notificationUnregisterDataManager.save(with: json, anonymous: anonymous)
   }
 
   func notificationRead(_ notification: DitoNotificationOpenRequest) {
@@ -76,6 +76,10 @@ struct DitoNotificationOffline {
     return identifyOffline.getIdentify?.reference
   }
 
+  var identityState: DitoIdentityState {
+    identifyOffline.identityState
+  }
+
   var getNotificationRegister: NotificationDefaults? {
     return notificationRegisterDataManager.fetch
   }
@@ -84,8 +88,8 @@ struct DitoNotificationOffline {
     notificationRegisterDataManager.update(id: id, retry: retry)
   }
 
-  func deleteRegister() {
-    notificationRegisterDataManager.delete()
+  func deleteRegister(ifMatching expected: NotificationDefaults) {
+    notificationRegisterDataManager.delete(ifMatching: expected)
   }
 
   var getNotificationUnregister: DitoNotificationUnregisterRow? {

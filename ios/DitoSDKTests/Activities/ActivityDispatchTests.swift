@@ -1,3 +1,4 @@
+import Security
 import XCTest
 @testable import DitoSDK
 
@@ -132,6 +133,191 @@ final class ActivityDispatchTests: XCTestCase {
             XCTFail("expected trackPushClick oneof, got \(String(describing: a.activity))")
         }
     }
+
+    #if DEBUG
+    private func trackAndWait(_ sut: DitoTrack, action: String) async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            sut.track(data: DitoEvent(action: action, customData: nil)) { _ in cont.resume() }
+        }
+    }
+
+    private func waitForTrackRows(_ count: Int, timeout: TimeInterval = 5) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while DitoTrackDataManager().fetchOfflinePersistedTracks().count < count, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertEqual(DitoTrackDataManager().fetchOfflinePersistedTracks().count, count)
+    }
+
+    func testAnonymousIdentify_onlyFirstAnonymousCallCarriesIt() async throws {
+        DeviceIdProvider.setForTests("device-anon-identify-1")
+        let mock = MockMobileIngestClient()
+        let sut = DitoTrack(client: mock)
+
+        await trackAndWait(sut, action: "anon_first")
+        await trackAndWait(sut, action: "anon_second")
+
+        XCTAssertEqual(mock.activityCallCount, 2)
+        let first = mock.allActivityRequests[0]
+        XCTAssertEqual(first.userID, "")
+        XCTAssertEqual(first.activities.map(\.type), [.activityIdentify, .activityTrack])
+        guard let oneOf = first.activities[0].activity, case .identify(let identify) = oneOf else {
+            XCTFail("expected identify oneof, got \(String(describing: first.activities[0].activity))")
+            return
+        }
+        XCTAssertEqual(Set(identify.customData.keys), Set(["device_model", "sdk_version"]))
+        XCTAssertEqual(identify.customData["device_model"]?.single.stringValue, first.device.deviceModel)
+        XCTAssertEqual(identify.customData["sdk_version"]?.single.stringValue, first.sdk.version)
+        XCTAssertEqual(identify.name, "")
+        XCTAssertEqual(identify.email, "")
+
+        let second = mock.allActivityRequests[1]
+        XCTAssertEqual(second.userID, "")
+        XCTAssertEqual(second.activities.map(\.type), [.activityTrack])
+        XCTAssertEqual(
+            UserDefaults.anonymousIdentifyMark,
+            ["device_id": "device-anon-identify-1", "sdk_version": first.sdk.version]
+        )
+    }
+
+    func testAnonymousIdentify_failedCallDoesNotSaveMark_nextCallCarriesIt() async throws {
+        DeviceIdProvider.setForTests("device-anon-identify-2")
+        let mock = MockMobileIngestClient()
+        mock.shouldSucceed = false
+        let sut = DitoTrack(client: mock)
+
+        await trackAndWait(sut, action: "anon_fail")
+        await waitForTrackRows(1)
+        XCTAssertNil(UserDefaults.anonymousIdentifyMark)
+
+        mock.shouldSucceed = true
+        await trackAndWait(sut, action: "anon_after_fail")
+
+        XCTAssertEqual(mock.activityCallCount, 2)
+        XCTAssertEqual(mock.allActivityRequests[0].activities.first?.type, .activityIdentify)
+        XCTAssertEqual(mock.allActivityRequests[1].activities.map(\.type), [.activityIdentify, .activityTrack])
+        XCTAssertNotNil(UserDefaults.anonymousIdentifyMark)
+    }
+
+    func testAnonymousIdentify_markFromOtherSdkVersionOrWithoutVersion_sendsAgainAndSavesNewMark() async throws {
+        let deviceId = "device-anon-identify-3"
+        DeviceIdProvider.setForTests(deviceId)
+        let mock = MockMobileIngestClient()
+        let sut = DitoTrack(client: mock)
+
+        UserDefaults.anonymousIdentifyMark = ["device_id": deviceId, "sdk_version": "0.0.0-old"]
+        await trackAndWait(sut, action: "anon_new_version")
+        let currentVersion = try XCTUnwrap(mock.lastActivityRequest).sdk.version
+        XCTAssertEqual(mock.lastActivityRequest?.activities.first?.type, .activityIdentify)
+        XCTAssertEqual(UserDefaults.anonymousIdentifyMark, ["device_id": deviceId, "sdk_version": currentVersion])
+
+        UserDefaults.anonymousIdentifyMark = ["device_id": deviceId]
+        await trackAndWait(sut, action: "anon_mark_without_version")
+        XCTAssertEqual(mock.lastActivityRequest?.activities.first?.type, .activityIdentify)
+
+        UserDefaults.anonymousIdentifyMark = ["device_id": "other-device", "sdk_version": currentVersion]
+        await trackAndWait(sut, action: "anon_other_device")
+        XCTAssertEqual(mock.lastActivityRequest?.activities.first?.type, .activityIdentify)
+        XCTAssertEqual(UserDefaults.anonymousIdentifyMark, ["device_id": deviceId, "sdk_version": currentVersion])
+    }
+
+    func testAnonymousIdentify_notSentWhenLoggedIn() async throws {
+        DeviceIdProvider.setForTests("device-anon-identify-4")
+        let userId = "uid-anon-identify-logged"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        let mock = MockMobileIngestClient()
+
+        await trackAndWait(DitoTrack(client: mock), action: "logged_evt")
+
+        let req = try XCTUnwrap(mock.lastActivityRequest)
+        XCTAssertEqual(req.userID, userId)
+        XCTAssertEqual(req.activities.map(\.type), [.activityTrack])
+        XCTAssertNil(UserDefaults.anonymousIdentifyMark)
+    }
+
+    func testAnonymousTrack_withoutDeviceId_isQueuedAsAnonymousWithoutCallingIngest() async throws {
+        DeviceIdProvider.setForTests("")
+        let mock = MockMobileIngestClient()
+
+        await trackAndWait(DitoTrack(client: mock), action: "no_device_id_evt")
+        await waitForTrackRows(1)
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertNil(UserDefaults.anonymousIdentifyMark)
+        let rows = DitoTrackDataManager().fetchOfflinePersistedTracks()
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows.first?.anonymous, true)
+    }
+
+    func testDeviceIdProvider_realKeychain_returnsSameNonEmptyValue() throws {
+        let first = DeviceIdProvider.get()
+        if first.isEmpty {
+            throw XCTSkip("Keychain indisponível neste simulador (testes sem app host); estabilidade coberta pelos testes com Keychain simulado")
+        }
+        XCTAssertEqual(DeviceIdProvider.get(), first)
+        XCTAssertEqual(DeviceIdProvider.get(), first)
+    }
+
+    private func stubKeychain(
+        reads: [(OSStatus, String?)],
+        add: OSStatus
+    ) -> (readCount: () -> Int, addCount: () -> Int) {
+        var readCount = 0
+        var addCount = 0
+        DeviceIdProvider.copyMatching = { _, result in
+            let (status, value) = reads[min(readCount, reads.count - 1)]
+            readCount += 1
+            if let value { result?.pointee = Data(value.utf8) as CFData }
+            return status
+        }
+        DeviceIdProvider.addItem = { _, _ in
+            addCount += 1
+            return add
+        }
+        return ({ readCount }, { addCount })
+    }
+
+    func testDeviceIdProvider_readSucceeds_returnsStoredIdWithoutAdding() {
+        let counts = stubKeychain(reads: [(errSecSuccess, "stored-id")], add: errSecSuccess)
+        XCTAssertEqual(DeviceIdProvider.get(), "stored-id")
+        XCTAssertEqual(DeviceIdProvider.get(), "stored-id")
+        XCTAssertEqual(counts.readCount(), 1, "o valor fica em memória depois da primeira leitura")
+        XCTAssertEqual(counts.addCount(), 0)
+    }
+
+    func testDeviceIdProvider_notFoundAndAddSucceeds_returnsStableGeneratedId() {
+        let counts = stubKeychain(reads: [(errSecItemNotFound, nil)], add: errSecSuccess)
+        let first = DeviceIdProvider.get()
+        XCTAssertFalse(first.isEmpty)
+        XCTAssertEqual(DeviceIdProvider.get(), first)
+        XCTAssertEqual(counts.addCount(), 1)
+    }
+
+    func testDeviceIdProvider_notFoundAndAddReportsDuplicate_returnsReReadId() {
+        let counts = stubKeychain(
+            reads: [(errSecItemNotFound, nil), (errSecSuccess, "other-process-id")],
+            add: errSecDuplicateItem
+        )
+        XCTAssertEqual(DeviceIdProvider.get(), "other-process-id")
+        XCTAssertEqual(DeviceIdProvider.get(), "other-process-id")
+        XCTAssertEqual(counts.readCount(), 2)
+    }
+
+    func testDeviceIdProvider_notFoundAndAddFails_returnsEmptyWithoutCaching() {
+        let counts = stubKeychain(reads: [(errSecItemNotFound, nil)], add: errSecInteractionNotAllowed)
+        XCTAssertEqual(DeviceIdProvider.get(), "")
+        XCTAssertEqual(DeviceIdProvider.get(), "")
+        XCTAssertEqual(counts.addCount(), 2, "sem cache, a próxima chamada tenta de novo")
+    }
+
+    func testDeviceIdProvider_unreadableKeychain_returnsEmptyWithoutGeneratingOrCaching() {
+        let counts = stubKeychain(reads: [(errSecInteractionNotAllowed, nil)], add: errSecSuccess)
+        XCTAssertEqual(DeviceIdProvider.get(), "")
+        XCTAssertEqual(DeviceIdProvider.get(), "")
+        XCTAssertEqual(counts.readCount(), 2)
+        XCTAssertEqual(counts.addCount(), 0)
+    }
+    #endif
 
     #if DEBUG
     func testNotificationReceived_withUserId_sendsIdentifyAndTrackActivities() async throws {

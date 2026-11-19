@@ -11,12 +11,13 @@ struct DitoNotificationUnregisterRow: Sendable {
   let id: NSManagedObjectID
   let json: String?
   let retry: Int16
+  let anonymous: Bool
 }
 
 struct DitoNotificationUnregisterDataManager {
 
   @discardableResult
-  func save(with json: String?, retry: Int16 = 1) -> Bool {
+  func save(with json: String?, retry: Int16 = 1, anonymous: Bool = false) -> Bool {
     delete()
 
     var success = false
@@ -34,6 +35,7 @@ struct DitoNotificationUnregisterDataManager {
 
       notificationUnregister.retry = retry
       notificationUnregister.json = json
+      notificationUnregister.anonymous = anonymous ? NSNumber(value: true) : nil
 
       do {
         try context.save()
@@ -98,7 +100,12 @@ struct DitoNotificationUnregisterDataManager {
         // Os atributos são copiados aqui, dentro da fila do contexto: fora dela o
         // objeto não serve mais (ver `DitoNotificationUnregisterRow`).
         result = try context.fetch(fetchRequest).first.map {
-          DitoNotificationUnregisterRow(id: $0.objectID, json: $0.json, retry: $0.retry)
+          DitoNotificationUnregisterRow(
+            id: $0.objectID,
+            json: $0.json,
+            retry: $0.retry,
+            anonymous: $0.anonymous?.boolValue == true
+          )
         }
         if result != nil {
           DitoLogger.information("NotificationUnregister found - Successfully!!!")

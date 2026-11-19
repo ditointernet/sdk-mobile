@@ -7,6 +7,8 @@ extension UserDefaults {
     static let identifyKey = "identify"
     static let savingState = "savingState"
     static let notificationRegisterKey = "notificationRegister"
+    static let lastPushToken = "lastPushToken"
+    static let anonymousIdentifyMark = "anonymousIdentifyMark"
   }
 
   class var firstSave: Bool {
@@ -114,6 +116,24 @@ extension UserDefaults {
           DitoLogger.error("Unable to Encode Note (\(error))")
         }
       }
+    }
+  }
+
+  class var lastPushToken: String? {
+    get {
+      UserDefaults.standard.string(forKey: Keys.lastPushToken)
+    }
+    set {
+      UserDefaults.standard.set(newValue, forKey: Keys.lastPushToken)
+    }
+  }
+
+  class var anonymousIdentifyMark: [String: String]? {
+    get {
+      UserDefaults.standard.dictionary(forKey: Keys.anonymousIdentifyMark) as? [String: String]
+    }
+    set {
+      UserDefaults.standard.set(newValue, forKey: Keys.anonymousIdentifyMark)
     }
   }
 

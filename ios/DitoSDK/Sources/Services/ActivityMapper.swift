@@ -5,6 +5,7 @@ import UIKit
 struct ActivityMapper {
     private let deviceOsVersion: String
     private let deviceModel: String
+    let sdkVersion = Bundle(for: Dito.self).infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
 
     init() {
         deviceOsVersion = UIDevice.current.systemVersion
@@ -25,6 +26,20 @@ struct ActivityMapper {
         if let dataJson = userData?.data {
             identify.customData = customDataFromJson(dataJson)
         }
+        var activity = Mobileingest_V1_Activity()
+        activity.id = UUID().uuidString
+        activity.type = .activityIdentify
+        activity.identify = identify
+        activity.timestamp = nowTimestamp()
+        return activity
+    }
+
+    func mapAnonymousIdentify() -> Mobileingest_V1_Activity {
+        var identify = Mobileingest_V1_IdentifyActivity()
+        identify.customData = customDataFromStrings([
+            "device_model": deviceModel,
+            "sdk_version": sdkVersion,
+        ])
         var activity = Mobileingest_V1_Activity()
         activity.id = UUID().uuidString
         activity.type = .activityIdentify
@@ -146,7 +161,7 @@ struct ActivityMapper {
 
     private func buildSDKInfo() -> Mobileingest_V1_SDKInfo {
         var sdk = Mobileingest_V1_SDKInfo()
-        sdk.version = Bundle(for: Dito.self).infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        sdk.version = sdkVersion
         sdk.lang = "swift"
         return sdk
     }
@@ -191,5 +206,28 @@ struct ActivityMapper {
             result[key] = cd
         }
         return result
+    }
+}
+
+extension MobileIngestClientProtocol {
+    func sendAnonymous(
+        _ activities: [Mobileingest_V1_Activity],
+        mapper: ActivityMapper,
+        allowIdentify: Bool
+    ) async throws {
+        let deviceId = DeviceIdProvider.get()
+        guard !deviceId.isEmpty else {
+            throw MobileIngestError(message: "device_id indisponível para envio anônimo")
+        }
+        let mark = ["device_id": deviceId, "sdk_version": mapper.sdkVersion]
+        let withIdentify = allowIdentify && UserDefaults.anonymousIdentifyMark != mark
+        let request = mapper.buildRequest(
+            userId: "",
+            activities: withIdentify ? [mapper.mapAnonymousIdentify()] + activities : activities
+        )
+        _ = try await activity(request)
+        if withIdentify {
+            UserDefaults.anonymousIdentifyMark = mark
+        }
     }
 }

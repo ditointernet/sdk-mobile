@@ -66,6 +66,7 @@ class DitoIdentify {
             #endif
 
             completion?(.success(.sent))
+            DitoNotification(client: client).registerLastToken()
             retry.loadOffline()
         } catch {
             identifyOffline.identify(id: id, params: signupRequest, reference: nil, send: false)
