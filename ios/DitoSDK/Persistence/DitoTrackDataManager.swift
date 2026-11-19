@@ -5,12 +5,13 @@ struct OfflinePersistedTrack: Sendable {
   let objectID: NSManagedObjectID
   let event: String?
   let retry: Int16
+  let anonymous: Bool
 }
 
 struct DitoTrackDataManager {
 
   @discardableResult
-  func save(event: String?, retry: Int16 = 1) -> Bool {
+  func save(event: String?, retry: Int16 = 1, anonymous: Bool = false) -> Bool {
     var success = false
     let semaphore = DispatchSemaphore(value: 0)
 
@@ -28,6 +29,7 @@ struct DitoTrackDataManager {
 
       track.event = event
       track.retry = retry
+      track.anonymous = anonymous ? NSNumber(value: true) : nil
 
       do {
         try context.save()
@@ -80,7 +82,8 @@ struct DitoTrackDataManager {
     return success
   }
 
-  func fetchOfflinePersistedTracks() -> [OfflinePersistedTrack] {
+  /// nil fetches all rows; false fetches rows with an owner (stored as nil, like legacy rows).
+  func fetchOfflinePersistedTracks(anonymous: Bool? = nil) -> [OfflinePersistedTrack] {
     guard let context = DitoCoreDataManager.shared.newBackgroundContext()
     else {
       DitoLogger.error("Failed to create background context for fetch")
@@ -91,11 +94,21 @@ struct DitoTrackDataManager {
     context.performAndWait {
       let fetchRequest = NSFetchRequest<Track>(entityName: "Track")
       fetchRequest.returnsObjectsAsFaults = false
+      if let anonymous {
+        fetchRequest.predicate = anonymous
+          ? NSPredicate(format: "anonymous == YES")
+          : NSPredicate(format: "anonymous == nil OR anonymous == NO")
+      }
 
       do {
         let fetched = try context.fetch(fetchRequest)
         results = fetched.map {
-          OfflinePersistedTrack(objectID: $0.objectID, event: $0.event, retry: $0.retry)
+          OfflinePersistedTrack(
+            objectID: $0.objectID,
+            event: $0.event,
+            retry: $0.retry,
+            anonymous: $0.anonymous?.boolValue == true
+          )
         }
         DitoLogger.information(
           "\(results.count) Tracks found - Successfully!!!"

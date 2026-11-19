@@ -184,34 +184,133 @@ final class DitoFacadeTests: XCTestCase {
     }
   }
 
-  func testRegisterDevice_withoutPriorIdentify_persistsTokenOfflineForRegister() async throws {
-    let appKey = "facade-token-offline-reg-key"
-    let appSecret = "facade-token-offline-reg-secret"
-    Dito.configure(appKey: appKey, appSecret: appSecret)
+  func testRegisterDevice_withoutPriorIdentify_sendsAnonymousTokenRegisterAndDoesNotPersistOffline() async throws {
+    let mock = MockMobileIngestClient()
+    DitoNotification.testMobileIngestClient = mock
+    addTeardownBlock { DitoNotification.testMobileIngestClient = nil }
+    DeviceIdProvider.setForTests("facade-anon-register-device")
+    Dito.configure(appKey: "facade-token-anon-reg-key", appSecret: "facade-token-anon-reg-secret")
 
-    let token = "fcm-offline-register-token-facade-1"
-    Dito.registerDevice(token: token)
+    let token = "fcm-anon-register-token-facade-1"
+    let status = await withCheckedContinuation { (cont: CheckedContinuation<DitoOperationStatus?, Never>) in
+      Dito.registerDevice(token: token) { cont.resume(returning: try? $0.get()) }
+    }
 
-    await waitUntil { DitoNotificationRegisterDataManager().fetch != nil }
-    let row = try XCTUnwrap(DitoNotificationRegisterDataManager().fetch)
-    let json = try XCTUnwrap(row.json)
-    let decoded = try XCTUnwrap(json.convertToObject(type: DitoTokenRequest.self))
-    XCTAssertEqual(decoded.token, token)
-    XCTAssertEqual(decoded.platformAppKey, appKey)
-    XCTAssertEqual(decoded.sha1Signature, appSecret.sha1)
+    XCTAssertEqual(status, .sent)
+    XCTAssertEqual(mock.activityCallCount, 1)
+    let req = try XCTUnwrap(mock.lastActivityRequest)
+    XCTAssertEqual(req.userID, "")
+    XCTAssertEqual(req.device.deviceID, "facade-anon-register-device")
+    let activity = try XCTUnwrap(req.activities.last)
+    switch activity.activity {
+    case .tokenRegister(let info)?:
+      XCTAssertEqual(info.token, token)
+    default:
+      XCTFail("esperado tokenRegister, obtido \(String(describing: activity.activity))")
+    }
+    XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
   }
 
-  func testUnregisterDevice_withoutPriorIdentify_persistsTokenOfflineForUnregister() async throws {
-    Dito.configure(appKey: "facade-token-offline-unreg-key", appSecret: "facade-token-offline-unreg-secret")
+  func testUnregisterDevice_withoutPriorIdentify_sendsAnonymousTokenUnregisterAndDoesNotPersistOffline() async throws {
+    let mock = MockMobileIngestClient()
+    DitoNotification.testMobileIngestClient = mock
+    addTeardownBlock { DitoNotification.testMobileIngestClient = nil }
+    DeviceIdProvider.setForTests("facade-anon-unregister-device")
+    Dito.configure(appKey: "facade-token-anon-unreg-key", appSecret: "facade-token-anon-unreg-secret")
 
-    let token = "fcm-offline-unregister-token-facade-1"
+    let token = "fcm-anon-unregister-token-facade-1"
+    let status = await withCheckedContinuation { (cont: CheckedContinuation<DitoOperationStatus?, Never>) in
+      Dito.unregisterDevice(token: token) { cont.resume(returning: try? $0.get()) }
+    }
+
+    XCTAssertEqual(status, .sent)
+    XCTAssertEqual(mock.activityCallCount, 1)
+    let req = try XCTUnwrap(mock.lastActivityRequest)
+    XCTAssertEqual(req.userID, "")
+    let activity = try XCTUnwrap(req.activities.last)
+    switch activity.activity {
+    case .tokenUnregister(let info)?:
+      XCTAssertEqual(info.token, token)
+    default:
+      XCTFail("esperado tokenUnregister, obtido \(String(describing: activity.activity))")
+    }
+    XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
+  }
+
+  func testAfterLogout_trackAndTokenAreSentAnonymously() async throws {
+    let mock = MockMobileIngestClient()
+    Dito.testIdentifyTrackIngestClient = mock
+    DitoNotification.testMobileIngestClient = mock
+    addTeardownBlock {
+      Dito.testIdentifyTrackIngestClient = nil
+      DitoNotification.testMobileIngestClient = nil
+    }
+    DeviceIdProvider.setForTests("facade-after-logout-device")
+    Dito.configure(appKey: "facade-after-logout-key", appSecret: "facade-after-logout-secret")
+    let userId = "facade-user-after-logout"
+    XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+
+    Dito.logout()
+    let trackStatus = await withCheckedContinuation { (cont: CheckedContinuation<DitoOperationStatus?, Never>) in
+      Dito.track(action: "after_logout_evt") { cont.resume(returning: try? $0.get()) }
+    }
+    let tokenStatus = await withCheckedContinuation { (cont: CheckedContinuation<DitoOperationStatus?, Never>) in
+      Dito.registerDevice(token: "fcm-after-logout") { cont.resume(returning: try? $0.get()) }
+    }
+
+    XCTAssertEqual(trackStatus, .sent)
+    XCTAssertEqual(tokenStatus, .sent)
+    XCTAssertEqual(mock.activityCallCount, 2)
+    XCTAssertTrue(mock.allActivityRequests.allSatisfy { $0.userID.isEmpty })
+  }
+
+  func testIdentifySuccess_resendsLastRegisteredTokenWithUser() async throws {
+    let mock = MockMobileIngestClient()
+    Dito.testIdentifyTrackIngestClient = mock
+    DitoNotification.testMobileIngestClient = mock
+    addTeardownBlock {
+      Dito.testIdentifyTrackIngestClient = nil
+      DitoNotification.testMobileIngestClient = nil
+    }
+    DeviceIdProvider.setForTests("facade-token-resend-device")
+    Dito.configure(appKey: "facade-token-resend-key", appSecret: "facade-token-resend-secret")
+
+    let token = "fcm-token-resend-facade-1"
+    Dito.registerDevice(token: token)
+    await waitForActivityCalls(mock, count: 1)
+    XCTAssertEqual(mock.lastActivityRequest?.userID, "")
+
+    let userId = "facade-user-token-resend-1"
+    Dito.identify(id: userId, email: "resend@example.com")
+    await waitUntil { !self.tokenRegisterRequests(mock, userId: userId, token: token).isEmpty }
+
+    XCTAssertEqual(tokenRegisterRequests(mock, userId: userId, token: token).count, 1)
+  }
+
+  func testIdentifySuccess_afterUnregister_doesNotResendToken() async throws {
+    let mock = MockMobileIngestClient()
+    Dito.testIdentifyTrackIngestClient = mock
+    DitoNotification.testMobileIngestClient = mock
+    addTeardownBlock {
+      Dito.testIdentifyTrackIngestClient = nil
+      DitoNotification.testMobileIngestClient = nil
+    }
+    DeviceIdProvider.setForTests("facade-token-no-resend-device")
+    Dito.configure(appKey: "facade-token-no-resend-key", appSecret: "facade-token-no-resend-secret")
+
+    let token = "fcm-token-no-resend-facade-1"
+    Dito.registerDevice(token: token)
+    await waitForActivityCalls(mock, count: 1)
     Dito.unregisterDevice(token: token)
+    await waitForActivityCalls(mock, count: 2)
+    XCTAssertNil(UserDefaults.lastPushToken)
 
-    await waitUntil { DitoNotificationUnregisterDataManager().fetch != nil }
-    let entity = try XCTUnwrap(DitoNotificationUnregisterDataManager().fetch)
-    let json = try XCTUnwrap(entity.json)
-    let decoded = try XCTUnwrap(json.convertToObject(type: DitoTokenRequest.self))
-    XCTAssertEqual(decoded.token, token)
+    let userId = "facade-user-token-no-resend-1"
+    Dito.identify(id: userId, email: "noresend@example.com")
+    await waitUntil { (DitoNotificationOffline().reference ?? "") == userId }
+    try await Task.sleep(nanoseconds: 500_000_000)
+
+    XCTAssertTrue(tokenRegisterRequests(mock, userId: userId, token: token).isEmpty)
   }
 
   func testRegisterDevice_afterIdentify_mockIngestReceivesTokenRegisterAndDoesNotPersistOffline() async throws {
@@ -281,6 +380,19 @@ final class DitoFacadeTests: XCTestCase {
       XCTAssertEqual(info.token, token)
     default:
       XCTFail("esperado tokenUnregister, obtido \(String(describing: activity.activity))")
+    }
+  }
+
+  private func tokenRegisterRequests(
+    _ mock: MockMobileIngestClient,
+    userId: String,
+    token: String
+  ) -> [Mobileingest_V1_Request] {
+    mock.allActivityRequests.filter { req in
+      req.userID == userId && req.activities.contains { activity in
+        guard let oneOf = activity.activity, case .tokenRegister(let reg) = oneOf else { return false }
+        return reg.token == token
+      }
     }
   }
 

@@ -84,9 +84,14 @@ final class DitoReachabilityRetryTests: XCTestCase {
         await waitForMainQueueDrained()
 
         let userId = "uid-reach-retry-1"
-        let track = DitoTrack()
-        track.track(data: DitoEvent(action: "reach_retry_evt_a", customData: nil))
-        track.track(data: DitoEvent(action: "reach_retry_evt_b", customData: nil))
+        for action in ["reach_retry_evt_a", "reach_retry_evt_b"] {
+            let request = DitoEventRequest(
+                platformAppKey: Dito.appKey,
+                sha1Signature: Dito.signature,
+                event: DitoEvent(action: action, customData: nil)
+            )
+            XCTAssertTrue(DitoTrackDataManager().save(event: request.toString))
+        }
         await waitForTrackRowsWithEvents(2)
 
         let signup = makeSignup()

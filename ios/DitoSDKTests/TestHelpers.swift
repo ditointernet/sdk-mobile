@@ -52,6 +52,13 @@ class TestHelpers {
         if let identify = identifyDataManager.fetch {
             _ = identifyDataManager.delete(id: identify.id ?? "")
         }
+
+        UserDefaults.lastPushToken = nil
+        UserDefaults.lastUserTokenRegister = nil
+        UserDefaults.anonymousIdentifyMark = nil
+        #if DEBUG
+        DeviceIdProvider.resetForTests()
+        #endif
     }
 
     static func resetSingletons() {
@@ -59,6 +66,11 @@ class TestHelpers {
         DitoIdentifyDataManager.shared.clearCompletionClosures()
         DitoIdentifyDataManager.shared.deleteIdentifyStamp()
         DitoIdentifyOffline.shared.finishIdentify()
+        #if DEBUG
+        // Tests must never reach the real ingest: the retry sends anonymous rows without an identify.
+        Dito.testIdentifyTrackIngestClient = MockMobileIngestClient()
+        Dito.invalidateRetryCacheForTests()
+        #endif
     }
 
     static func createInMemoryCoreDataStack() -> NSPersistentContainer? {

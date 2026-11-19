@@ -3,7 +3,12 @@ import Foundation
 
 class DitoRetry {
 
-    private static let maxRetries: Int16 = 5
+    private enum Owner {
+        case anonymous
+        case user(String)
+    }
+
+    static let maxRetries: Int16 = 5
 
     private var identifyOffline: DitoIdentifyOffline
     private var trackOffline: DitoTrackOffline
@@ -31,15 +36,43 @@ class DitoRetry {
 
     internal func runLoadOffline() async {
         await checkNotificationReceive()
+        // Sequential so these requests don't each carry the anonymous Identify (a concurrent immediate send still may).
+        await checkTrack(anonymous: true)
+        await checkNotificationRegister(anonymous: true)
+        await checkNotificationUnregister(anonymous: true)
         let identifySuccess = await checkIdentify()
         if identifySuccess {
             await withTaskGroup(of: Void.self) { group in
-                group.addTask { await self.checkTrack() }
+                group.addTask { await self.checkTrack(anonymous: false) }
                 group.addTask { await self.checkNotification() }
-                group.addTask { await self.checkNotificationRegister() }
-                group.addTask { await self.checkNotificationUnregister() }
+                group.addTask { await self.checkNotificationRegister(anonymous: false) }
+                group.addTask { await self.checkNotificationUnregister(anonymous: false) }
             }
         }
+    }
+
+    private func send(_ activities: [Mobileingest_V1_Activity], owner: Owner) async throws {
+        switch owner {
+        case .anonymous:
+            try await client.sendAnonymous(
+                activities,
+                mapper: mapper,
+                allowIdentify: identifyOffline.identityState == .anonymous
+            )
+        case .user(let userId):
+            try await client.activity(mapper.buildRequest(userId: userId, activities: activities))
+        }
+    }
+
+    /// nil means wait: no user yet; for an anonymous row, an identify pending or in progress,
+    /// or no device_id (sending would only burn a retry).
+    private func owner(anonymous: Bool, reference: String?) -> Owner? {
+        if anonymous {
+            guard identifyOffline.identityState != .pending, !DeviceIdProvider.get().isEmpty else { return nil }
+            return .anonymous
+        }
+        guard let reference, !reference.isEmpty else { return nil }
+        return .user(reference)
     }
 
     private func checkIdentify() async -> Bool {
@@ -62,6 +95,7 @@ class DitoRetry {
             try await client.activity(request)
             identifyOffline.update(id: id, params: signupRequest, reference: id, send: true)
             DitoLogger.information("✅ [RETRY] Identify enviado")
+            DitoNotification(client: client).registerLastToken()
             return true
         } catch {
             DitoLogger.error(error.localizedDescription)
@@ -69,16 +103,16 @@ class DitoRetry {
         }
     }
 
-    private func checkTrack() async {
-        let tracks = trackOffline.offlinePersistedTracks
-
+    private func checkTrack(anonymous: Bool) async {
+        let tracks = trackOffline.persistedTracks(anonymous: anonymous)
         #if DEBUG
         if !tracks.isEmpty {
             DitoLogger.debug("🔄 [RETRY] Verificando \(tracks.count) evento(s) offline para reenvio")
         }
         #endif
 
-        guard let userId = trackOffline.reference, !userId.isEmpty else {
+        guard !tracks.isEmpty else { return }
+        guard let owner = self.owner(anonymous: anonymous, reference: trackOffline.reference) else {
             DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
             return
         }
@@ -113,9 +147,8 @@ class DitoRetry {
         guard !trackBatch.isEmpty else { return }
 
         let activities = trackBatch.map { mapper.mapFromEventRequest($0.request) }
-        let request = mapper.buildRequest(userId: userId, activities: activities)
         do {
-            try await client.activity(request)
+            try await send(activities, owner: owner)
             for item in trackBatch {
                 trackOffline.delete(id: item.id)
             }
@@ -238,18 +271,33 @@ class DitoRetry {
         }
     }
 
-    private func checkNotificationRegister() async {
-        guard let userId = notificationReadOffline.reference, !userId.isEmpty else {
-            DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
-            return
-        }
+    private func checkNotificationRegister(anonymous: Bool) async {
         guard let notificationRegister = notificationReadOffline.getNotificationRegister,
-              let registerJson = notificationRegister.json,
+              (notificationRegister.anonymous == true) == anonymous
+        else { return }
+        guard let registerJson = notificationRegister.json,
               let registerRequest = registerJson.convertToObject(type: DitoTokenRequest.self)
         else { return }
 
+        // The identify confirmation re-sends the last token with the user (`registerLastToken`).
+        if anonymous, registerRequest.token == UserDefaults.lastPushToken {
+            switch identifyOffline.identityState {
+            case .identified:
+                notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
+                return
+            case .pending:
+                return
+            case .anonymous:
+                break
+            }
+        }
+        guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
+            DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
+            return
+        }
+
         if notificationRegister.retry >= DitoRetry.maxRetries {
-            notificationReadOffline.deleteRegister()
+            notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
             DitoLogger.warning("⚠️ [RETRY] Register token descartado após \(DitoRetry.maxRetries) tentativas")
             return
         }
@@ -259,29 +307,34 @@ class DitoRetry {
         #endif
 
         let activity = mapper.mapFromTokenRequest(registerRequest, isRegister: true)
-        let request = mapper.buildRequest(userId: userId, activities: [activity])
         do {
-            try await client.activity(request)
-            notificationReadOffline.deleteRegister()
+            try await send([activity], owner: owner)
+            notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
+            if case .user(let userId) = owner, identifyOffline.identityState == .identified(userId),
+               UserDefaults.lastPushToken == registerRequest.token {
+                UserDefaults.lastUserTokenRegister = ["user_id": userId, "token": registerRequest.token]
+            }
             DitoLogger.information("✅ [RETRY] Token registrado")
         } catch {
-            notificationReadOffline.updateRegister(id: nil, retry: notificationRegister.retry + 1)
+            notificationReadOffline.updateRegister(ifMatching: notificationRegister, retry: notificationRegister.retry + 1)
             DitoLogger.error(error.localizedDescription)
         }
     }
 
-    private func checkNotificationUnregister() async {
-        guard let userId = notificationReadOffline.reference, !userId.isEmpty else {
+    private func checkNotificationUnregister(anonymous: Bool) async {
+        guard let notificationUnregister = notificationReadOffline.getNotificationUnregister,
+              notificationUnregister.anonymous == anonymous
+        else { return }
+        guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
             DitoLogger.warning("Unregister Token - Antes de remover o token é preciso identificar o usuário.")
             return
         }
-        guard let notificationUnregister = notificationReadOffline.getNotificationUnregister,
-              let unregisterJson = notificationUnregister.json,
+        guard let unregisterJson = notificationUnregister.json,
               let unregisterRequest = unregisterJson.convertToObject(type: DitoTokenRequest.self)
         else { return }
 
         if notificationUnregister.retry >= DitoRetry.maxRetries {
-            notificationReadOffline.deleteUnregister()
+            notificationReadOffline.deleteUnregister(id: notificationUnregister.id)
             DitoLogger.warning("⚠️ [RETRY] Unregister token descartado após \(DitoRetry.maxRetries) tentativas")
             return
         }
@@ -291,10 +344,9 @@ class DitoRetry {
         #endif
 
         let activity = mapper.mapFromTokenRequest(unregisterRequest, isRegister: false)
-        let request = mapper.buildRequest(userId: userId, activities: [activity])
         do {
-            try await client.activity(request)
-            notificationReadOffline.deleteUnregister()
+            try await send([activity], owner: owner)
+            notificationReadOffline.deleteUnregister(id: notificationUnregister.id)
             DitoLogger.information("✅ [RETRY] Token removido")
         } catch {
             notificationReadOffline.updateUnregister(id: notificationUnregister.id, retry: notificationUnregister.retry + 1)

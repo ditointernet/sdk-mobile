@@ -134,9 +134,10 @@ class DitoCoreDataManager {
   }
 }
 
-struct NotificationDefaults: Codable {
+struct NotificationDefaults: Codable, Equatable {
   var retry: Int16
   var json: String?
+  var anonymous: Bool?
 }
 
 struct IdentifyDefaults: Codable {

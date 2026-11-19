@@ -38,44 +38,20 @@ class DitoNotification {
         DitoLogger.information("📱 [REGISTER TOKEN] token=\(token.prefix(20))...")
         #endif
 
+        UserDefaults.lastPushToken = token
+
         if notificationOffline.isSaving {
             #if DEBUG
             DitoLogger.debug("⏳ [REGISTER TOKEN] Aguardando identify completar...")
             #endif
             notificationOffline.setRegisterAsCompletion {
                 DispatchQueue.global().async {
-                    self.processTokenRegistration(token: token, completion: completion)
+                    self.processToken(token: token, isRegister: true, completion: completion)
                 }
             }
         } else {
             DispatchQueue.global().async {
-                self.processTokenRegistration(token: token, completion: completion)
-            }
-        }
-    }
-
-    private func processTokenRegistration(
-        token: String,
-        completion: ((Result<DitoOperationStatus, Error>) -> Void)?
-    ) {
-        guard let userId = notificationOffline.reference, !userId.isEmpty else {
-            let tokenRequest = makeTokenRequest(token: token)
-            notificationOffline.notificationRegister(tokenRequest)
-            DitoLogger.warning("⚠️ [REGISTER TOKEN] Usuário não identificado - salvando offline")
-            completion?(.success(.savedLocally))
-            return
-        }
-        Task {
-            let activity = mapper.mapFromTokenRequest(makeTokenRequest(token: token), isRegister: true)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
-            do {
-                try await client.activity(request)
-                DitoLogger.information("✅ [REGISTER TOKEN] Sucesso")
-                completion?(.success(.sent))
-            } catch {
-                notificationOffline.notificationRegister(makeTokenRequest(token: token))
-                DitoLogger.error(error.localizedDescription)
-                completion?(.success(.savedLocally))
+                self.processToken(token: token, isRegister: true, completion: completion)
             }
         }
     }
@@ -88,41 +64,113 @@ class DitoNotification {
         DitoLogger.information("📴 [UNREGISTER TOKEN] token=\(token.prefix(20))...")
         #endif
 
+        if UserDefaults.lastPushToken == token {
+            UserDefaults.lastPushToken = nil
+        }
+        if UserDefaults.lastUserTokenRegister?["token"] == token {
+            UserDefaults.lastUserTokenRegister = nil
+        }
+
         if notificationOffline.isSaving {
             notificationOffline.setRegisterAsCompletion {
                 DispatchQueue.global().async {
-                    self.processTokenUnregistration(token: token, completion: completion)
+                    self.processToken(token: token, isRegister: false, completion: completion)
                 }
             }
         } else {
             DispatchQueue.global().async {
-                self.processTokenUnregistration(token: token, completion: completion)
+                self.processToken(token: token, isRegister: false, completion: completion)
             }
         }
     }
 
-    private func processTokenUnregistration(
+    func registerLastToken() {
+        guard let token = UserDefaults.lastPushToken else { return }
+        if case .identified(let userId) = notificationOffline.identityState,
+           UserDefaults.lastUserTokenRegister == ["user_id": userId, "token": token] {
+            return
+        }
+        // A queued register of this token with an owner is sent by the retry; sending here too would duplicate it.
+        if let pending = notificationOffline.getNotificationRegister, pending.anonymous != true,
+           pending.retry < DitoRetry.maxRetries,
+           Self.token(of: pending.json) == token {
+            return
+        }
+        registerToken(token: token)
+    }
+
+    private static func token(of json: String?) -> String? {
+        json?.convertToObject(type: DitoTokenRequest.self)?.token
+    }
+
+    private func processToken(
         token: String,
+        isRegister: Bool,
         completion: ((Result<DitoOperationStatus, Error>) -> Void)?
     ) {
-        guard let userId = notificationOffline.reference, !userId.isEmpty else {
-            notificationOffline.notificationUnregister(makeTokenRequest(token: token))
-            DitoLogger.warning("⚠️ [UNREGISTER TOKEN] Usuário não identificado - salvando offline")
+        // A queued opposite operation on this token would undo this one when the retry sends it.
+        if isRegister {
+            if let pending = notificationOffline.getNotificationUnregister, Self.token(of: pending.json) == token {
+                notificationOffline.deleteUnregister(id: pending.id)
+            }
+        } else if let pending = notificationOffline.getNotificationRegister, Self.token(of: pending.json) == token {
+            notificationOffline.deleteRegister(ifMatching: pending)
+        }
+        let label = isRegister ? "REGISTER TOKEN" : "UNREGISTER TOKEN"
+        let tokenRequest = makeTokenRequest(token: token)
+        let state = notificationOffline.identityState
+        guard state != .pending else {
+            saveTokenOffline(tokenRequest, isRegister: isRegister, anonymous: false)
+            DitoLogger.warning("⚠️ [\(label)] Usuário não identificado - salvando offline")
             completion?(.success(.savedLocally))
             return
         }
         Task {
-            let activity = mapper.mapFromTokenRequest(makeTokenRequest(token: token), isRegister: false)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
+            let activity = mapper.mapFromTokenRequest(tokenRequest, isRegister: isRegister)
             do {
-                try await client.activity(request)
-                DitoLogger.information("✅ [UNREGISTER TOKEN] Sucesso")
+                if case .identified(let userId) = state {
+                    try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
+                    if isRegister, notificationOffline.identityState == state, UserDefaults.lastPushToken == token {
+                        UserDefaults.lastUserTokenRegister = ["user_id": userId, "token": token]
+                    }
+                } else {
+                    try await client.sendAnonymous([activity], mapper: mapper, allowIdentify: true)
+                }
+                DitoLogger.information("✅ [\(label)] Sucesso")
                 completion?(.success(.sent))
             } catch {
-                notificationOffline.notificationUnregister(makeTokenRequest(token: token))
+                if let anonymous = offlineOwner(startedAs: state, token: token, isRegister: isRegister) {
+                    saveTokenOffline(tokenRequest, isRegister: isRegister, anonymous: anonymous)
+                }
                 DitoLogger.error(error.localizedDescription)
                 completion?(.success(.savedLocally))
             }
+        }
+    }
+
+    /// Whether a failed send is queued as anonymous, or nil to drop it. Dropped when a later call superseded it
+    /// (a register of a token no longer the last one, an unregister of a token registered again). A send started
+    /// anonymous stays anonymous, except a register of the last token after a login: the identify confirmation
+    /// re-sends it (`registerLastToken`).
+    private func offlineOwner(startedAs state: DitoIdentityState, token: String, isRegister: Bool) -> Bool? {
+        guard isRegister == (token == UserDefaults.lastPushToken) else { return nil }
+        guard state == .anonymous else { return false }
+        guard isRegister else { return true }
+        switch notificationOffline.identityState {
+        case .anonymous:
+            return true
+        case .pending:
+            return false
+        case .identified:
+            return nil
+        }
+    }
+
+    private func saveTokenOffline(_ request: DitoTokenRequest, isRegister: Bool, anonymous: Bool) {
+        if isRegister {
+            notificationOffline.notificationRegister(request, anonymous: anonymous)
+        } else {
+            notificationOffline.notificationUnregister(request, anonymous: anonymous)
         }
     }
 
