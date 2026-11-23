@@ -1,6 +1,7 @@
 package br.com.dito.ditosdk.tracking
 
 import android.content.Context
+import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.IdentifyOff
@@ -9,10 +10,12 @@ import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -250,6 +253,133 @@ class TrackerRetryTest {
         val coldTracker = Tracker(trackerOffline, mockClient, mapper, scope = TestScope(trackerScheduler))
         assertThat(coldTracker.idOrNull).isNull()
         return TrackerRetry(coldTracker, trackerOffline, mockClient, mapper, 5, testScope)
+    }
+
+    @Test
+    fun `anonymous queued event should be sent without waiting for identify`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0, anonymous = true))
+        val coldRetry = coldStartRetry()
+
+        coldRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.delete(1, "Event") }
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        assertThat(request.activitiesList.last().id).isEqualTo("a1")
+
+        // Libera o identify pendente para o checkNotificationRead terminar.
+        trackerScheduler.advanceUntilIdle()
+        advanceUntilIdle()
+    }
+
+    @Test
+    fun `anonymous queued event should stay in the queue without android id`() = testScope.runTest {
+        captureRequests("")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0, anonymous = true))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify(exactly = 0) { trackerOffline.delete(1, "Event") }
+        verify(exactly = 0) { trackerOffline.update(1, any(), "Event") }
+    }
+
+    @Test
+    fun `queued event with owner should wait for login`() = testScope.runTest {
+        captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
+        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
+
+        retry.uploadEvents()
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify(exactly = 0) { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `mixed queue should go out in two requests, one per owner`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "anon", "x", null, null, "t", 0, anonymous = true),
+            EventOff(2, "owned", "y", null, null, "t", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests).hasSize(2)
+        val anonymous = requests.single { it.userId.isEmpty() }
+        assertThat(anonymous.activitiesList.filter { it.hasTrack() }.map { it.id }).containsExactly("anon")
+        val owned = requests.single { it.userId == "user123" }
+        assertThat(owned.activitiesList.map { it.id }).containsExactly("owned")
+        verify { trackerOffline.delete(1, "Event") }
+        verify { trackerOffline.delete(2, "Event") }
+    }
+
+    @Test
+    fun `anonymous queued event should stay anonymous after login`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0, anonymous = true))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(tracker.idOrNull).isEqualTo("user123")
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        verify { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `concurrent uploads should send the queued batch once`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        var queue = listOf(EventOff(1, "a1", "x", null, null, "t", 0, anonymous = true))
+        every { trackerOffline.getAllEvents() } answers { queue.takeIf { it.isNotEmpty() } }
+        every { trackerOffline.delete(any(), "Event") } answers {
+            val id = firstArg<Int>()
+            queue = queue.filter { it.id != id }
+        }
+        coEvery { mockClient.activity(capture(requests)) } coAnswers {
+            delay(100)
+            Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests).hasSize(1)
+    }
+
+    @Test
+    fun `checkIdentify success should register the last token again`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        AnonymousState(context).lastToken = "token123"
+        every { trackerOffline.getIdentify() } returns storedIdentify().copy(send = false)
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val resent = requests.single { r -> r.activitiesList.any { it.hasTokenRegister() } }
+        assertThat(resent.userId).isEqualTo("user123")
+        assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+    }
+
+    private fun captureRequests(androidId: String): MutableList<Api.Request> {
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, androidId)
+        every { trackerOffline.getIdentify() } returns null
+        every { trackerOffline.getAllEvents() } returns null
+        every { trackerOffline.getAllNotificationRead() } returns null
+        val requests = mutableListOf<Api.Request>()
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        return requests
     }
 
     @Test

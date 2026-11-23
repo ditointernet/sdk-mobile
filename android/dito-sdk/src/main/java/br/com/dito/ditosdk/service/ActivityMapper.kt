@@ -14,7 +14,7 @@ import com.google.protobuf.Timestamp
 import java.util.UUID
 import mobileingest.v1.Api
 
-internal class ActivityMapper(private val context: Context) {
+internal class ActivityMapper(val context: Context) {
 
     private val gson = Gson()
 
@@ -56,6 +56,16 @@ internal class ActivityMapper(private val context: Context) {
             .setIdentify(ia)
             .setTimestamp(nowTimestamp())
             .build()
+    }
+
+    fun mapAnonymousIdentify(): Api.Activity {
+        val identify = Identify("").apply {
+            data = CustomData().apply {
+                add("device_model", Build.MODEL ?: "")
+                add("sdk_version", BuildConfig.DITO_SDK_VERSION)
+            }
+        }
+        return mapIdentify(identify)
     }
 
     fun mapTrack(event: Event, activityId: String = UUID.randomUUID().toString()): Api.Activity {
@@ -148,11 +158,13 @@ internal class ActivityMapper(private val context: Context) {
     fun buildDeviceInfo(token: String?): Api.DeviceInfo =
         Api.DeviceInfo.newBuilder()
             .setOs(Api.DeviceOs.DEVICE_OS_ANDROID)
-            .setDeviceId(DeviceIdProvider.get(context))
+            .setDeviceId(deviceId())
             .setToken(token ?: "")
             .setOsVersion(Build.VERSION.RELEASE ?: "")
             .setDeviceModel(Build.MODEL ?: "")
             .build()
+
+    fun deviceId(): String = DeviceIdProvider.get(context)
 
     private fun buildAppInfo(): Api.AppInfo {
         val p = context.packageName

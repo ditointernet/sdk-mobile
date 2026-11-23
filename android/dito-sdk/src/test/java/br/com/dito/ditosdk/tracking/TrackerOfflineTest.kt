@@ -103,6 +103,17 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `event should round-trip the anonymous flag`() = runBlocking {
+        trackerOffline.event(Event("anonimo"), UUID.randomUUID().toString(), anonymous = true)
+        trackerOffline.event(Event("com-dono"), UUID.randomUUID().toString())
+        delay(500)
+
+        val events = trackerOffline.getAllEvents().orEmpty().associateBy { it.action }
+        assertThat(events["anonimo"]?.anonymous).isTrue()
+        assertThat(events["com-dono"]?.anonymous).isFalse()
+    }
+
+    @Test
     fun `getAllEvents should return empty list when no events`() = runBlocking {
         val events = trackerOffline.getAllEvents()
 

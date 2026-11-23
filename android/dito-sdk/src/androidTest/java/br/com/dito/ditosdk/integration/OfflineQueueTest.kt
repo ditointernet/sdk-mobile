@@ -2,6 +2,7 @@ package br.com.dito.ditosdk.integration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import br.com.dito.ditosdk.Dito
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -20,21 +21,18 @@ internal class OfflineQueueTest {
     }
 
     @Test
-    fun tracksQueuedBeforeIdentifyAreFlushedAfterIdentify() {
-        Dito.track("offline-event-1")
-        Dito.track("offline-event-2")
-        Dito.track("offline-event-3")
-        Thread.sleep(1000)
-        assert(interceptor.allCodes().isEmpty()) {
-            "nenhum HTTP deve ser enviado antes do identify"
-        }
-        Dito.identify(server.userId, name = "Offline Test User")
-        Thread.sleep(15000)
-        Dito.track("post-identify-probe")
+    fun tracksBeforeIdentifyAreSentAnonymously() {
+        Dito.logout()
+        Thread.sleep(500)
+        interceptor.reset()
+        Dito.track("anonymous-event-1")
+        Dito.track("anonymous-event-2")
+        Dito.track("anonymous-event-3")
         Thread.sleep(5000)
-        assert(interceptor.allCodes().any { it in 200..204 }) {
-            "pelo menos 1 resposta HTTP 200/204 após identify confirma pipeline ativo"
-        }
+        assertTrue(
+            "os 3 tracks sem identify devem sair na hora, anônimos, com o device_id",
+            interceptor.allCodes().count { it in 200..204 } >= 3,
+        )
     }
 
     @Test

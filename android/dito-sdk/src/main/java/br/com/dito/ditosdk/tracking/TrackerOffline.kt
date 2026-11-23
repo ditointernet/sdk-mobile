@@ -13,6 +13,7 @@ import br.com.dito.ditosdk.offline.EventOffline
 import br.com.dito.ditosdk.offline.IdentifyOffline
 import br.com.dito.ditosdk.offline.NotificationOffline
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_3_4
+import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_4_5
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -33,7 +34,7 @@ internal class TrackerOffline(
             Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
         } else {
             Room.databaseBuilder(context, DitoSqlHelper::class.java, "dito-offline")
-                .addMigrations(OFFLINE_MIGRATION_3_4)
+                .addMigrations(OFFLINE_MIGRATION_3_4, OFFLINE_MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
         }
 
@@ -80,7 +81,7 @@ internal class TrackerOffline(
         }
     }
 
-    fun event(event: Event, activityId: String) {
+    fun event(event: Event, activityId: String, anonymous: Boolean = false) {
         try {
             val dataJson = event.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
             database.eventDao().insert(
@@ -91,6 +92,7 @@ internal class TrackerOffline(
                     dataJson = dataJson,
                     timestamp = event.createdAt ?: "",
                     retry = 0,
+                    anonymous = anonymous,
                 ),
             )
         } catch (e: Exception) {
@@ -135,6 +137,7 @@ internal class TrackerOffline(
                     it.dataJson,
                     it.timestamp,
                     it.retry,
+                    it.anonymous,
                 )
             }
         } catch (e: Exception) {

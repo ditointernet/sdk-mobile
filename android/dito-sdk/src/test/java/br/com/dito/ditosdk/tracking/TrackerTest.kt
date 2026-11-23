@@ -1,7 +1,9 @@
 package br.com.dito.ditosdk.tracking
 
 import android.content.Context
+import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
+import br.com.dito.ditosdk.BuildConfig
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
@@ -26,6 +28,9 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.util.Collections
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -142,7 +147,8 @@ class TrackerTest {
     }
 
     @Test
-    fun `event after logout should not reuse previous identify`() = testScope.runTest {
+    fun `event after logout should go out anonymous, not as the previous user`() = testScope.runTest {
+        val requests = anonymousDevice()
         tracker.id = "user123"
         tracker.logout()
         advanceUntilIdle()
@@ -151,8 +157,252 @@ class TrackerTest {
         tracker.event(Event("purchase"))
 
         advanceUntilIdle()
+        assertThat(requests.single().userId).isEmpty()
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+    }
+
+    @Test
+    fun `track without identify should go out anonymous with the device id`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.device.deviceId).isEqualTo("device-1")
+        assertThat(request.activitiesList.single { it.hasTrack() }.track.event).isEqualTo("purchase")
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+    }
+
+    @Test
+    fun `registerToken without identify should go out anonymous`() = testScope.runTest {
+        val requests = anonymousDevice()
+        var error: Throwable? = null
+
+        tracker.registerToken("token123") { _, e -> error = e }
+
+        advanceUntilIdle()
+        assertThat(error).isNull()
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.device.token).isEqualTo("token123")
+        assertThat(request.activitiesList.single { it.hasTokenRegister() }.tokenRegister.token).isEqualTo("token123")
+    }
+
+    @Test
+    fun `unregisterToken without identify should go out anonymous`() = testScope.runTest {
+        val requests = anonymousDevice()
+        var error: Throwable? = null
+
+        tracker.unregisterToken("token123") { _, e -> error = e }
+
+        advanceUntilIdle()
+        assertThat(error).isNull()
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.activitiesList.single { it.hasTokenUnregister() }.tokenUnregister.token)
+            .isEqualTo("token123")
+    }
+
+    @Test
+    fun `track at startup should wait for the stored identify and go out identified`() {
+        setAndroidId("device-1")
+        val requests = Collections.synchronizedList(mutableListOf<Api.Request>())
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        // Threads reais: o load fica preso no disco enquanto o track já está rodando.
+        val loading = CountDownLatch(1)
+        every { trackerOffline.getIdentify() } answers {
+            loading.await(5, TimeUnit.SECONDS)
+            storedIdentify()
+        }
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context))
+        try {
+            coldTracker.event(Event("purchase"))
+            Thread.sleep(300)
+            assertThat(requests).isEmpty()
+
+            loading.countDown()
+            coVerify(timeout = 5000) { mockClient.activity(any()) }
+            assertThat(requests.single().userId).isEqualTo("user123")
+        } finally {
+            loading.countDown()
+            coldTracker.close()
+        }
+    }
+
+    @Test
+    fun `track and token right after identify should go out identified`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.identify(Identify("u1"), null)
+        assertThat(tracker.idOrNull).isEqualTo("u1")
+        tracker.event(Event("login"))
+        tracker.registerToken("token123")
+
+        advanceUntilIdle()
+        assertThat(requests.single { r -> r.activitiesList.any { it.hasTrack() } }.userId).isEqualTo("u1")
+        assertThat(requests.single { r -> r.activitiesList.any { it.hasTokenRegister() } }.userId).isEqualTo("u1")
+        assertThat(requests.none { it.userId.isEmpty() }).isTrue()
+    }
+
+    @Test
+    fun `logout during the identify request should not persist that user nor resend the token`() =
+        testScope.runTest {
+            val requests = anonymousDevice()
+            AnonymousState(context).lastToken = "token123"
+
+            tracker.identify(Identify("u1"), null)
+            tracker.logout()
+
+            advanceUntilIdle()
+            verify(exactly = 0) { trackerOffline.identify(any(), any()) }
+            assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
+        }
+
+    @Test
+    fun `logout before the stored identify loads should not restore it`() = testScope.runTest {
+        every { trackerOffline.getIdentify() } returns storedIdentify()
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+
+        coldTracker.logout()
+
+        assertThat(coldTracker.awaitId()).isNull()
+    }
+
+    @Test
+    fun `concurrent anonymous calls should send the anonymous identify once`() = testScope.runTest {
+        val requests = anonymousDevice()
+        coEvery { mockClient.activity(capture(requests)) } coAnswers {
+            delay(100)
+            Api.Response.getDefaultInstance()
+        }
+
+        tracker.event(Event("purchase"))
+        tracker.registerToken("token123")
+
+        advanceUntilIdle()
+        assertThat(requests).hasSize(2)
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasIdentify() } }).isEqualTo(1)
+    }
+
+    @Test
+    fun `anonymous track that fails should be queued as anonymous`() = testScope.runTest {
+        anonymousDevice()
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        verify { trackerOffline.event(any(), any(), true) }
+    }
+
+    @Test
+    fun `anonymous identify should go with the first anonymous call only`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.event(Event("first"))
+        advanceUntilIdle()
+        tracker.event(Event("second"))
+        advanceUntilIdle()
+
+        val first = requests[0].activitiesList
+        assertThat(first.first().hasIdentify()).isTrue()
+        val customData = first.first().identify.customDataMap
+        assertThat(customData.keys).containsExactly("device_model", "sdk_version")
+        assertThat(customData["sdk_version"]?.single?.stringValue).isEqualTo(BuildConfig.DITO_SDK_VERSION)
+        assertThat(first.last().hasTrack()).isTrue()
+        assertThat(requests[1].activitiesList.none { it.hasIdentify() }).isTrue()
+    }
+
+    @Test
+    fun `failed anonymous identify should be sent again on the next call`() = testScope.runTest {
+        val requests = anonymousDevice()
+        var calls = 0
+        coEvery { mockClient.activity(capture(requests)) } answers {
+            if (calls++ == 0) throw Exception("err")
+            Api.Response.getDefaultInstance()
+        }
+
+        tracker.event(Event("first"))
+        advanceUntilIdle()
+        tracker.event(Event("second"))
+        advanceUntilIdle()
+
+        assertThat(requests).hasSize(2)
+        assertThat(requests[1].activitiesList.first().hasIdentify()).isTrue()
+    }
+
+    @Test
+    fun `anonymous identify should be sent again when the sdk version changes`() = testScope.runTest {
+        val requests = anonymousDevice()
+        AnonymousState(context).identifyMark = "device-1|0.0.0-antiga"
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        assertThat(requests.single().activitiesList.first().hasIdentify()).isTrue()
+    }
+
+    @Test
+    fun `anonymous identify should not be sent with a logged in user`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        assertThat(requests.single().activitiesList.none { it.hasIdentify() }).isTrue()
+        assertThat(AnonymousState(context).identifyMark).isNull()
+    }
+
+    @Test
+    fun `without android id, track is queued without owner and token fails as before`() = testScope.runTest {
+        setAndroidId("")
+        every { trackerOffline.getIdentify() } returns null
+        var registerError: Throwable? = null
+        var unregisterError: Throwable? = null
+
+        tracker.event(Event("purchase"))
+        tracker.registerToken("token123") { _, e -> registerError = e }
+        tracker.unregisterToken("token123") { _, e -> unregisterError = e }
+
+        advanceUntilIdle()
         coVerify(exactly = 0) { mockClient.activity(any()) }
-        verify { trackerOffline.event(any(), any()) }
+        verify { trackerOffline.event(any(), any(), false) }
+        assertThat(registerError).isInstanceOf(IllegalStateException::class.java)
+        assertThat(unregisterError).isInstanceOf(IllegalStateException::class.java)
+    }
+
+    @Test
+    fun `last registered token should be sent again after identify`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+
+        tracker.identify(Identify("user123"), null)
+
+        advanceUntilIdle()
+        val resent = requests.last()
+        assertThat(resent.userId).isEqualTo("user123")
+        assertThat(resent.device.token).isEqualTo("token123")
+        assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+    }
+
+    @Test
+    fun `unregisterToken of the last token should stop the resend after identify`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+        tracker.unregisterToken("token123")
+        advanceUntilIdle()
+
+        tracker.identify(Identify("user123"), null)
+
+        advanceUntilIdle()
+        assertThat(AnonymousState(context).lastToken).isNull()
+        assertThat(requests.filter { it.userId == "user123" }.none { r -> r.activitiesList.any { it.hasTokenRegister() } })
+            .isTrue()
     }
 
     @Test
@@ -287,6 +537,29 @@ class TrackerTest {
         coVerify { mockClient.activity(any()) }
         verify(exactly = 0) { trackerOffline.event(any(), any()) }
     }
+
+    private fun setAndroidId(value: String) {
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)
+    }
+
+    private fun anonymousDevice(): MutableList<Api.Request> {
+        setAndroidId("device-1")
+        every { trackerOffline.getIdentify() } returns null
+        val requests = mutableListOf<Api.Request>()
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        return requests
+    }
+
+    private fun storedIdentify() = IdentifyOff(
+        id = "user123",
+        name = null,
+        email = null,
+        gender = null,
+        birthday = null,
+        location = null,
+        customDataJson = null,
+        send = true,
+    )
 
     private fun notificationReadData() = Dito.NotificationReadData(
         notificationId = "notif123",

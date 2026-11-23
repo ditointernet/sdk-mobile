@@ -10,6 +10,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal class TrackerRetry(
     private val tracker: Tracker,
@@ -19,6 +21,8 @@ internal class TrackerRetry(
     private val maxRetry: Int = 5,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
+
+    private val eventQueue = Mutex()
 
     fun uploadEvents() {
         checkIdentify()
@@ -40,6 +44,7 @@ internal class TrackerRetry(
                 val request = mapper.buildRequest(identify.id, listOf(activity), null)
                 client.activity(request)
                 trackerOffline.updateIdentify(identifyOff.id, true)
+                tracker.registerLastToken(identify.id)
             } catch (e: Exception) {
                 Log.d("TrackerRetry", "identify retry failed: ${e.message}")
             }
@@ -48,22 +53,27 @@ internal class TrackerRetry(
 
     private fun checkEvent() {
         scope.launch {
-            val userId = tracker.awaitId() ?: run {
-                Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
-                return@launch
+            eventQueue.withLock {
+                val events = trackerOffline.getAllEvents() ?: return@launch
+
+                events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
+
+                val (anonymous, owned) = events.filter { it.retry < maxRetry }.partition { it.anonymous }
+                if (anonymous.isNotEmpty() && mapper.deviceId().isNotEmpty()) {
+                    sendEventsBatch(anonymous, null)
+                }
+                if (owned.isEmpty()) return@launch
+
+                val userId = tracker.awaitId() ?: run {
+                    Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+                    return@launch
+                }
+                sendEventsBatch(owned, userId)
             }
-            val events = trackerOffline.getAllEvents() ?: return@launch
-
-            events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
-
-            val toSend = events.filter { it.retry < maxRetry }
-            if (toSend.isEmpty()) return@launch
-
-            sendEventsBatch(toSend, userId)
         }
     }
 
-    private suspend fun sendEventsBatch(events: List<EventOff>, userId: String) {
+    private suspend fun sendEventsBatch(events: List<EventOff>, userId: String?) {
         val activities = events.map { eventOff ->
             val event = mapper.eventFromOffline(
                 eventOff.action,
@@ -74,8 +84,11 @@ internal class TrackerRetry(
             mapper.mapTrack(event, eventOff.activityId)
         }
         try {
-            val request = mapper.buildRequest(userId, activities, null)
-            client.activity(request)
+            if (userId == null) {
+                tracker.sendAnonymous(activities, null)
+            } else {
+                client.activity(mapper.buildRequest(userId, activities, null))
+            }
             events.forEach { trackerOffline.delete(it.id, "Event") }
         } catch (e: Exception) {
             events.forEach { trackerOffline.update(it.id, it.retry + 1, "Event") }
