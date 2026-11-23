@@ -46,6 +46,7 @@ class TrackerTest {
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
         trackerOffline = mockk(relaxed = true)
+        every { trackerOffline.getIdentify() } returns null
         mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
         coEvery { mockClient.activity(any()) } returns Api.Response.getDefaultInstance()
         val mapper = ActivityMapper(context)
@@ -259,6 +260,21 @@ class TrackerTest {
             verify(exactly = 0) { trackerOffline.identify(any(), any()) }
             assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
         }
+
+    @Test
+    fun `blank stored identify should be treated as absent and track goes out anonymous`() = testScope.runTest {
+        val requests = anonymousDevice()
+        every { trackerOffline.getIdentify() } returns storedIdentify().copy(id = "")
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+
+        assertThat(coldTracker.awaitId()).isNull()
+        coldTracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+    }
 
     @Test
     fun `logout before the stored identify loads should not restore it`() = testScope.runTest {

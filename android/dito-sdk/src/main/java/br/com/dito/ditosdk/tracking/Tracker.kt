@@ -58,7 +58,7 @@ internal class Tracker(
     }
 
     private fun loadIdentify(): Job = scope.launch {
-        val stored = trackerOffline.getIdentify()?.id
+        val stored = trackerOffline.getIdentify()?.id?.takeIf { it.isNotBlank() }
         // Um `identify()` ou `logout()` concorrente é mais novo que o disco: não sobrescreve.
         synchronized(idLock) { if (id == null && !loggedOut) id = stored }
     }
