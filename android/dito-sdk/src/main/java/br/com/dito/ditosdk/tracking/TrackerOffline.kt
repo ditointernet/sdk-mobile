@@ -48,18 +48,21 @@ internal class TrackerOffline(
     fun identify(identify: Identify, send: Boolean) {
         try {
             val customJson = identify.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
-            database.identifyDao().insert(
-                IdentifyOffline(
-                    _id = identify.id,
-                    name = identify.name,
-                    email = identify.email,
-                    gender = identify.gender,
-                    birthday = identify.birthday,
-                    location = identify.location,
-                    customDataJson = customJson,
-                    send = send,
-                ),
+            val row = IdentifyOffline(
+                _id = identify.id,
+                name = identify.name,
+                email = identify.email,
+                gender = identify.gender,
+                birthday = identify.birthday,
+                location = identify.location,
+                customDataJson = customJson,
+                send = send,
             )
+            // Um identify só no disco: o arranque restaura a primeira linha.
+            database.runInTransaction {
+                database.identifyDao().deleteAll()
+                database.identifyDao().insert(row)
+            }
         } catch (e: Exception) {
             Log.e("TrackerOffline", e.message, e)
         }

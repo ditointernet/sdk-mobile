@@ -14,7 +14,7 @@ import com.google.protobuf.Timestamp
 import java.util.UUID
 import mobileingest.v1.Api
 
-internal class ActivityMapper(val context: Context) {
+internal class ActivityMapper(private val context: Context) {
 
     private val gson = Gson()
 
@@ -158,13 +158,13 @@ internal class ActivityMapper(val context: Context) {
     fun buildDeviceInfo(token: String?): Api.DeviceInfo =
         Api.DeviceInfo.newBuilder()
             .setOs(Api.DeviceOs.DEVICE_OS_ANDROID)
-            .setDeviceId(deviceId())
+            .setDeviceId(deviceId)
             .setToken(token ?: "")
             .setOsVersion(Build.VERSION.RELEASE ?: "")
             .setDeviceModel(Build.MODEL ?: "")
             .build()
 
-    fun deviceId(): String = DeviceIdProvider.get(context)
+    val deviceId: String by lazy { DeviceIdProvider.get(context) }
 
     private fun buildAppInfo(): Api.AppInfo {
         val p = context.packageName

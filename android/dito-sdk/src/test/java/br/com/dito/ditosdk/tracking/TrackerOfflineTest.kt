@@ -64,6 +64,17 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `identify should replace any previous identify`() = runBlocking {
+        trackerOffline.identify(Identify("A"), true)
+        trackerOffline.identify(Identify("B"), true)
+        trackerOffline.identify(Identify("A"), true)
+        delay(500)
+
+        assertThat(trackerOffline.database.identifyDao().getAll().map { it._id }).containsExactly("A")
+        assertThat(trackerOffline.getIdentify()?.id).isEqualTo("A")
+    }
+
+    @Test
     fun `updateIdentify should update send status`() = runBlocking {
         val identify = Identify("123")
         trackerOffline.identify(identify, false)

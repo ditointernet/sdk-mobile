@@ -49,7 +49,7 @@ class TrackerRetryTest {
         mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
         coEvery { mockClient.activity(any()) } returns Api.Response.getDefaultInstance()
         val mapper = ActivityMapper(context)
-        tracker = Tracker(trackerOffline, mockClient, mapper, scope = testScope)
+        tracker = Tracker(trackerOffline, mockClient, mapper, AnonymousState(context), scope = testScope)
         tracker.id = "user123"
         trackerRetry = TrackerRetry(
             tracker,
@@ -250,7 +250,7 @@ class TrackerRetryTest {
      */
     private fun coldStartRetry(): TrackerRetry {
         val mapper = ActivityMapper(context)
-        val coldTracker = Tracker(trackerOffline, mockClient, mapper, scope = TestScope(trackerScheduler))
+        val coldTracker = Tracker(trackerOffline, mockClient, mapper, AnonymousState(context), scope = TestScope(trackerScheduler))
         assertThat(coldTracker.idOrNull).isNull()
         return TrackerRetry(coldTracker, trackerOffline, mockClient, mapper, 5, testScope)
     }
@@ -292,7 +292,7 @@ class TrackerRetryTest {
     fun `queued event with owner should wait for login`() = testScope.runTest {
         captureRequests("device-1")
         every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
-        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
         val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
 
         retry.uploadEvents()
@@ -370,6 +370,20 @@ class TrackerRetryTest {
         val resent = requests.single { r -> r.activitiesList.any { it.hasTokenRegister() } }
         assertThat(resent.userId).isEqualTo("user123")
         assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+    }
+
+    @Test
+    fun `checkIdentify should not resend the token when the user changed`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        AnonymousState(context).lastToken = "token123"
+        every { trackerOffline.getIdentify() } returns storedIdentify().copy(send = false)
+        tracker.id = "other-user"
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.updateIdentify("user123", true) }
+        assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
     }
 
     private fun captureRequests(androidId: String): MutableList<Api.Request> {

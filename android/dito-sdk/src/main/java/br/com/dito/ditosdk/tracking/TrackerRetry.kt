@@ -44,7 +44,7 @@ internal class TrackerRetry(
                 val request = mapper.buildRequest(identify.id, listOf(activity), null)
                 client.activity(request)
                 trackerOffline.updateIdentify(identifyOff.id, true)
-                tracker.registerLastToken(identify.id)
+                if (tracker.idOrNull == identify.id) tracker.registerLastToken(identify.id)
             } catch (e: Exception) {
                 Log.d("TrackerRetry", "identify retry failed: ${e.message}")
             }
@@ -59,7 +59,7 @@ internal class TrackerRetry(
                 events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
 
                 val (anonymous, owned) = events.filter { it.retry < maxRetry }.partition { it.anonymous }
-                if (anonymous.isNotEmpty() && mapper.deviceId().isNotEmpty()) {
+                if (anonymous.isNotEmpty() && tracker.canSend(null)) {
                     sendEventsBatch(anonymous, null)
                 }
                 if (owned.isEmpty()) return@launch
@@ -84,11 +84,7 @@ internal class TrackerRetry(
             mapper.mapTrack(event, eventOff.activityId)
         }
         try {
-            if (userId == null) {
-                tracker.sendAnonymous(activities, null)
-            } else {
-                client.activity(mapper.buildRequest(userId, activities, null))
-            }
+            tracker.send(userId, activities, null)
             events.forEach { trackerOffline.delete(it.id, "Event") }
         } catch (e: Exception) {
             events.forEach { trackerOffline.update(it.id, it.retry + 1, "Event") }

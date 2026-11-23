@@ -28,6 +28,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.security.MessageDigest
 import java.util.Collections
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -50,7 +51,7 @@ class TrackerTest {
         mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
         coEvery { mockClient.activity(any()) } returns Api.Response.getDefaultInstance()
         val mapper = ActivityMapper(context)
-        tracker = Tracker(trackerOffline, mockClient, mapper, scope = testScope)
+        tracker = Tracker(trackerOffline, mockClient, mapper, AnonymousState(context), scope = testScope)
     }
 
     @After
@@ -217,7 +218,7 @@ class TrackerTest {
             loading.await(5, TimeUnit.SECONDS)
             storedIdentify()
         }
-        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context))
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context))
         try {
             coldTracker.event(Event("purchase"))
             Thread.sleep(300)
@@ -265,7 +266,7 @@ class TrackerTest {
     fun `blank stored identify should be treated as absent and track goes out anonymous`() = testScope.runTest {
         val requests = anonymousDevice()
         every { trackerOffline.getIdentify() } returns storedIdentify().copy(id = "")
-        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
 
         assertThat(coldTracker.awaitId()).isNull()
         coldTracker.event(Event("purchase"))
@@ -277,9 +278,88 @@ class TrackerTest {
     }
 
     @Test
+    fun `identify should not resend a token already confirmed for that user`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+
+        tracker.identify(Identify("user123"), null)
+        advanceUntilIdle()
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasTokenRegister() } }).isEqualTo(1)
+
+        tracker.identify(Identify("u2"), null)
+        advanceUntilIdle()
+        assertThat(requests.last().userId).isEqualTo("u2")
+        assertThat(requests.last().activitiesList.single().hasTokenRegister()).isTrue()
+    }
+
+    @Test
+    fun `identify with blank id should fail without touching the state`() = testScope.runTest {
+        val requests = anonymousDevice()
+        var error: Throwable? = null
+
+        tracker.identify(Identify(" ")) { _, e -> error = e }
+
+        advanceUntilIdle()
+        assertThat(error).isInstanceOf(IllegalArgumentException::class.java)
+        assertThat(tracker.idOrNull).isNull()
+        assertThat(requests).isEmpty()
+        verify(exactly = 0) { trackerOffline.identify(any(), any()) }
+    }
+
+    @Test
+    fun `identify right after logout should keep the new identify on disk`() = testScope.runTest {
+        anonymousDevice()
+        every { trackerOffline.getIdentify() } returns storedIdentify()
+        tracker.id = "user123"
+
+        tracker.logout()
+        tracker.identify(Identify("user123"), null)
+
+        advanceUntilIdle()
+        verify(exactly = 0) { trackerOffline.deleteIdentify() }
+        verify { trackerOffline.identify(any(), true) }
+    }
+
+    @Test
+    fun `identify of another user right after logout should clear the previous one from disk`() = testScope.runTest {
+        anonymousDevice()
+        every { trackerOffline.getIdentify() } returns storedIdentify()
+        tracker.id = "user123"
+
+        tracker.logout()
+        tracker.identify(Identify("u2"), null)
+
+        advanceUntilIdle()
+        verify { trackerOffline.deleteIdentify() }
+        verify { trackerOffline.identify(any(), true) }
+    }
+
+    @Test
+    fun `unregisterToken should clear the confirmed register so identify resends it`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+        tracker.unregisterToken("token123")
+        advanceUntilIdle()
+        tracker.logout()
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+
+        tracker.identify(Identify("user123"), null)
+
+        advanceUntilIdle()
+        val resent = requests.last()
+        assertThat(resent.userId).isEqualTo("user123")
+        assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+    }
+
+    @Test
     fun `logout before the stored identify loads should not restore it`() = testScope.runTest {
         every { trackerOffline.getIdentify() } returns storedIdentify()
-        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
 
         coldTracker.logout()
 
@@ -433,7 +513,7 @@ class TrackerTest {
             customDataJson = null,
             send = true,
         )
-        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
         // Leitura direta ainda não vê nada: é este instante que o flush no cold start pegava.
         assertThat(coldTracker.idOrNull).isNull()
 
@@ -452,7 +532,7 @@ class TrackerTest {
             customDataJson = null,
             send = true,
         )
-        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), scope = testScope)
+        val coldTracker = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
         coldTracker.id = "fresh-user"
 
         assertThat(coldTracker.awaitId()).isEqualTo("fresh-user")
@@ -503,6 +583,7 @@ class TrackerTest {
 
     @Test
     fun `notificationReceived should queue delivery event on API error`() = testScope.runTest {
+        tracker.id = "user123"
         coEvery { mockClient.activity(any()) } throws Exception("err")
 
         tracker.notificationReceived(notificationReadData())
@@ -510,39 +591,76 @@ class TrackerTest {
         advanceUntilIdle()
         // Antes disto a exceção era engolida por um catch vazio: a entrega perdida não deixava
         // fila nem log, e era indistinguível de uma entrega bem-sucedida.
-        verify { trackerOffline.event(any(), any()) }
+        verify { trackerOffline.event(any(), any(), any()) }
     }
 
     @Test
-    fun `notificationReceived should persist identify so the queue can be drained later`() = testScope.runTest {
+    fun `notificationReceived should not identify the device`() = testScope.runTest {
         coEvery { mockClient.activity(any()) } throws Exception("err")
-        every { trackerOffline.getIdentify() } returns null
 
         tracker.notificationReceived(notificationReadData())
 
         advanceUntilIdle()
-        verify { trackerOffline.identify(any(), false) }
-    }
-
-    @Test
-    fun `notificationReceived should not overwrite a richer stored identify`() = testScope.runTest {
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-        every { trackerOffline.getIdentify() } returns IdentifyOff(
-            id = "user123",
-            name = "Igor",
-            email = "igor@example.com",
-            gender = null,
-            birthday = null,
-            location = null,
-            customDataJson = null,
-            send = true,
-        )
-
-        tracker.notificationReceived(notificationReadData())
-
-        advanceUntilIdle()
+        assertThat(tracker.idOrNull).isNull()
         verify(exactly = 0) { trackerOffline.identify(any(), any()) }
-        verify { trackerOffline.event(any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived failure without login should queue the delivery as anonymous`() = testScope.runTest {
+        anonymousDevice()
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
+
+        advanceUntilIdle()
+        verify { trackerOffline.event(any(), any(), true) }
+    }
+
+    @Test
+    fun `notificationReceived failure of another user without login should not be queued`() = testScope.runTest {
+        anonymousDevice()
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+        advanceUntilIdle()
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived failure of another user with login should not be queued`() = testScope.runTest {
+        anonymousDevice()
+        tracker.id = "other-user"
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+        advanceUntilIdle()
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived failure without login and without android id should not be queued`() =
+        testScope.runTest {
+            setAndroidId("")
+            coEvery { mockClient.activity(any()) } throws Exception("err")
+
+            tracker.notificationReceived(notificationReadData(userId = sha1Hex("")))
+
+            advanceUntilIdle()
+            verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        }
+
+    @Test
+    fun `notificationReceived failure with login should queue the delivery with owner`() = testScope.runTest {
+        anonymousDevice()
+        tracker.id = "user123"
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        verify { trackerOffline.event(any(), any(), false) }
     }
 
     @Test
@@ -551,7 +669,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify { mockClient.activity(any()) }
-        verify(exactly = 0) { trackerOffline.event(any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
     }
 
     private fun setAndroidId(value: String) {
@@ -577,11 +695,14 @@ class TrackerTest {
         send = true,
     )
 
-    private fun notificationReadData() = Dito.NotificationReadData(
+    private fun notificationReadData(userId: String = "user123") = Dito.NotificationReadData(
         notificationId = "notif123",
         reference = "",
         logId = "log123",
         notificationName = "campanha",
-        userId = "user123",
+        userId = userId,
     )
+
+    private fun sha1Hex(value: String): String =
+        MessageDigest.getInstance("SHA-1").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 }
