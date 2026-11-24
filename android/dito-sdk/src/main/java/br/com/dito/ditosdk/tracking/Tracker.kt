@@ -237,6 +237,8 @@ internal class Tracker(
             id = null
         }
         scope.launch {
+            // Como no iOS: o próximo login reenvia o token, mesmo que seja o mesmo usuário.
+            tokenState.withLock { anonymousState.setConfirmed(null, null) }
             // Um identify() do mesmo usuário feito depois deste logout já está no disco: não apagar.
             identifyDisk.withLock {
                 if (id == null || trackerOffline.getIdentify()?.id != id) trackerOffline.deleteIdentify()

@@ -295,6 +295,24 @@ class TrackerTest {
     }
 
     @Test
+    fun `identify after logout should resend the token even for the same user`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+        tracker.logout()
+        tracker.registerToken("token123")
+        advanceUntilIdle()
+
+        tracker.identify(Identify("user123"), null)
+
+        advanceUntilIdle()
+        val resent = requests.last()
+        assertThat(resent.userId).isEqualTo("user123")
+        assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+    }
+
+    @Test
     fun `identify with blank id should fail without touching the state`() = testScope.runTest {
         val requests = anonymousDevice()
         var error: Throwable? = null
