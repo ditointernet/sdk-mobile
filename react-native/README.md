@@ -48,7 +48,7 @@ npm install @ditointernet/dito-sdk
 yarn add @ditointernet/dito-sdk
 ```
 
-**Nota para iOS**: O SDK iOS é automaticamente instalado via CocoaPods quando você executa `pod install` no diretório `ios/` do seu projeto React Native, pois o plugin já está configurado para usar o monorepo com `:subdirectory => 'ios'`.
+**Nota para iOS**: O SDK iOS é instalado via CocoaPods quando você executa `pod install` no diretório `ios/` do seu projeto React Native: o plugin depende do pod `DitoSDK` publicado no CocoaPods, com versão fixada (`~> X.Y`).
 
 ## ⚙️ Configuração Inicial
 
@@ -174,7 +174,7 @@ try {
 ```
 
 **Notas**:
-- O usuário deve ser identificado antes de rastrear eventos
+- Sem `identify`, eventos e registro de token são enviados como aparelho anônimo (a partir do SDK nativo iOS 3.8 / Android 3.9); depois do `identify`, vão com o usuário
 - O email é opcional, mas se fornecido deve ser válido
 
 ---
@@ -216,7 +216,7 @@ try {
 ```
 
 **Notas**:
-- O usuário deve ser identificado antes de rastrear eventos
+- Sem `identify`, eventos e registro de token são enviados como aparelho anônimo (a partir do SDK nativo iOS 3.8 / Android 3.9); depois do `identify`, vão com o usuário
 - Dados são sincronizados automaticamente em background
 
 ---
@@ -651,21 +651,21 @@ Se você estiver enfrentando problemas de performance, verifique:
 **iOS:**
 - Certifique-se de que o iOS deployment target é pelo menos 16.0
 - Execute `pod install` no diretório `ios/` do seu projeto React Native
-- O SDK iOS é instalado automaticamente do monorepo via `:subdirectory => 'ios'`
+- O SDK iOS vem do pod `DitoSDK` publicado no CocoaPods, com versão fixada pelo plugin
 
 ### Eventos não aparecem no painel Dito
 
 **Checklist**:
 1. ✅ SDK inicializado (`DitoSdk.initialize()`)
-2. ✅ Usuário identificado ANTES de rastrear eventos
+2. ✅ Usuário identificado antes do evento, se ele deve ir com o usuário (sem `identify`, vai como aparelho anônimo a partir do SDK nativo iOS 3.8 / Android 3.9)
 3. ✅ Conexão com internet (ou aguardar sincronização offline)
 
 ```typescript
-// ❌ ERRADO - evento antes da identificação
+// ⚠️ evento antes da identificação vai como aparelho anônimo
 await DitoSdk.track({ action: 'purchase', data: { product: 'item123' } });
 await DitoSdk.identify({ id: userId, name: 'John', email: 'john@example.com' });
 
-// ✅ CORRETO - identifique primeiro
+// ✅ identifique primeiro para o evento ir com o usuário
 await DitoSdk.identify({ id: userId, name: 'John', email: 'john@example.com' });
 await DitoSdk.track({ action: 'purchase', data: { product: 'item123' } });
 ```

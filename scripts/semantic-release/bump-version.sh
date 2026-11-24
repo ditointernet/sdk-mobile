@@ -19,14 +19,16 @@ case "$project" in
       sed -i.bak -E "s/(:tag[[:space:]]*=>[[:space:]]*')[^']+(' \\+ s\\.version\\.to_s)/\\1ios-v\\2/" "$spec"
       rm -f "$spec.bak"
     done
-    # The Flutter plugin's floor moves with the SDK it wraps. It was left out of
+    # The Flutter and React Native plugins' floor moves with the SDK they wrap. It was left out of
     # this bump once already, and the result was a plugin asking trunk for a
     # DitoSDK version that existed nowhere — no `pod install` in the sample could
     # resolve. Only major.minor goes in the constraint, so a patch release of the
     # SDK does not need a plugin release to be installable.
     ios_rest="${version#*.}"
-    sed -i.bak -E "s/(s\\.dependency 'DitoSDK', '~> )[^']+(')/\\1${version%%.*}.${ios_rest%%.*}\\2/" flutter/ios/dito_sdk.podspec
-    rm -f flutter/ios/dito_sdk.podspec.bak
+    for spec in flutter/ios/dito_sdk.podspec react-native/ios/DitoSdkModule.podspec; do
+      sed -i.bak -E "s/(s\\.dependency 'DitoSDK', '~> )[^']+(')/\\1${version%%.*}.${ios_rest%%.*}\\2/" "$spec"
+      rm -f "$spec.bak"
+    done
     ;;
   flutter)
     sed -i.bak -E "s/^version:[[:space:]]+.*/version: ${version}/" flutter/pubspec.yaml

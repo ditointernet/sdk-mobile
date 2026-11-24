@@ -5,6 +5,11 @@ on:
     paths:
       - 'react-native/**'
       - '.github/workflows/react-native.yml'
+      - 'scripts/check-version-pins.sh'
+      - 'scripts/semantic-release/**'
+      - '.github/semantic-release/**'
+      - 'DitoSDK.podspec'
+      - 'DitoSDKNotificationService.podspec'
 
 jobs:
   build:
@@ -14,6 +19,10 @@ jobs:
     - uses: actions/checkout@v3
       with:
         fetch-depth: 0
+
+    # Fora do has_changes: o podspec iOS não é ts/js/json e o check usa o node do runner.
+    - name: Check the DitoSDK version the plugin asks for
+      run: ./scripts/check-version-pins.sh
 
     - name: Check for relevant changes
       id: check-changes
