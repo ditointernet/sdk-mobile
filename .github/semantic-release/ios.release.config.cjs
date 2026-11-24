@@ -25,6 +25,7 @@ module.exports = {
           'DitoSDK.podspec',
           'DitoSDKNotificationService.podspec',
           'flutter/ios/dito_sdk.podspec',
+          'react-native/ios/DitoSdkModule.podspec',
         ],
         message: 'chore(release): ios ${nextRelease.version}\n\n${nextRelease.notes}',
       },

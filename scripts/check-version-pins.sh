@@ -22,7 +22,6 @@ read_field() {
 
 ios_version="$(read_field DitoSDK.podspec 's\.version')"
 nse_version="$(read_field DitoSDKNotificationService.podspec 's\.version')"
-constraint="$(sed -nE "s/.*s\.dependency 'DitoSDK', '~> ([^']+)'.*/\1/p" flutter/ios/dito_sdk.podspec | head -n 1)"
 
 fail() {
   echo "❌ $1" >&2
@@ -31,7 +30,6 @@ fail() {
 
 [ -n "$ios_version" ] || fail "não achei s.version em DitoSDK.podspec"
 [ -n "$nse_version" ] || fail "não achei s.version em DitoSDKNotificationService.podspec"
-[ -n "$constraint" ] || fail "não achei a dependência DitoSDK em flutter/ios/dito_sdk.podspec"
 
 # DitoSDK depende de DitoSDKNotificationService numa versão exata; se os dois divergirem, o
 # pod publicado aponta para uma versão que nunca existiu.
@@ -40,23 +38,32 @@ if [ "$ios_version" != "$nse_version" ]; then
 fi
 
 # `~> X.Y` aceita >= X.Y e < X+1.0. `~> X.Y.Z` aceita >= X.Y.Z e < X.Y+1.0.
-IFS='.' read -r c_major c_minor c_patch <<< "$constraint"
-IFS='.' read -r i_major i_minor i_patch <<< "$ios_version"
+check_ios_pin() {
+  local podspec="$1" plugin="$2" constraint satisfied c_major c_minor c_patch i_major i_minor i_patch
+  constraint="$(sed -nE "s/.*s\.dependency 'DitoSDK', '~> ([^']+)'.*/\1/p" "$podspec" | head -n 1)"
+  [ -n "$constraint" ] || fail "não achei a dependência DitoSDK em $podspec"
 
-satisfied=true
-[ "$i_major" = "$c_major" ] || satisfied=false
-if [ -n "${c_patch:-}" ]; then
-  [ "$i_minor" = "$c_minor" ] || satisfied=false
-  [ "${i_patch:-0}" -ge "$c_patch" ] || satisfied=false
-else
-  [ "${i_minor:-0}" -ge "${c_minor:-0}" ] || satisfied=false
-fi
+  IFS='.' read -r c_major c_minor c_patch <<< "$constraint"
+  IFS='.' read -r i_major i_minor i_patch <<< "$ios_version"
 
-if [ "$satisfied" != true ]; then
-  fail "flutter/ios/dito_sdk.podspec pede DitoSDK '~> $constraint', que a versão $ios_version do repositório não satisfaz"
-fi
+  satisfied=true
+  [ "$i_major" = "$c_major" ] || satisfied=false
+  if [ -n "${c_patch:-}" ]; then
+    [ "$i_minor" = "$c_minor" ] || satisfied=false
+    [ "${i_patch:-0}" -ge "$c_patch" ] || satisfied=false
+  else
+    [ "${i_minor:-0}" -ge "${c_minor:-0}" ] || satisfied=false
+  fi
 
-echo "✅ DitoSDK $ios_version satisfaz o '~> $constraint' pedido pelo plugin Flutter"
+  if [ "$satisfied" != true ]; then
+    fail "$podspec pede DitoSDK '~> $constraint', que a versão $ios_version do repositório não satisfaz"
+  fi
+
+  echo "✅ DitoSDK $ios_version satisfaz o '~> $constraint' pedido pelo plugin $plugin"
+}
+
+check_ios_pin flutter/ios/dito_sdk.podspec Flutter
+check_ios_pin react-native/ios/DitoSdkModule.podspec "React Native"
 
 # Android: o pin do Gradle é exato, então não há folga — os dois números têm de ser iguais.
 android_version="$(sed -nE 's/^version[[:space:]]*=.*\??:?[[:space:]]*"([^"]+)".*/\1/p' android/dito-sdk/build.gradle.kts | head -n 1)"

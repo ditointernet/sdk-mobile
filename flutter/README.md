@@ -260,7 +260,7 @@ try {
 ```
 
 **Notas**:
-- O usuário deve ser identificado antes de rastrear eventos
+- Sem `identify`, eventos e registro de token são enviados como aparelho anônimo (a partir do SDK nativo iOS 3.8 / Android 3.9); depois do `identify`, vão com o usuário
 - O email é opcional, mas se fornecido deve ser válido
 
 ---
@@ -308,7 +308,7 @@ try {
 ```
 
 **Notas**:
-- O usuário deve ser identificado antes de rastrear eventos
+- Sem `identify`, eventos e registro de token são enviados como aparelho anônimo (a partir do SDK nativo iOS 3.8 / Android 3.9); depois do `identify`, vão com o usuário
 - Dados são sincronizados automaticamente em background
 
 ---
@@ -1064,15 +1064,15 @@ await ditoSdk.initialize(appKey: 'your-api-key', appSecret: 'your-api-secret');
 
 **Checklist**:
 1. ✅ SDK inicializado (`ditoSdk.initialize(...)`)
-2. ✅ Usuário identificado ANTES de rastrear eventos
+2. ✅ Usuário identificado antes do evento, se ele deve ir com o usuário (sem `identify`, vai como aparelho anônimo a partir do SDK nativo iOS 3.8 / Android 3.9)
 3. ✅ Conexão com internet (ou aguardar sincronização offline)
 
 ```dart
-// ❌ ERRADO - evento antes da identificação
+// ⚠️ evento antes da identificação vai como aparelho anônimo
 await ditoSdk.track(action: 'purchase', data: {'product': 'item123'});
 await ditoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 
-// ✅ CORRETO - identifique primeiro
+// ✅ identifique primeiro para o evento ir com o usuário
 await ditoSdk.identify(id: userId, name: 'John', email: 'john@example.com');
 await ditoSdk.track(action: 'purchase', data: {'product': 'item123'});
 ```
