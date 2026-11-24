@@ -10,6 +10,10 @@ class DitoRetry {
 
     static let maxRetries: Int16 = 5
 
+    private static let passLock = NSLock()
+    private static var passRunning = false
+    private static var nextPassRetry: DitoRetry?
+
     private var identifyOffline: DitoIdentifyOffline
     private var trackOffline: DitoTrackOffline
     private var notificationReadOffline: DitoNotificationOffline
@@ -28,10 +32,36 @@ class DitoRetry {
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
+    // One pass at a time across instances so no row goes twice; a call mid-pass queues one more pass.
     func loadOffline() {
+        guard DitoRetry.startOrQueuePass(self) else { return }
         Task {
-            await runLoadOffline()
+            var next: DitoRetry? = self
+            while let retry = next {
+                await retry.runLoadOffline()
+                next = DitoRetry.finishPass()
+            }
         }
+    }
+
+    private static func startOrQueuePass(_ retry: DitoRetry) -> Bool {
+        passLock.lock()
+        defer { passLock.unlock() }
+        if passRunning {
+            nextPassRetry = retry
+            return false
+        }
+        passRunning = true
+        return true
+    }
+
+    private static func finishPass() -> DitoRetry? {
+        passLock.lock()
+        defer { passLock.unlock() }
+        let next = nextPassRetry
+        nextPassRetry = nil
+        passRunning = next != nil
+        return next
     }
 
     internal func runLoadOffline() async {

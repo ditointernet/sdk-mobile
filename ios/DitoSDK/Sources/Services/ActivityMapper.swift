@@ -61,7 +61,7 @@ struct ActivityMapper {
         activity.id = UUID().uuidString
         activity.type = .activityTrack
         activity.track = track
-        activity.timestamp = nowTimestamp()
+        activity.timestamp = eventTimestamp(event.createdAt)
         return activity
     }
 
@@ -177,6 +177,15 @@ struct ActivityMapper {
     private func nowTimestamp() -> Google_Protobuf_Timestamp {
         let now = Date()
         return Google_Protobuf_Timestamp(date: now)
+    }
+
+    private func eventTimestamp(_ createdAt: String?) -> Google_Protobuf_Timestamp {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        // Older queued rows carry only "yyyy-MM-dd": must fall back to now, not midnight.
+        guard let createdAt, let date = formatter.date(from: createdAt) else { return nowTimestamp() }
+        return Google_Protobuf_Timestamp(date: date)
     }
 
     private func customDataFromJson(_ json: String) -> [String: Mobileingest_V1_CustomData] {

@@ -35,7 +35,11 @@ public class Dito {
   #endif
   private var reachability = try! Reachability()
   private var backingRetry: DitoRetry?
+  private let retryLock = NSLock()
+  private var reconnectRetry: DispatchWorkItem?
   var retry: DitoRetry {
+    retryLock.lock()
+    defer { retryLock.unlock() }
     if let existing = backingRetry {
       return existing
     }
@@ -379,8 +383,7 @@ public class Dito {
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) async {
     var backgroundTask: UIBackgroundTaskIdentifier = .invalid
-    let isRunningUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    if !isRunningUnitTests {
+    if !Dito.isRunningUnitTests {
       await MainActor.run {
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "DitoReceiveNotification") {
           if backgroundTask != .invalid {
@@ -437,9 +440,7 @@ public class Dito {
         notificationName: received.notificationName
       )
       DitoNotificationOffline().notificationReceive(pending)
-      if !isRunningUnitTests {
-        Dito.shared.retry.loadOffline()
-      }
+      Dito.flushOfflineQueue()
       completion?(.success(()))
     }
   }
@@ -570,10 +571,30 @@ public class Dito {
 //MARK: - Network Connection
 extension Dito {
 
-  @objc func reachabilityChanged(_ note: Notification) {
+  static var reconnectRetryDelay: TimeInterval = 5
 
+  static var isRunningUnitTests: Bool {
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+  }
+
+  static func flushOfflineQueue() {
+    if !isRunningUnitTests {
+      shared.retry.loadOffline()
+    }
+  }
+
+  @objc func reachabilityChanged(_ note: Notification) {
+    reconnectRetry?.cancel()
+    reconnectRetry = nil
     if self.reachability.connection != .unavailable {
       retry.loadOffline()
+      let work = DispatchWorkItem {
+        if self.reachability.connection != .unavailable {
+          self.retry.loadOffline()
+        }
+      }
+      reconnectRetry = work
+      DispatchQueue.main.asyncAfter(deadline: .now() + Dito.reconnectRetryDelay, execute: work)
     }
   }
 }
@@ -598,14 +619,19 @@ extension Dito {
   }
 
   static func invalidateRetryCacheForTests() {
+    shared.retryLock.lock()
     shared.backingRetry = nil
+    shared.retryLock.unlock()
   }
 
   static func resetFacadeIsolationState() {
     NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
     shared.reachability.stopNotifier()
     shared.reachability.debug_connectionOverride = nil
+    shared.reconnectRetry?.cancel()
+    shared.retryLock.lock()
     shared.backingRetry = nil
+    shared.retryLock.unlock()
     appKey = ""
     appSecret = ""
     signature = ""

@@ -5,13 +5,16 @@ class DitoTrack {
     private let trackOffline: DitoTrackOffline
     private let mapper = ActivityMapper()
     private let client: MobileIngestClientProtocol
+    private let onSent: () -> Void
 
     init(
         trackOffline: DitoTrackOffline = .init(),
-        client: MobileIngestClientProtocol? = nil
+        client: MobileIngestClientProtocol? = nil,
+        onSent: @escaping () -> Void = Dito.flushOfflineQueue
     ) {
         self.trackOffline = trackOffline
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
+        self.onSent = onSent
     }
 
     func track(
@@ -22,13 +25,19 @@ class DitoTrack {
         DitoLogger.information("📊 [TRACK] action=\(data.action ?? "nil")")
         #endif
 
+        var stamped = data
+        if stamped.createdAt == nil {
+            stamped.createdAt = Date().formatToISO
+        }
+        let event = stamped
+
         if trackOffline.checkIdentifyState() {
             trackOffline.setTrackCompletion {
-                self.completeTracking(data: data, completion: completion)
+                self.completeTracking(data: event, completion: completion)
             }
         } else {
             DispatchQueue.main.async {
-                self.completeTracking(data: data, completion: completion)
+                self.completeTracking(data: event, completion: completion)
             }
         }
     }
@@ -66,6 +75,7 @@ class DitoTrack {
                 }
                 DitoLogger.information("✅ [TRACK] Sucesso")
                 completion?(.success(.sent))
+                onSent()
             } catch {
                 trackOffline.track(event: makeEventRequest(data), anonymous: userId == nil)
                 DitoLogger.error(error.localizedDescription)
