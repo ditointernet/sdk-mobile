@@ -228,9 +228,10 @@ class DitoRetry {
                 "user_id": pending.userId,
             ])
             let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: pending.userId)
-            let trackActivity = mapper.mapFromDitoEvent(
-                Dito.createNotificationTrackEvent(received, token: pending.token)
-            )
+            // Arrival time, not resend time; a row from before receivedAt existed falls back to now.
+            var receiveEvent = Dito.createNotificationTrackEvent(received, token: pending.token)
+            receiveEvent.createdAt = pending.receivedAt
+            let trackActivity = mapper.mapFromDitoEvent(receiveEvent)
             let request = mapper.buildRequest(
                 userId: pending.userId,
                 activities: [identifyActivity, trackActivity]

@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import DitoSDK
 
@@ -214,6 +215,128 @@ final class OfflineQueueTimestampTests: XCTestCase {
         let timestamp = try XCTUnwrap(trackActivities(mock.allActivityRequests).first).timestamp.date
         XCTAssertGreaterThanOrEqual(timestamp, sendStart)
         XCTAssertLessThanOrEqual(timestamp, Date())
+    }
+
+    // MARK: - receive-ios-notification
+
+    private func receiveQueue() -> [DitoNotificationReceiveRow] {
+        DitoNotificationOffline().getNotificationReceive
+    }
+
+    private func receiveTimestamps(_ requests: [Mobileingest_V1_Request]) -> [Date] {
+        trackActivities(requests).compactMap { activity in
+            guard let oneOf = activity.activity, case .track(let track) = oneOf,
+                  track.event == "receive-ios-notification" else { return nil }
+            return activity.timestamp.date
+        }
+    }
+
+    private let receiveUserInfo: [AnyHashable: Any] = [
+        "user_id": "uid-queue-ts-receive",
+        "notification": "notif-queue-ts",
+        "log_id": "log-queue-ts",
+        "notification_name": "queue-ts",
+    ]
+
+    func testFailedReceive_isResentWithArrivalTime() async throws {
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        Dito.testNotificationReceivedIngestClient = failing
+
+        let before = floorToSecond(Date())
+        await Dito.awaitNotificationReceivedDelivery(userInfo: receiveUserInfo, token: "fcm-queue-ts")
+        let after = Date()
+
+        let row = try XCTUnwrap(receiveQueue().first)
+        let pending = try XCTUnwrap(row.json?.convertToObject(type: DitoNotificationReceivePending.self))
+        XCTAssertNotNil(pending.receivedAt)
+
+        // Resending later than a second after arrival is what tells arrival time from resend time.
+        try await Task.sleep(nanoseconds: 1_500_000_000)
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertTrue(receiveQueue().isEmpty)
+        let timestamp = try XCTUnwrap(receiveTimestamps(mock.allActivityRequests).first)
+        XCTAssertGreaterThanOrEqual(timestamp, before)
+        XCTAssertLessThanOrEqual(timestamp, after)
+    }
+
+    func testLegacyReceiveRowWithoutReceivedAt_isSentWithSendTime() async throws {
+        DitoNotificationOffline().notificationReceive(DitoNotificationReceivePending(
+            userId: "uid-queue-ts-receive-legacy",
+            token: "fcm-queue-ts-legacy",
+            notification: "notif-queue-ts-legacy",
+            logId: "log-queue-ts-legacy",
+            notificationName: "queue-ts-legacy"
+        ))
+        let row = try XCTUnwrap(receiveQueue().first)
+        let legacy = try XCTUnwrap(row.json?.convertToObject(type: DitoNotificationReceivePending.self))
+        XCTAssertNil(legacy.receivedAt)
+
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        let sendStart = floorToSecond(Date())
+        await DitoRetry(client: mock).runLoadOffline()
+
+        let timestamp = try XCTUnwrap(receiveTimestamps(mock.allActivityRequests).first)
+        XCTAssertGreaterThanOrEqual(timestamp, sendStart)
+        XCTAssertLessThanOrEqual(timestamp, Date())
+    }
+
+    // MARK: - Foreground
+
+    private func drainMainQueue() async {
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            DispatchQueue.main.async { cont.resume() }
+        }
+    }
+
+    func testWillEnterForegroundNotification_flushesQueue() async throws {
+        let client = MockMobileIngestClient()
+        Dito.testIdentifyTrackIngestClient = client
+        Dito.invalidateRetryCacheForTests()
+        Dito.setReachabilityConnectionOverrideForTests(.wifi)
+
+        // configure() runs on every receive; called twice, the observer must still be registered.
+        Dito.shared.configure()
+        Dito.shared.configure()
+        await drainMainQueue()
+        // Only the foreground observer may flush here, not a reachability event.
+        NotificationCenter.default.removeObserver(Dito.shared, name: .reachabilityChanged, object: nil)
+
+        savePostIdentify(userId: "uid-queue-ts-foreground")
+        saveTrack(DitoEvent(action: "foreground_evt"))
+        await waitUntil { self.queueCount() == 1 }
+
+        await MainActor.run {
+            NotificationCenter.default.post(name: UIApplication.willEnterForegroundNotification, object: nil)
+        }
+
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertEqual(sentEvents(client.allActivityRequests), ["foreground_evt"])
+    }
+
+    func testWillEnterForeground_offline_keepsQueueWithoutSpendingRetry() async throws {
+        let client = MockMobileIngestClient()
+        Dito.testIdentifyTrackIngestClient = client
+        Dito.invalidateRetryCacheForTests()
+        Dito.setReachabilityConnectionOverrideForTests(.unavailable)
+
+        savePostIdentify(userId: "uid-queue-ts-foreground-offline")
+        saveTrack(DitoEvent(action: "foreground_offline_evt"))
+        await waitUntil { self.queueCount() == 1 }
+
+        await MainActor.run {
+            Dito.shared.applicationWillEnterForeground(
+                Notification(name: UIApplication.willEnterForegroundNotification)
+            )
+        }
+        try await Task.sleep(nanoseconds: 500_000_000)
+
+        XCTAssertEqual(client.activityCallCount, 0)
+        XCTAssertEqual(DitoTrackDataManager().fetchOfflinePersistedTracks().first?.retry, 1)
     }
 
     // MARK: - Reachability
