@@ -17,12 +17,12 @@ Com o Dito SDK React Native Plugin você pode:
 
 | Requisito        | Versão Mínima |
 | ---------------- | ------------- |
-| React Native     | 0.72.0+       |
+| React Native     | 0.72.0+ (Android: 0.76+) |
 | React            | 18.0.0+       |
 | TypeScript       | 5.0+          |
 | Node.js          | 16+           |
 | iOS              | 16.0+         |
-| Android API      | 25+           |
+| Android API      | 26+           |
 
 ## 📦 Instalação
 
@@ -68,7 +68,21 @@ O SDK iOS será instalado automaticamente do monorepo. Para mais detalhes, consu
 
 #### Android
 
-Siga as instruções de configuração em [Android README](../android/README.md).
+O plugin depende do artefato `br.com.dito:ditosdk` publicado no Maven Central, com versão fixada; o autolinking resolve tudo, sem passo extra no Gradle. Mínimo real no Android:
+
+- React Native 0.76+ (a SDK nativa é compilada com Kotlin 2.0 e compileSdk 35; versões anteriores do RN não compilam com ela)
+- Kotlin 2.0.21+ no app: a SDK traz `kotlin-stdlib` 2.1, que o Kotlin 1.9 não lê. O template do RN 0.77+ já vem assim; no RN 0.76, em `android/build.gradle`, use `kotlinVersion = "2.0.21"` e `classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")` (sem versão, o plugin fica no 1.9 que o RN 0.76 traz)
+- `minSdkVersion = 26` em `android/build.gradle` do app (o template do RN 0.76 vem com 24)
+
+Para configurar credenciais e push, siga o [Android README](../android/README.md).
+
+##### Testar com a SDK Android local (antes de um release)
+
+1. `cd android && VERSION_NAME=3.8.1-local ./gradlew :dito-sdk:publishReleasePublicationToMavenLocal`
+2. `touch react-native/android/.use_local_dito_android_sdk` (no pacote que o app usa; se instalou pelo npm, em `node_modules/@ditointernet/dito-sdk/android/`)
+3. `export DITO_ANDROID_SDK_VERSION=3.8.1-local` antes de compilar o app
+
+Com o marcador, `br.com.dito` só é resolvido do `mavenLocal()`; use uma versão que não exista no Maven Central para não confundir artefatos. Sem o marcador, a SDK vem de google()/mavenCentral(). O default de `DITO_ANDROID_SDK_VERSION` tem de ser a versão de `android/dito-sdk/build.gradle.kts` (`scripts/check-version-pins.sh` reprova o contrário).
 
 ### 2. Inicialize o SDK
 
@@ -645,7 +659,7 @@ Se você estiver enfrentando problemas de performance, verifique:
 ### Problemas de Build
 
 **Android:**
-- Certifique-se de que o `minSdkVersion` é pelo menos 24
+- Certifique-se de que o `minSdkVersion` é pelo menos 26
 - Verifique se todas as dependências estão sincronizadas
 
 **iOS:**

@@ -9,6 +9,7 @@
     "android",
     "!android/build",
     "!android/.gradle",
+    "!android/.use_local_dito_android_sdk",
     "ios",
     "!ios/build",
     "CHANGELOG.md"

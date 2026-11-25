@@ -236,6 +236,7 @@ send_test_notification
 flutter/sample_application/ios/Runner/GoogleService-Info.plist
 flutter/ios/.use_local_dito_ios_sdk
 flutter/android/.use_local_dito_android_sdk
+react-native/android/.use_local_dito_android_sdk
 # Gerado por ios/generate-dito-xcconfig.sh. Carrega a credencial que o Info.plist
 # versionado referencia como $(DITO_APP_KEY) — o valor nunca entra no repositório.
 flutter/sample_application/ios/Flutter/Dito.xcconfig
