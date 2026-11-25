@@ -67,16 +67,22 @@ check_ios_pin react-native/ios/DitoSdkModule.podspec "React Native"
 
 # Android: o pin do Gradle é exato, então não há folga — os dois números têm de ser iguais.
 android_version="$(sed -nE 's/^version[[:space:]]*=.*\??:?[[:space:]]*"([^"]+)".*/\1/p' android/dito-sdk/build.gradle.kts | head -n 1)"
-android_pin="$(sed -nE 's/.*DITO_ANDROID_SDK_VERSION.*\?:[[:space:]]*"([^"]+)".*/\1/p' flutter/android/build.gradle | head -n 1)"
-
 [ -n "$android_version" ] || fail "não achei version em android/dito-sdk/build.gradle.kts"
-[ -n "$android_pin" ] || fail "não achei o default de DITO_ANDROID_SDK_VERSION em flutter/android/build.gradle"
 
-if [ "$android_version" != "$android_pin" ]; then
-  fail "flutter/android/build.gradle fixa br.com.dito:ditosdk:$android_pin, e o repositório está em $android_version"
-fi
+check_android_pin() {
+  local gradle="$1" plugin="$2" pin
+  pin="$(sed -nE 's/.*DITO_ANDROID_SDK_VERSION.*\?:[[:space:]]*"([^"]+)".*/\1/p' "$gradle" | head -n 1)"
+  [ -n "$pin" ] || fail "não achei o default de DITO_ANDROID_SDK_VERSION em $gradle"
 
-echo "✅ br.com.dito:ditosdk $android_pin é a versão do repositório"
+  if [ "$android_version" != "$pin" ]; then
+    fail "$gradle fixa br.com.dito:ditosdk:$pin, e o repositório está em $android_version"
+  fi
+
+  echo "✅ br.com.dito:ditosdk $pin fixado pelo plugin $plugin é a versão do repositório"
+}
+
+check_android_pin flutter/android/build.gradle Flutter
+check_android_pin react-native/android/build.gradle "React Native"
 
 # Todo arquivo que bump-version.sh escreve tem de estar no `assets` do config de release,
 # e todo `assets` tem de existir em disco. `@semantic-release/git` ignora asset inexistente
