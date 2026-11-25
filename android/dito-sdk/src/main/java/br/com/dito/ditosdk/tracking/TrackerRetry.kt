@@ -94,7 +94,7 @@ internal class TrackerRetry(
     private fun checkNotificationRead() {
         scope.launch {
             val userId = tracker.awaitId() ?: run {
-                Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+                Log.d("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
                 return@launch
             }
             val notifications = trackerOffline.getAllNotificationRead() ?: return@launch

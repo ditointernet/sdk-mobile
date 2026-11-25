@@ -32,6 +32,7 @@ internal class Tracker(
     @Volatile
     var id: String? = null
     private var trackerRetry: TrackerRetry? = null
+    private var connectivityTrigger: ConnectivityRetryTrigger? = null
 
     // Declarados antes de identifyLoad: o load pode rodar em outra thread ainda durante o init.
     private val idLock = Any()
@@ -54,7 +55,12 @@ internal class Tracker(
         this.trackerRetry = retry
     }
 
+    fun setConnectivityTrigger(trigger: ConnectivityRetryTrigger) {
+        this.connectivityTrigger = trigger
+    }
+
     fun close() {
+        connectivityTrigger?.close()
         trackerRetry?.close()
         scope.cancel()
     }

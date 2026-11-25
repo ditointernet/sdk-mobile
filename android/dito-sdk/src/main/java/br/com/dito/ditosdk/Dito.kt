@@ -12,6 +12,7 @@ import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClient
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import br.com.dito.ditosdk.tracking.AnonymousState
+import br.com.dito.ditosdk.tracking.ConnectivityRetryTrigger
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
@@ -202,6 +203,10 @@ object Dito {
         val trackerRetry = TrackerRetry(tracker, trackerOffline, client, mapper, options?.retry ?: 5)
         tracker.setTrackerRetry(trackerRetry)
         trackerRetry.uploadEvents()
+        // applicationContext: o callback fica preso no ConnectivityManager até o close e não pode segurar uma Activity.
+        val connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEvents)
+        tracker.setConnectivityTrigger(connectivityTrigger)
+        connectivityTrigger.start()
     }
 
     /**
