@@ -281,9 +281,7 @@ public class Dito {
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
     // Dump do payload no processo do app, par da linha `source:"nse"` que a extensão emite. Fica
-    // aqui, na entrada pública, e não no caminho legado `DitoNotification.notificationRead`: era ele
-    // o único a dumpar, e ninguém que usa a API atual passa por lá — o diagnóstico ficava cego
-    // exatamente do lado do app.
+    // aqui, na entrada pública, para cobrir todo app que usa a API atual.
     DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
     let received = createNotificationReceived(from: userInfo)
     sendNotificationReceivedActivities(received, token: token, completion: completion)

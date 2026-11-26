@@ -178,22 +178,6 @@ class DitoNotification {
         }
     }
 
-    func notificationRead(with userInfo: [AnyHashable: Any]) {
-        DispatchQueue.global(qos: .background).async {
-            let notificationData = DitoDataNotification(from: userInfo)
-            let notificationRequest = self.makeNotificationRequest(data: notificationData)
-
-            #if DEBUG
-            DitoLogger.information("🔔 [NOTIFICATION RECEIVED] id=\(notificationData.notification)")
-            #endif
-            // Full payload dump, behind DitoPushDebugLog's flag. The extension
-            // emits the same line from its own process with source="nse".
-            DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
-
-            self.notificationOffline.notificationRead(notificationRequest)
-        }
-    }
-
     /// - Parameter data: extra custom data for the click event. For an action
     ///   button tap it carries `action_id` / `action_label` (D-03).
     func notificationClick(

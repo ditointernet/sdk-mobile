@@ -503,9 +503,8 @@ final class DitoRichPushTests: XCTestCase {
         XCTAssertFalse(line.contains("\n"))
     }
 
-    /// O dump do lado do app só era chamado a partir da API legada
-    /// `DitoNotification.notificationRead`. Quem usa `Dito.notificationReceived` — o caminho
-    /// recomendado — não passava por lá, e a linha `source:"app"` nunca saía.
+    /// Quem usa `Dito.notificationReceived` — o caminho recomendado — precisa emitir a linha
+    /// `source:"app"` do dump.
     func test_notificationReceived_emiteODumpDoLadoDoApp() {
         // Cliente mockado de propósito: sem ele a entrega falha de verdade e fica pendente na fila
         // offline, contaminando os testes de batch que rodam depois.
