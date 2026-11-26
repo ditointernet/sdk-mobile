@@ -84,4 +84,21 @@ class DitoNotificationActionReceiverTest {
             )
         }
     }
+
+    @Test
+    fun `leva log id e nome da notificacao no mapa do clique`() {
+        val intent = clickIntent("case3-notification", reference = null).apply {
+            putExtra(DitoNotificationActionReceiver.EXTRA_LOG_ID, "log-1")
+            putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, "Campanha")
+        }
+
+        receiver.onReceive(context, intent)
+
+        verify {
+            Dito.notificationClick(
+                match { it["log_id"] == "log-1" && it["notification_name"] == "Campanha" },
+                any(),
+            )
+        }
+    }
 }

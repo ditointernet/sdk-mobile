@@ -14,6 +14,8 @@ import com.google.protobuf.Timestamp
 import java.util.UUID
 import mobileingest.v1.Api
 
+private const val PUSH_CHANNEL = "mobile"
+
 internal class ActivityMapper(private val context: Context) {
 
     private val gson = Gson()
@@ -119,13 +121,11 @@ internal class ActivityMapper(private val context: Context) {
         identifier: String,
         activityId: String = UUID.randomUUID().toString(),
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
     ): Api.Activity {
-        val ni = Api.NotificationInfo.newBuilder()
-            .setNotificationId(notificationId)
-            .setIdentifier(identifier)
-            .build()
         val clickBuilder = Api.Activity.TrackPushClickActivity.newBuilder()
-            .setNotification(ni)
+            .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
         if (data.isNotEmpty()) {
             val customData = CustomData().apply { data.forEach { (key, value) -> add(key, value) } }
             clickBuilder.putAllData(customDataToProto(customData))
@@ -138,6 +138,37 @@ internal class ActivityMapper(private val context: Context) {
             .setTimestamp(nowTimestamp())
             .build()
     }
+
+    fun mapPushReceipt(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String,
+        activityId: String = UUID.randomUUID().toString(),
+    ): Api.Activity {
+        val receipt = Api.Activity.TrackPushReceiptActivity.newBuilder()
+            .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
+            .build()
+        return Api.Activity.newBuilder()
+            .setId(activityId)
+            .setType(Api.ActivityType.ACTIVITY_TRACK)
+            .setTrackPushReceipt(receipt)
+            .setTimestamp(nowTimestamp())
+            .build()
+    }
+
+    private fun notificationInfo(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String,
+    ): Api.NotificationInfo = Api.NotificationInfo.newBuilder()
+        .setNotificationId(notificationId)
+        .setDispatchId(logId)
+        .setName(notificationName)
+        .setIdentifier(identifier)
+        .setChannel(PUSH_CHANNEL)
+        .build()
 
     fun buildRequest(userId: String, activities: List<Api.Activity>, token: String?): Api.Request {
         val device = buildDeviceInfo(token)

@@ -35,6 +35,8 @@ class DitoNotificationActionReceiver : BroadcastReceiver() {
 
         /** Custom data da campanha, ainda como string JSON, repassada para os listeners. */
         const val EXTRA_CUSTOM_DATA = "custom_data"
+        internal const val EXTRA_LOG_ID = "log_id"
+        internal const val EXTRA_NOTIFICATION_NAME = "notification_name"
 
         /** Id da notificação no NotificationManager, usado para fechá-la ao tocar em um botão. */
         internal const val EXTRA_SYSTEM_NOTIFICATION_ID =
@@ -55,6 +57,8 @@ class DitoNotificationActionReceiver : BroadcastReceiver() {
         val userId = intent.getStringExtra(EXTRA_USER_ID) ?: ""
         val link = intent.getStringExtra(EXTRA_LINK) ?: ""
         val customDataJson = intent.getStringExtra(EXTRA_CUSTOM_DATA) ?: ""
+        val logId = intent.getStringExtra(EXTRA_LOG_ID) ?: ""
+        val notificationName = intent.getStringExtra(EXTRA_NOTIFICATION_NAME) ?: ""
 
         Log.d(TAG, "Notification action clicked: id=$actionId, notification=$notificationId")
 
@@ -78,6 +82,8 @@ class DitoNotificationActionReceiver : BroadcastReceiver() {
                     EXTRA_ACTION_ID to actionId,
                     EXTRA_ACTION_LABEL to actionLabel,
                     EXTRA_CUSTOM_DATA to customDataJson,
+                    EXTRA_LOG_ID to logId,
+                    EXTRA_NOTIFICATION_NAME to notificationName,
                 ),
                 Dito.notificationClickListener ?: Dito.options?.notificationClickListener,
             )

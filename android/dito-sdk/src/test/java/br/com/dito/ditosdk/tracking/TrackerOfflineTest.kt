@@ -212,6 +212,15 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `notificationRead should round-trip log id and notification name`() = runBlocking {
+        trackerOffline.notificationRead("act1", "notif123", "ident123", emptyMap(), "log123", "Campanha")
+
+        val stored = trackerOffline.getAllNotificationRead()?.first()
+        assertThat(stored?.logId).isEqualTo("log123")
+        assertThat(stored?.notificationName).isEqualTo("Campanha")
+    }
+
+    @Test
     fun `getAllNotificationRead should return empty when no notifications`() = runBlocking {
         val notifications = trackerOffline.getAllNotificationRead()
 

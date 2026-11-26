@@ -14,6 +14,7 @@ import br.com.dito.ditosdk.offline.IdentifyOffline
 import br.com.dito.ditosdk.offline.NotificationOffline
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_3_4
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_4_5
+import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_5_6
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -34,7 +35,7 @@ internal class TrackerOffline(
             Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
         } else {
             Room.databaseBuilder(context, DitoSqlHelper::class.java, "dito-offline")
-                .addMigrations(OFFLINE_MIGRATION_3_4, OFFLINE_MIGRATION_4_5)
+                .addMigrations(OFFLINE_MIGRATION_3_4, OFFLINE_MIGRATION_4_5, OFFLINE_MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
         }
 
@@ -162,6 +163,8 @@ internal class TrackerOffline(
                     it.identifier,
                     it.retry,
                     clickDataFromJson(it.dataJson),
+                    it.logId.orEmpty(),
+                    it.notificationName.orEmpty(),
                 )
             }
         } catch (e: Exception) {
@@ -192,6 +195,8 @@ internal class TrackerOffline(
         notificationId: String,
         identifier: String,
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
     ) {
         try {
             database.notificationDao().insert(
@@ -201,6 +206,8 @@ internal class TrackerOffline(
                     identifier = identifier,
                     retry = 0,
                     dataJson = data.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                    logId = logId,
+                    notificationName = notificationName,
                 ),
             )
         } catch (e: Exception) {

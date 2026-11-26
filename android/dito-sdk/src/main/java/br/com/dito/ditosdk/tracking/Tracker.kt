@@ -20,6 +20,8 @@ import mobileingest.v1.Api
 import java.security.MessageDigest
 import java.util.UUID
 
+internal const val PUSH_RECEIVE_EVENT = "receive-android-notification"
+
 internal class Tracker(
     private val trackerOffline: TrackerOffline,
     private val client: MobileIngestClientInterface,
@@ -256,8 +258,13 @@ internal class Tracker(
     fun notificationReceived(data: Dito.NotificationReadData) {
         scope.launch {
             if (data.userId.isEmpty()) return@launch
+            // O ingest descarta em silêncio um Receipt sem notification_id.
+            if (data.notificationId.isEmpty()) {
+                Log.w("Tracker", "Entrega sem notification id descartada.")
+                return@launch
+            }
             val identifyActivity = mapper.mapIdentify(Identify(data.userId))
-            val trackEvent = Event("receive-android-notification").apply {
+            val trackEvent = Event(PUSH_RECEIVE_EVENT).apply {
                 this.data = CustomData().apply {
                     params["dispatch_id"] = data.logId
                     params["notification_id"] = data.notificationId
@@ -265,8 +272,8 @@ internal class Tracker(
                 }
             }
             val activityId = UUID.randomUUID().toString()
-            val trackActivity = mapper.mapTrack(trackEvent, activityId)
-            val request = mapper.buildRequest(data.userId, listOf(identifyActivity, trackActivity), null)
+            val receipt = mapper.mapPushReceipt(data.notificationId, data.logId, data.notificationName, data.userId, activityId)
+            val request = mapper.buildRequest(data.userId, listOf(identifyActivity, receipt), null)
             try {
                 client.activity(request)
             } catch (e: Exception) {
@@ -286,11 +293,14 @@ internal class Tracker(
         }
     }
 
+    private fun isAnonymousUser(userId: String): Boolean =
+        anonymousUserId()?.equals(userId, ignoreCase = true) == true
+
     // Mesmo user_id que o backend deriva do device_id para o aparelho anônimo.
-    private fun isAnonymousUser(userId: String): Boolean {
-        if (mapper.deviceId.isEmpty()) return false
+    internal fun anonymousUserId(): String? {
+        if (mapper.deviceId.isEmpty()) return null
         val digest = MessageDigest.getInstance("SHA-1").digest(mapper.deviceId.trim().lowercase().toByteArray())
-        return userId.equals(digest.joinToString("") { "%02x".format(it) }, ignoreCase = true)
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     /**
@@ -303,17 +313,19 @@ internal class Tracker(
         notificationReference: String,
         userId: String,
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
     ) {
         scope.launch {
             if (userId.isEmpty() || notificationId.isEmpty()) return@launch
             val activityId = UUID.randomUUID().toString()
-            val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data)
+            val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data, logId, notificationName)
             val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
                 client.activity(request)
             } catch (e: Exception) {
                 Log.e("Tracker", "Falha ao enviar o clique da notificação $notificationId; enfileirado para retry.", e)
-                trackerOffline.notificationRead(activityId, notificationId, userId, data)
+                trackerOffline.notificationRead(activityId, notificationId, userId, data, logId, notificationName)
             }
         }
     }

@@ -345,6 +345,8 @@ object Dito {
             data.reference,
             data.userId,
             DitoNotificationHandler.extractClickData(userInfo),
+            data.logId,
+            data.notificationName,
         )
         markInboxAsRead(data.notificationId)
     }

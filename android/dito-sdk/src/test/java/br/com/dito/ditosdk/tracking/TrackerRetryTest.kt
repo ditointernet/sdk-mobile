@@ -386,6 +386,72 @@ class TrackerRetryTest {
         assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
     }
 
+    @Test
+    fun `checkNotificationRead should resend log id and name with the click`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllNotificationRead() } returns
+            listOf(NotificationReadOff(1, "a1", "n1", "i1", 0, logId = "log1", notificationName = "Campanha"))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val info = requests.single().activitiesList.single().trackPushClick.notification
+        assertThat(info.dispatchId).isEqualTo("log1")
+        assertThat(info.name).isEqualTo("Campanha")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `queued delivery should be resent as a push receipt`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(receiveOff(anonymous = false))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single()
+        assertThat(request.userId).isEqualTo("user123")
+        val activity = request.activitiesList.single()
+        assertThat(activity.id).isEqualTo("a1")
+        assertThat(activity.hasTrack()).isFalse()
+        val info = activity.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("n1")
+        assertThat(info.dispatchId).isEqualTo("log1")
+        assertThat(info.name).isEqualTo("Campanha")
+        assertThat(info.identifier).isEqualTo("user123")
+        assertThat(info.channel).isEqualTo("mobile")
+        verify { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `anonymous queued delivery should be resent as a push receipt of the device user`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(receiveOff(anonymous = true))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        val info = request.activitiesList.single { it.hasTrackPushReceipt() }.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("n1")
+        assertThat(info.identifier).isEqualTo(sha1Hex("device-1"))
+    }
+
+    private fun receiveOff(anonymous: Boolean) = EventOff(
+        1,
+        "a1",
+        "receive-android-notification",
+        null,
+        """{"dispatch_id":"log1","notification_id":"n1","notification_name":"Campanha"}""",
+        "t",
+        0,
+        anonymous,
+    )
+
+    private fun sha1Hex(value: String): String =
+        java.security.MessageDigest.getInstance("SHA-1").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
+
     private fun captureRequests(androidId: String): MutableList<Api.Request> {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, androidId)
         every { trackerOffline.getIdentify() } returns null

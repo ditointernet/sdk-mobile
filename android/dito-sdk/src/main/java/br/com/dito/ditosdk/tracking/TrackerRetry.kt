@@ -81,7 +81,18 @@ internal class TrackerRetry(
                 eventOff.dataJson,
                 eventOff.timestamp,
             )
-            mapper.mapTrack(event, eventOff.activityId)
+            if (event.action == PUSH_RECEIVE_EVENT) {
+                val params = event.data?.params.orEmpty()
+                mapper.mapPushReceipt(
+                    params["notification_id"] as? String ?: "",
+                    params["dispatch_id"] as? String ?: "",
+                    params["notification_name"] as? String ?: "",
+                    userId ?: tracker.anonymousUserId().orEmpty(),
+                    eventOff.activityId,
+                )
+            } else {
+                mapper.mapTrack(event, eventOff.activityId)
+            }
         }
         try {
             tracker.send(userId, activities, null)
@@ -116,6 +127,8 @@ internal class TrackerRetry(
                 notif.identifier,
                 notif.activityId,
                 notif.data,
+                notif.logId,
+                notif.notificationName,
             )
         }
         try {

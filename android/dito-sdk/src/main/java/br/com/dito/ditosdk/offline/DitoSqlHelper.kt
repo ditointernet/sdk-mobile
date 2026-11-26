@@ -85,6 +85,8 @@ data class NotificationOffline(
      * silêncio. Nulo quando o clique foi no corpo da notificação.
      */
     val dataJson: String? = null,
+    val logId: String? = null,
+    val notificationName: String? = null,
 )
 
 @Dao
@@ -120,9 +122,16 @@ val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val OFFLINE_MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE notification ADD COLUMN logId TEXT")
+        db.execSQL("ALTER TABLE notification ADD COLUMN notificationName TEXT")
+    }
+}
+
 @Database(
     entities = [IdentifyOffline::class, EventOffline::class, NotificationOffline::class],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 abstract class DitoSqlHelper : RoomDatabase() {

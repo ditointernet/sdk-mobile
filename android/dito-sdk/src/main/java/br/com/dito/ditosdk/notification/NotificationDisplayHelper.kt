@@ -45,6 +45,8 @@ object NotificationDisplayHelper {
         imageUrl: String? = null,
         actions: List<DitoNotificationAction> = emptyList(),
         customDataJson: String? = null,
+        logId: String? = null,
+        notificationName: String? = null,
     ) {
         Log.d(TAG, "showNotification called - Title: $title, Message: $message")
 
@@ -56,6 +58,8 @@ object NotificationDisplayHelper {
             putExtra(Dito.DITO_DEEP_LINK, deepLink)
             putExtra(Dito.DITO_USER_ID, userId)
             putExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA, customDataJson)
+            putExtra(DitoNotificationActionReceiver.EXTRA_LOG_ID, logId)
+            putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, notificationName)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
         }
 
@@ -133,6 +137,8 @@ object NotificationDisplayHelper {
             userId = userId,
             customDataJson = customDataJson,
             systemNotificationId = notificationIdInt,
+            logId = logId,
+            notificationName = notificationName,
         )
 
         Log.d(TAG, "=== Notification Details ===")
@@ -174,6 +180,8 @@ object NotificationDisplayHelper {
         userId: String?,
         customDataJson: String?,
         systemNotificationId: Int,
+        logId: String?,
+        notificationName: String?,
     ) {
         if (actions.isEmpty()) return
 
@@ -186,6 +194,8 @@ object NotificationDisplayHelper {
                 putExtra(DitoNotificationActionReceiver.EXTRA_ACTION_ID, notificationAction.id)
                 putExtra(DitoNotificationActionReceiver.EXTRA_ACTION_LABEL, notificationAction.label)
                 putExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA, customDataJson)
+                putExtra(DitoNotificationActionReceiver.EXTRA_LOG_ID, logId)
+                putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, notificationName)
                 putExtra(
                     DitoNotificationActionReceiver.EXTRA_SYSTEM_NOTIFICATION_ID,
                     systemNotificationId,

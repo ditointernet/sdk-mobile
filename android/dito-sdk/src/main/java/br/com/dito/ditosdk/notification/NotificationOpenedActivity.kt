@@ -113,6 +113,8 @@ class NotificationOpenedActivity : AppCompatActivity() {
             putExtra(DitoNotificationActionReceiver.EXTRA_USER_ID, click.userId)
             putExtra(DitoNotificationActionReceiver.EXTRA_LINK, click.deepLink)
             putExtra(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA, click.customDataJson)
+            putExtra(DitoNotificationActionReceiver.EXTRA_LOG_ID, click.logId)
+            putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, click.notificationName)
         }
         sendBroadcast(broadcast)
     }

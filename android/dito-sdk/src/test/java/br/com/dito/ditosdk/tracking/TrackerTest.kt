@@ -690,6 +690,59 @@ class TrackerTest {
         verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
     }
 
+    @Test
+    fun `notificationReceived should send a push receipt with the notification info`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        val request = requests.single()
+        assertThat(request.userId).isEqualTo("user123")
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        assertThat(request.activitiesList.none { it.hasTrack() }).isTrue()
+        val info = request.activitiesList.single { it.hasTrackPushReceipt() }.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("notif123")
+        assertThat(info.dispatchId).isEqualTo("log123")
+        assertThat(info.name).isEqualTo("campanha")
+        assertThat(info.identifier).isEqualTo("user123")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `notificationReceived without notification id should not send nor queue`() = testScope.runTest {
+        tracker.id = "user123"
+
+        tracker.notificationReceived(notificationReadData().copy(notificationId = ""))
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+    }
+
+    @Test
+    fun `notificationClick should send dispatch id, name and channel`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.notificationClick("notif123", "ref123", "user123", logId = "log123", notificationName = "campanha")
+
+        advanceUntilIdle()
+        val info = requests.single().activitiesList.single().trackPushClick.notification
+        assertThat(info.dispatchId).isEqualTo("log123")
+        assertThat(info.name).isEqualTo("campanha")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `notificationClick failure should queue log id and name`() = testScope.runTest {
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationClick("notif123", "ref123", "user123", logId = "log123", notificationName = "campanha")
+
+        advanceUntilIdle()
+        verify { trackerOffline.notificationRead(any(), "notif123", "user123", emptyMap(), "log123", "campanha") }
+    }
+
     private fun setAndroidId(value: String) {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)
     }
