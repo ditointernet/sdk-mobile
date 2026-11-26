@@ -368,6 +368,13 @@ public class Dito {
       return
     }
 
+    // O ingest descarta em silêncio um Receipt sem notification_id.
+    guard !received.notification.isEmpty else {
+      DitoLogger.warning("receive-ios-notification não enviado: notification ausente no payload")
+      completion?(.success(()))
+      return
+    }
+
     // Reivindicação, não consulta: a marcação só acontece depois do `await` da rede, e em primeiro
     // plano dois callbacks disparam este caminho para o mesmo push.
     guard DitoNotificationReceiveTracker.claimDelivery(
@@ -425,12 +432,17 @@ public class Dito {
     let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
     #endif
     let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
-    let trackActivity = mapper.mapFromDitoEvent(
-      createNotificationTrackEvent(received, token: token, receivedAt: receivedAt)
+    let receiptActivity = mapper.mapPushReceipt(
+      notificationId: received.notification,
+      logId: received.logId,
+      notificationName: received.notificationName,
+      identifier: received.userId,
+      token: token,
+      receivedAt: receivedAt.formatToISO
     )
     let request = mapper.buildRequest(
       userId: received.userId,
-      activities: [identifyActivity, trackActivity]
+      activities: [identifyActivity, receiptActivity]
     )
 
     do {
@@ -483,23 +495,6 @@ public class Dito {
     DitoNotificationCoreDataManager.shared.markAsRead(id: id)
   }
 
-  static func createNotificationTrackEvent(
-    _ notificationReceived: DitoNotificationReceived,
-    token: String,
-    receivedAt: Date? = nil
-  ) -> DitoEvent {
-    DitoEvent(
-      action: "receive-ios-notification",
-      createdAt: receivedAt,
-      customData: [
-        "token": token,
-        "dispatch_id": notificationReceived.logId,
-        "notification_id": notificationReceived.notification,
-        "notification_name": notificationReceived.notificationName,
-      ]
-    )
-  }
-
   /// Called when a notification is clicked
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
@@ -528,7 +523,9 @@ public class Dito {
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
         identifier: notificationReceived.identifier,
-        data: clickData
+        data: clickData,
+        logId: notificationReceived.logId,
+        notificationName: notificationReceived.notificationName
       )
     }
     if !notificationReceived.notification.isEmpty {

@@ -134,6 +134,60 @@ final class ActivityDispatchTests: XCTestCase {
         }
     }
 
+    func testNotificationClick_sendsDispatchIdNameAndMobileChannel() async throws {
+        let mock = MockMobileIngestClient()
+        let sut = DitoNotification(client: mock)
+        sut.notificationClick(
+            notificationId: "nid-dispatch-2",
+            identifier: "user-dispatch-2",
+            logId: "log-dispatch-2",
+            notificationName: "Campanha 2"
+        )
+        await waitForActivityCalls(mock, count: 1)
+        let a = try XCTUnwrap(mock.lastActivityRequest?.activities.first)
+        guard case .trackPushClick(let click)? = a.activity else {
+            return XCTFail("expected trackPushClick oneof, got \(String(describing: a.activity))")
+        }
+        XCTAssertEqual(click.notification.dispatchID, "log-dispatch-2")
+        XCTAssertEqual(click.notification.name, "Campanha 2")
+        XCTAssertEqual(click.notification.channel, "mobile")
+    }
+
+    func testNotificationClick_withoutLogId_stillSendsMobileChannel() async throws {
+        let mock = MockMobileIngestClient()
+        let sut = DitoNotification(client: mock)
+        sut.notificationClick(notificationId: "nid-dispatch-3", identifier: "user-dispatch-3")
+        await waitForActivityCalls(mock, count: 1)
+        let a = try XCTUnwrap(mock.lastActivityRequest?.activities.first)
+        guard case .trackPushClick(let click)? = a.activity else {
+            return XCTFail("expected trackPushClick oneof, got \(String(describing: a.activity))")
+        }
+        XCTAssertEqual(click.notification.dispatchID, "")
+        XCTAssertEqual(click.notification.name, "")
+        XCTAssertEqual(click.notification.channel, "mobile")
+    }
+
+    func testNotificationClick_ingestFails_queuesLogIdNameAndChannel() async throws {
+        let mock = MockMobileIngestClient()
+        mock.shouldSucceed = false
+        let sut = DitoNotification(client: mock, onSent: {})
+        sut.notificationClick(
+            notificationId: "nid-dispatch-4",
+            identifier: "user-dispatch-4",
+            logId: "log-dispatch-4",
+            notificationName: "Campanha 4"
+        )
+        let deadline = Date().addingTimeInterval(10)
+        while DitoNotificationReadDataManager().fetchAll.isEmpty, Date() < deadline {
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        let row = try XCTUnwrap(DitoNotificationReadDataManager().fetchAll.first)
+        let queued = try XCTUnwrap(row.json?.convertToObject(type: DitoNotificationOpenRequest.self))
+        XCTAssertEqual(queued.data.logId, "log-dispatch-4")
+        XCTAssertEqual(queued.data.notificationName, "Campanha 4")
+        XCTAssertEqual(queued.data.channel, "mobile")
+    }
+
     #if DEBUG
     private func trackAndWait(_ sut: DitoTrack, action: String) async {
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
@@ -320,7 +374,7 @@ final class ActivityDispatchTests: XCTestCase {
     #endif
 
     #if DEBUG
-    func testNotificationReceived_withUserId_sendsIdentifyAndTrackActivities() async throws {
+    func testNotificationReceived_withUserId_sendsIdentifyAndPushReceiptActivities() async throws {
         let mock = MockMobileIngestClient()
         Dito.testNotificationReceivedIngestClient = mock
         addTeardownBlock {
@@ -332,6 +386,7 @@ final class ActivityDispatchTests: XCTestCase {
             "notification": "notif-abc",
             "reference": "ref-abc",
             "log_id": "log-abc",
+            "notification_name": "Campanha ABC",
             "title": "Hello",
             "message": "World",
             "link": "https://example.com",
@@ -344,10 +399,15 @@ final class ActivityDispatchTests: XCTestCase {
         XCTAssertEqual(req.activities[0].type, .activityIdentify)
         XCTAssertEqual(req.activities[1].type, .activityTrack)
         switch req.activities[1].activity {
-        case .track(let track)?:
-            XCTAssertEqual(track.event, "receive-ios-notification")
+        case .trackPushReceipt(let receipt)?:
+            XCTAssertEqual(receipt.notification.notificationID, "notif-abc")
+            XCTAssertEqual(receipt.notification.dispatchID, "log-abc")
+            XCTAssertEqual(receipt.notification.name, "Campanha ABC")
+            XCTAssertEqual(receipt.notification.identifier, uid)
+            XCTAssertEqual(receipt.notification.channel, "mobile")
+            XCTAssertEqual(receipt.data["token"]?.single.stringValue, "fcm-token-test")
         default:
-            XCTFail("expected track for receive-ios-notification, got \(String(describing: req.activities[1].activity))")
+            XCTFail("expected trackPushReceipt, got \(String(describing: req.activities[1].activity))")
         }
     }
     #endif

@@ -199,7 +199,9 @@ class DitoNotification {
     func notificationClick(
         notificationId: String,
         identifier: String,
-        data: [String: String] = [:]
+        data: [String: String] = [:],
+        logId: String = "",
+        notificationName: String = ""
     ) {
         #if DEBUG
         let action = data[DitoRichPushKeys.actionId].map { " action=\($0)" } ?? ""
@@ -212,7 +214,9 @@ class DitoNotification {
             await processNotificationClick(
                 notificationId: notificationId,
                 identifier: identifier,
-                data: data
+                data: data,
+                logId: logId,
+                notificationName: notificationName
             )
         }
     }
@@ -220,7 +224,9 @@ class DitoNotification {
     private func processNotificationClick(
         notificationId: String,
         identifier: String,
-        data: [String: String]
+        data: [String: String],
+        logId: String,
+        notificationName: String
     ) async {
         guard !identifier.isEmpty else {
             DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
@@ -229,7 +235,9 @@ class DitoNotification {
         let activity = mapper.mapNotificationClick(
             notificationId: notificationId,
             identifier: identifier,
-            data: data
+            data: data,
+            logId: logId,
+            notificationName: notificationName
         )
         let request = mapper.buildRequest(userId: identifier, activities: [activity])
         do {
@@ -246,15 +254,15 @@ class DitoNotification {
                 identifier: identifier,
                 reference: "",
                 notification: notificationId,
-                notificationLogId: "",
+                notificationLogId: logId,
                 userId: identifier,
                 deviceType: "",
-                channel: "",
-                notificationName: "",
+                channel: "mobile",
+                notificationName: notificationName,
                 title: "",
                 message: "",
                 link: "",
-                logId: "",
+                logId: logId,
                 customData: customData,
                 actionId: actionId,
                 actionLabel: actionLabel

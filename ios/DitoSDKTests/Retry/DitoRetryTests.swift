@@ -279,6 +279,58 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertNotNil(rows.first?.json)
     }
 
+    func testLoadOffline_postIdentify_pendingClick_resendsLogIdNameAndChannel() async throws {
+        let mock = MockMobileIngestClient()
+        let userId = "uid-retry-click-log"
+        savePostIdentify(userId: userId)
+        let clickJson = try XCTUnwrap(makeClickRequest(notificationId: "notif-click-log", userId: userId).toString)
+        XCTAssertTrue(DitoNotificationReadDataManager().save(with: clickJson, retry: 0))
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        let act = try XCTUnwrap(mock.allActivityRequests.first?.activities.first)
+        guard case .trackPushClick(let pushClick)? = act.activity else {
+            return XCTFail("esperado trackPushClick; activity=\(String(describing: act.activity))")
+        }
+        XCTAssertEqual(pushClick.notification.dispatchID, "log-notif-click-log")
+        XCTAssertEqual(pushClick.notification.name, "campanha-clique")
+        XCTAssertEqual(pushClick.notification.channel, "mobile")
+    }
+
+    #if DEBUG
+    func testLoadOffline_pendingReceive_isResentAsPushReceiptWithArrivalTime() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+        let arrival = Date(timeIntervalSince1970: 1_700_000_000)
+        DitoNotificationOffline().notificationReceive(DitoNotificationReceivePending(
+            userId: "uid-retry-receive",
+            token: "fcm-retry-receive",
+            notification: "notif-retry-receive",
+            logId: "log-retry-receive",
+            notificationName: "Campanha recebida",
+            receivedAt: arrival.formatToISO
+        ))
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        let req = try XCTUnwrap(mock.allActivityRequests.first)
+        XCTAssertEqual(req.userID, "uid-retry-receive")
+        XCTAssertEqual(req.activities.map(\.type), [.activityIdentify, .activityTrack])
+        let act = req.activities[1]
+        guard case .trackPushReceipt(let receipt)? = act.activity else {
+            return XCTFail("esperado trackPushReceipt; activity=\(String(describing: act.activity))")
+        }
+        XCTAssertEqual(receipt.notification.notificationID, "notif-retry-receive")
+        XCTAssertEqual(receipt.notification.dispatchID, "log-retry-receive")
+        XCTAssertEqual(receipt.notification.name, "Campanha recebida")
+        XCTAssertEqual(receipt.notification.identifier, "uid-retry-receive")
+        XCTAssertEqual(receipt.notification.channel, "mobile")
+        XCTAssertEqual(act.timestamp.date, arrival)
+        XCTAssertTrue(DitoNotificationOffline().getNotificationReceive.isEmpty)
+    }
+    #endif
+
     func testLoadOffline_identifyNotSent_firstActivityFails_tracksRemainAndNoFurtherActivityCalls() async throws {
         let mock = MockMobileIngestClient()
         mock.shouldSucceed = false

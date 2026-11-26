@@ -221,20 +221,18 @@ class DitoRetry {
                 continue
             }
 
-            let received = DitoNotificationReceived(with: [
-                "notification": pending.notification,
-                "log_id": pending.logId,
-                "notification_name": pending.notificationName,
-                "user_id": pending.userId,
-            ])
             let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: pending.userId)
-            // Arrival time, not resend time; a row from before receivedAt existed falls back to now.
-            var receiveEvent = Dito.createNotificationTrackEvent(received, token: pending.token)
-            receiveEvent.createdAt = pending.receivedAt
-            let trackActivity = mapper.mapFromDitoEvent(receiveEvent)
+            let receiptActivity = mapper.mapPushReceipt(
+                notificationId: pending.notification,
+                logId: pending.logId,
+                notificationName: pending.notificationName,
+                identifier: pending.userId,
+                token: pending.token,
+                receivedAt: pending.receivedAt
+            )
             let request = mapper.buildRequest(
                 userId: pending.userId,
-                activities: [identifyActivity, trackActivity]
+                activities: [identifyActivity, receiptActivity]
             )
 
             do {

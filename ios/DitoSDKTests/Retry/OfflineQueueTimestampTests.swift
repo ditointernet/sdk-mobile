@@ -225,8 +225,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
 
     private func receiveTimestamps(_ requests: [Mobileingest_V1_Request]) -> [Date] {
         trackActivities(requests).compactMap { activity in
-            guard let oneOf = activity.activity, case .track(let track) = oneOf,
-                  track.event == "receive-ios-notification" else { return nil }
+            guard let oneOf = activity.activity, case .trackPushReceipt = oneOf else { return nil }
             return activity.timestamp.date
         }
     }
