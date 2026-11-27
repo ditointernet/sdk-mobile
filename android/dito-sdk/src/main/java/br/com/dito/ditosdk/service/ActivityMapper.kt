@@ -14,6 +14,9 @@ import com.google.protobuf.Timestamp
 import java.util.UUID
 import mobileingest.v1.Api
 
+internal class DeviceIdUnavailableException :
+    IllegalStateException("device_id indisponível: nenhum request sai para o mobile-ingest sem ele.")
+
 internal class ActivityMapper(private val context: Context) {
 
     private val gson = Gson()
@@ -155,16 +158,26 @@ internal class ActivityMapper(private val context: Context) {
             .build()
     }
 
-    fun buildDeviceInfo(token: String?): Api.DeviceInfo =
-        Api.DeviceInfo.newBuilder()
+    fun buildDeviceInfo(token: String?): Api.DeviceInfo {
+        val id = deviceId
+        if (id.isEmpty()) {
+            throw DeviceIdUnavailableException().also { Log.e("ActivityMapper", it.message, it) }
+        }
+        return Api.DeviceInfo.newBuilder()
             .setOs(Api.DeviceOs.DEVICE_OS_ANDROID)
-            .setDeviceId(deviceId)
+            .setDeviceId(id)
             .setToken(token ?: "")
             .setOsVersion(Build.VERSION.RELEASE ?: "")
             .setDeviceModel(Build.MODEL ?: "")
             .build()
+    }
 
-    val deviceId: String by lazy { DeviceIdProvider.get(context) }
+    @Volatile
+    private var cachedDeviceId: String? = null
+
+    // Vazio não fica em cache: o ANDROID_ID pode aparecer numa leitura seguinte.
+    val deviceId: String
+        get() = cachedDeviceId ?: DeviceIdProvider.get(context).also { if (it.isNotEmpty()) cachedDeviceId = it }
 
     private fun buildAppInfo(): Api.AppInfo {
         val p = context.packageName

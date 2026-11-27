@@ -45,6 +45,7 @@ class TrackerRetryTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
         trackerOffline = mockk(relaxed = true)
         mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
         coEvery { mockClient.activity(any()) } returns Api.Response.getDefaultInstance()
@@ -385,6 +386,38 @@ class TrackerRetryTest {
         verify { trackerOffline.updateIdentify("user123", true) }
         assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
     }
+
+    @Test
+    fun `retry without android id should send nothing nor spend attempts, and send all when it comes back`() =
+        testScope.runTest {
+            val requests = captureRequests("")
+            every { trackerOffline.getIdentify() } returns storedIdentify().copy(send = false)
+            every { trackerOffline.getAllEvents() } returns listOf(
+                EventOff(1, "anon", "x", null, null, "t", 0, anonymous = true),
+                EventOff(2, "owned", "y", null, null, "t", 0),
+                EventOff(3, "old", "z", null, null, "t", 5),
+            )
+            every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(4, "a4", "n1", "i1", 0))
+
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+            verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+            verify(exactly = 0) { trackerOffline.delete(any(), any()) }
+            verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
+
+            Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            assertThat(requests.all { it.device.deviceId == "device-1" }).isTrue()
+            verify { trackerOffline.updateIdentify("user123", true) }
+            verify { trackerOffline.delete(1, "Event") }
+            verify { trackerOffline.delete(2, "Event") }
+            verify { trackerOffline.delete(3, "Event") }
+            verify { trackerOffline.delete(4, "NotificationRead") }
+        }
 
     private fun captureRequests(androidId: String): MutableList<Api.Request> {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, androidId)

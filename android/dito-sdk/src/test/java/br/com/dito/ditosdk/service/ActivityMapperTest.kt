@@ -2,9 +2,11 @@ package br.com.dito.ditosdk.service
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.DitoNotificationHandler
 import com.google.common.truth.Truth.assertThat
+import org.junit.Assert.assertThrows
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,6 +22,42 @@ class ActivityMapperTest {
     @Before
     fun setup() {
         mapper = ActivityMapper(ApplicationProvider.getApplicationContext<Context>())
+    }
+
+    @Test
+    fun `empty device id should not be cached and is read again on the next call`() {
+        setAndroidId("")
+        assertThat(mapper.deviceId).isEmpty()
+
+        setAndroidId("device-1")
+        assertThat(mapper.deviceId).isEqualTo("device-1")
+
+        setAndroidId("device-2")
+        assertThat(mapper.deviceId).isEqualTo("device-1")
+    }
+
+    @Test
+    fun `buildRequest should refuse to build a request without device id`() {
+        setAndroidId("")
+
+        assertThrows(DeviceIdUnavailableException::class.java) {
+            mapper.buildRequest("user1", emptyList(), null)
+        }
+    }
+
+    @Test
+    fun `buildRequest should carry the device id`() {
+        setAndroidId("device-1")
+
+        assertThat(mapper.buildRequest("", emptyList(), null).device.deviceId).isEqualTo("device-1")
+    }
+
+    private fun setAndroidId(value: String) {
+        Settings.Secure.putString(
+            ApplicationProvider.getApplicationContext<Context>().contentResolver,
+            Settings.Secure.ANDROID_ID,
+            value,
+        )
     }
 
     @Test
