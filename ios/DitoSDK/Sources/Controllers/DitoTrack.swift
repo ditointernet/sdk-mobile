@@ -75,6 +75,7 @@ class DitoTrack {
                 }
                 DitoLogger.information("✅ [TRACK] Sucesso")
                 completion?(.success(.sent))
+                DitoRetry.endFailureBackoff()
                 onSent()
             } catch {
                 trackOffline.track(event: makeEventRequest(data), anonymous: userId == nil, userId: userId)

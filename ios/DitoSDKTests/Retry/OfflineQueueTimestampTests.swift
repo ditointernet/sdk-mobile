@@ -216,7 +216,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
     func testFailedPass_skippedPassesRunOnceWhenBackoffEnds() async throws {
         let scheduled = captureScheduledPasses()
         DitoRetry.isOnline = { true }
-        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000) }
+        DitoRetry.now = { 1_000_000 }
         savePostIdentify(userId: "uid-queue-ts-backoff")
         saveTrack(DitoEvent(action: "backoff_evt"))
         await waitUntil { self.queueCount() == 1 }
@@ -228,7 +228,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
         try await Task.sleep(nanoseconds: 200_000_000)
 
         let mock = MockMobileIngestClient()
-        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000 + DitoRetry.failureBackoff - 1) }
+        DitoRetry.now = { 1_000_000 + DitoRetry.failureBackoff - 1 }
         DitoRetry(client: mock).loadOffline()
         DitoRetry(client: mock).loadOffline()
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -237,7 +237,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
         XCTAssertEqual(scheduled.all.count, 1, "adiamentos não se empilham")
         XCTAssertEqual(try XCTUnwrap(scheduled.all.first).delay, 1, accuracy: 0.001)
 
-        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000 + DitoRetry.failureBackoff + 1) }
+        DitoRetry.now = { 1_000_000 + DitoRetry.failureBackoff + 1 }
         try XCTUnwrap(scheduled.all.first).work.perform()
         await waitUntil { self.queueCount() == 0 }
         XCTAssertEqual(sentEvents(mock.allActivityRequests), ["backoff_evt"])
@@ -250,7 +250,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
         mock: MockMobileIngestClient
     ) async throws -> ScheduledPasses {
         let scheduled = captureScheduledPasses()
-        DitoRetry.now = { Date(timeIntervalSince1970: 4_000_000) }
+        DitoRetry.now = { 4_000_000 }
         savePostIdentify(userId: userId)
         saveTrack(DitoEvent(action: action))
         await waitUntil { self.queueCount() == 1 }
@@ -272,7 +272,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
             mock: mock
         )
         DitoRetry.isOnline = { false }
-        DitoRetry.now = { Date(timeIntervalSince1970: 4_000_000 + DitoRetry.failureBackoff + 1) }
+        DitoRetry.now = { 4_000_000 + DitoRetry.failureBackoff + 1 }
 
         try XCTUnwrap(scheduled.all.first).work.perform()
         try await Task.sleep(nanoseconds: 300_000_000)
@@ -320,9 +320,119 @@ final class OfflineQueueTimestampTests: XCTestCase {
         XCTAssertEqual(sentEvents(mock.allActivityRequests), ["clears_backoff_evt", "after_clear_evt"])
     }
 
+    func testPassWithoutFailure_cancelsPostponedPass() async throws {
+        let mock = MockMobileIngestClient()
+        let scheduled = try await failPassAndPostponeNext(
+            userId: "uid-queue-ts-cancels-postponed",
+            action: "cancels_postponed_evt",
+            mock: mock
+        )
+
+        DitoRetry(client: mock).loadOffline(ignoringBackoff: true)
+        await waitUntil { self.queueCount() == 0 }
+        await waitUntil { scheduled.all.first?.work.isCancelled == true }
+    }
+
+    /// A failed pass leaves the backoff on and a pass postponed; `send` makes a live send through `mock`
+    /// whose success triggers `retry`.
+    private func assertLiveSuccessEndsBackoff(
+        userId: String,
+        action: String,
+        send: (MockMobileIngestClient, DitoRetry) async -> Void
+    ) async throws {
+        let mock = MockMobileIngestClient()
+        let scheduled = try await failPassAndPostponeNext(userId: userId, action: action, mock: mock)
+        let postponed = try XCTUnwrap(scheduled.all.first).work
+
+        await send(mock, DitoRetry(client: mock))
+
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertTrue(sentEvents(mock.allActivityRequests).contains(action))
+        XCTAssertTrue(postponed.isCancelled)
+    }
+
+    func testLiveTrackSuccess_endsBackoffAndFlushesQueueNow() async throws {
+        try await assertLiveSuccessEndsBackoff(userId: "uid-queue-ts-live-track", action: "live_track_backoff_evt") { mock, retry in
+            await self.trackAndWait(DitoTrack(client: mock, onSent: { retry.loadOffline() }), action: "live_track_ok_evt")
+        }
+    }
+
+    func testLiveTokenSuccess_endsBackoffAndFlushesQueueNow() async throws {
+        try await assertLiveSuccessEndsBackoff(userId: "uid-queue-ts-live-token", action: "live_token_backoff_evt") { mock, retry in
+            let sut = DitoNotification(client: mock, onSent: { retry.loadOffline() })
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                sut.registerToken(token: "fcm-queue-ts-live-token") { _ in cont.resume() }
+            }
+        }
+    }
+
+    func testLiveIdentifySuccess_endsBackoffAndFlushesQueueNow() async throws {
+        let userId = "uid-queue-ts-live-identify"
+        try await assertLiveSuccessEndsBackoff(userId: userId, action: "live_identify_backoff_evt") { mock, retry in
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                DitoIdentify(retry: retry, client: mock).identify(
+                    id: userId,
+                    data: DitoUser(email: "queue-ts@example.com")
+                ) { _ in cont.resume() }
+            }
+        }
+    }
+
+    func testFailureBackoff_usesUptimeClock() {
+        XCTAssertEqual(DitoRetry.now(), ProcessInfo.processInfo.systemUptime, accuracy: 1)
+    }
+
+    func testPostponedPass_readsConnectionOnMainQueue() async throws {
+        DitoRetry.now = { 7_000_000 }
+        savePostIdentify(userId: "uid-queue-ts-postponed-main")
+        saveTrack(DitoEvent(action: "postponed_main_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        DitoRetry(client: failing).loadOffline()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let read = expectation(description: "conexão lida ao fim da janela")
+        DitoRetry.isOnline = {
+            XCTAssertTrue(Thread.isMainThread, "Reachability é lida na main")
+            read.fulfill()
+            return false
+        }
+        DitoRetry.now = { 7_000_000 + DitoRetry.failureBackoff - 0.05 }
+        DitoRetry(client: failing).loadOffline()
+
+        await fulfillment(of: [read], timeout: 5)
+    }
+
+    func testPassFromBeforeReset_doesNotEndCurrentPass() async throws {
+        savePostIdentify(userId: "uid-queue-ts-reset-epoch")
+        saveTrack(DitoEvent(action: "reset_epoch_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let previous = GatedFailingClient()
+        DitoRetry(client: previous).loadOffline()
+        await waitUntil { previous.recorder.activityCallCount == 1 }
+
+        DitoRetry.resetForTests()
+        let current = GatedFailingClient()
+        DitoRetry(client: current).loadOffline()
+        await waitUntil { current.recorder.activityCallCount == 1 }
+        previous.open()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let mock = MockMobileIngestClient()
+        DitoRetry(client: mock).loadOffline(ignoringBackoff: true)
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(mock.activityCallCount, 0, "a passada em curso segue sendo a única")
+        current.open()
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertEqual(sentEvents(mock.allActivityRequests), ["reset_epoch_evt"])
+    }
+
     func testPassQueuedDuringFailingPass_isPostponedWithoutSpendingRetry() async throws {
         let scheduled = captureScheduledPasses()
-        DitoRetry.now = { Date(timeIntervalSince1970: 2_000_000) }
+        DitoRetry.now = { 2_000_000 }
         savePostIdentify(userId: "uid-queue-ts-queued-during-fail")
         saveTrack(DitoEvent(action: "queued_during_fail_evt"))
         await waitUntil { self.queueCount() == 1 }
@@ -343,7 +453,7 @@ final class OfflineQueueTimestampTests: XCTestCase {
 
     func testReconnectPassQueuedDuringFailingPass_runsDespiteBackoff() async throws {
         let scheduled = captureScheduledPasses()
-        DitoRetry.now = { Date(timeIntervalSince1970: 3_000_000) }
+        DitoRetry.now = { 3_000_000 }
         savePostIdentify(userId: "uid-queue-ts-reconnect-queued")
         saveTrack(DitoEvent(action: "reconnect_queued_evt"))
         await waitUntil { self.queueCount() == 1 }
@@ -532,8 +642,11 @@ final class OfflineQueueTimestampTests: XCTestCase {
 
     // MARK: - Reachability
 
-    func testReconnect_firstPassFails_delayedPassFlushesQueueWithoutAnotherNetworkEvent() async throws {
-        Dito.reconnectRetryDelay = 0.3
+    func testReconnect_firstPassFails_delayedPassWaitsBackoffThenFlushesQueue() async throws {
+        Dito.reconnectRetryDelay = 0
+        let scheduled = captureScheduledPasses()
+        DitoRetry.now = { 5_000_000 }
+        DitoRetry.isOnline = { true }
         let client = FailsFirstCallClient()
         Dito.testIdentifyTrackIngestClient = client
         Dito.invalidateRetryCacheForTests()
@@ -547,8 +660,13 @@ final class OfflineQueueTimestampTests: XCTestCase {
             Dito.shared.reachabilityChanged(Notification(name: .reachabilityChanged))
         }
 
+        await waitUntil { scheduled.all.count == 1 }
+        XCTAssertEqual(client.recorder.activityCallCount, 1, "a passada de +5s respeita a janela")
+        XCTAssertEqual(firstRowRetry(), 2)
+
+        DitoRetry.now = { 5_000_000 + DitoRetry.failureBackoff + 1 }
+        try XCTUnwrap(scheduled.all.first).work.perform()
         await waitUntil { self.queueCount() == 0 }
-        XCTAssertEqual(client.recorder.activityCallCount, 2)
         XCTAssertEqual(sentEvents(client.recorder.allActivityRequests), ["reconnect_evt", "reconnect_evt"])
     }
 }
