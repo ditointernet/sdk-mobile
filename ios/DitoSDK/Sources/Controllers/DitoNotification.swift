@@ -141,9 +141,12 @@ class DitoNotification {
                 }
                 if isRegister, let pending = notificationOffline.getNotificationRegister {
                     let pendingToken = DitoNotification.token(of: pending.json)
-                    // Same token: already registered, unless the queued one belongs to a user who logged in
-                    // during an anonymous send. Other token: dropped only if it isn't the last one.
-                    let sameTokenSent = pendingToken == token && (state != .anonymous || pending.anonymous == true)
+                    // Same token: already registered, unless the queued one belongs to another identity (a login
+                    // or user switch during the send). Other token: dropped only if it isn't the last one.
+                    let sameOwner = state == .anonymous
+                        ? pending.anonymous == true
+                        : notificationOffline.identityState == state
+                    let sameTokenSent = pendingToken == token && sameOwner
                     if sameTokenSent || (pendingToken != token && pendingToken != UserDefaults.lastPushToken) {
                         notificationOffline.deleteRegister(ifMatching: pending)
                     }
