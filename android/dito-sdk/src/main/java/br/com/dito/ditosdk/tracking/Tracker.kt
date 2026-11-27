@@ -105,7 +105,7 @@ internal class Tracker(
                 callback?.invoke(OperationStatus.SENT, null)
                 if (current) {
                     registerLastToken(identify.id)
-                    trackerRetry?.uploadEvents()
+                    trackerRetry?.uploadEventsAfterLiveSuccess()
                 }
             } catch (e: Exception) {
                 if (debug) Log.d("Tracker", "identify error: $e", e)

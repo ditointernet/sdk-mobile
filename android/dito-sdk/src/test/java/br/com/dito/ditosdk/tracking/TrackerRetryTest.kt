@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.EventOff
+import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
 import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.ActivityMapper
@@ -606,6 +607,21 @@ class TrackerRetryTest {
         advanceTimeBy(1_000)
 
         assertThat(requests).hasSize(3)
+    }
+
+    @Test
+    fun `live identify success should release the backoff and resend the queue right away`() = testScope.runTest {
+        val requests = failingEventQueue()
+        tracker.setTrackerRetry(trackerRetry)
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        tracker.identify(Identify("user123"), null)
+        advanceTimeBy(1_000)
+
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasTrack() } }).isEqualTo(2)
+        verify { trackerOffline.delete(1, "Event") }
     }
 
     @Test
