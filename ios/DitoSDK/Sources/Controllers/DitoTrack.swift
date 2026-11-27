@@ -53,7 +53,7 @@ class DitoTrack {
             case .anonymous:
                 self.performTracking(userId: nil, data: data, completion: completion)
             case .pending:
-                self.trackOffline.track(event: self.makeEventRequest(data))
+                self.trackOffline.track(event: self.makeEventRequest(data), userId: self.trackOffline.identifyId)
                 DitoLogger.warning("⚠️ [TRACK] Usuário não identificado - salvando evento offline")
                 completion?(.success(.savedLocally))
             }
@@ -77,7 +77,7 @@ class DitoTrack {
                 completion?(.success(.sent))
                 onSent()
             } catch {
-                trackOffline.track(event: makeEventRequest(data), anonymous: userId == nil)
+                trackOffline.track(event: makeEventRequest(data), anonymous: userId == nil, userId: userId)
                 DitoLogger.error(error.localizedDescription)
                 completion?(.success(.savedLocally))
             }
