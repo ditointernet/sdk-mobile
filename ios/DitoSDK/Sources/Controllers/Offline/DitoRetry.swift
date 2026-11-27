@@ -10,6 +10,31 @@ class DitoRetry {
 
     static let maxRetries: Int16 = 5
 
+    private static let passLock = NSLock()
+    private static var passRunning = false
+    private static var nextPassRetry: DitoRetry?
+    private static var nextPassIgnoresBackoff = false
+    // Uptime, not wall clock: a clock set back would stretch the backoff.
+    private static var lastFailureAt: TimeInterval?
+    private static var passFailures = 0
+    private static var scheduledPass: DispatchWorkItem?
+    private static var scheduledPassGeneration = 0
+    private static var passEpoch = 0
+    static let failureBackoff: TimeInterval = 60
+    #if DEBUG
+    static var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    static var schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
+    static var isOnline: () -> Bool = { Dito.isOnline }
+    #else
+    private static let isOnline: () -> Bool = { Dito.isOnline }
+    private static let now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
+    private static let schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
+    #endif
+
+    private static func defaultSchedulePass(_ delay: TimeInterval, _ work: DispatchWorkItem) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
     private var identifyOffline: DitoIdentifyOffline
     private var trackOffline: DitoTrackOffline
     private var notificationReadOffline: DitoNotificationOffline
@@ -28,11 +53,131 @@ class DitoRetry {
         self.client = client ?? MobileIngestClient.buildFromDitoConfig()
     }
 
-    func loadOffline() {
+    // One pass at a time across instances so no row goes twice; a call mid-pass queues one more pass.
+    // `ignoringBackoff`: a network change, so an earlier failure says nothing about this pass.
+    func loadOffline(ignoringBackoff: Bool = false) {
+        guard let epoch = DitoRetry.startOrQueuePass(self, ignoringBackoff: ignoringBackoff) else { return }
         Task {
-            await runLoadOffline()
+            var next: DitoRetry? = self
+            while let retry = next {
+                await retry.runLoadOffline()
+                next = DitoRetry.finishPass(epoch: epoch)
+            }
         }
     }
+
+    // After a failed send, passes wait out the backoff (each failed pass spends a retry of every row);
+    // a skipped pass is run once when the backoff ends.
+    // A call mid-pass is queued even in the backoff: the end of the pass decides whether it waits.
+    private static func startOrQueuePass(_ retry: DitoRetry, ignoringBackoff: Bool) -> Int? {
+        passLock.lock()
+        defer { passLock.unlock() }
+        if passRunning {
+            nextPassRetry = retry
+            nextPassIgnoresBackoff = nextPassIgnoresBackoff || ignoringBackoff
+            return nil
+        }
+        if !ignoringBackoff, inFailureBackoff() {
+            DitoLogger.warning("⚠️ [RETRY] Passada adiada: houve falha de envio há menos de \(Int(failureBackoff))s")
+            schedulePassAfterBackoff(retry)
+            return nil
+        }
+        passRunning = true
+        passFailures = 0
+        return passEpoch
+    }
+
+    private static func finishPass(epoch: Int) -> DitoRetry? {
+        passLock.lock()
+        defer { passLock.unlock() }
+        guard epoch == passEpoch else { return nil }
+        if passFailures == 0 {
+            lastFailureAt = nil
+            clearScheduledPass()
+        }
+        var next = nextPassRetry
+        if let queued = next, !nextPassIgnoresBackoff, inFailureBackoff() {
+            schedulePassAfterBackoff(queued)
+            next = nil
+        }
+        nextPassRetry = nil
+        nextPassIgnoresBackoff = false
+        passRunning = next != nil
+        passFailures = 0
+        return next
+    }
+
+    /// Call with `passLock` held.
+    private static func schedulePassAfterBackoff(_ retry: DitoRetry) {
+        guard scheduledPass == nil, let failedAt = lastFailureAt else { return }
+        scheduledPassGeneration += 1
+        let generation = scheduledPassGeneration
+        let work = DispatchWorkItem {
+            DitoRetry.passLock.lock()
+            let isCurrent = DitoRetry.scheduledPassGeneration == generation
+            if isCurrent {
+                DitoRetry.scheduledPass = nil
+            }
+            DitoRetry.passLock.unlock()
+            // Offline it would only spend a retry per row; the reconnection runs a pass instead.
+            if isCurrent, DitoRetry.isOnline() {
+                retry.loadOffline()
+            }
+        }
+        scheduledPass = work
+        schedulePass(failureBackoff - (now() - failedAt), work)
+    }
+
+    /// Call with `passLock` held.
+    private static func clearScheduledPass() {
+        scheduledPass?.cancel()
+        scheduledPass = nil
+        scheduledPassGeneration += 1
+    }
+
+    static func cancelScheduledPass() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        clearScheduledPass()
+    }
+
+    /// A live send went through: the backend is up, so the queue need not wait out the backoff.
+    static func endFailureBackoff() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        lastFailureAt = nil
+        clearScheduledPass()
+    }
+
+    /// Call with `passLock` held.
+    private static func inFailureBackoff() -> Bool {
+        guard let failedAt = lastFailureAt else { return false }
+        return now() - failedAt < failureBackoff
+    }
+
+    private static func recordFailure() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        lastFailureAt = now()
+        passFailures += 1
+    }
+
+    #if DEBUG
+    static func resetForTests() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        passEpoch += 1
+        passRunning = false
+        nextPassRetry = nil
+        nextPassIgnoresBackoff = false
+        lastFailureAt = nil
+        passFailures = 0
+        clearScheduledPass()
+        now = { ProcessInfo.processInfo.systemUptime }
+        schedulePass = defaultSchedulePass
+        isOnline = { Dito.isOnline }
+    }
+    #endif
 
     internal func runLoadOffline() async {
         guard !DeviceIdProvider.get().isEmpty else {
@@ -161,6 +306,7 @@ class DitoRetry {
             for item in trackBatch {
                 trackOffline.update(id: item.id, event: item.request, retry: item.retry + 1)
             }
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }
@@ -198,9 +344,10 @@ class DitoRetry {
                 "user_id": pending.userId,
             ])
             let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: pending.userId)
-            let trackActivity = mapper.mapFromDitoEvent(
-                Dito.createNotificationTrackEvent(received, token: pending.token)
-            )
+            // Arrival time, not resend time; a row from before receivedAt existed falls back to now.
+            var receiveEvent = Dito.createNotificationTrackEvent(received, token: pending.token)
+            receiveEvent.createdAt = pending.receivedAt
+            let trackActivity = mapper.mapFromDitoEvent(receiveEvent)
 
             do {
                 #if DEBUG
@@ -221,6 +368,7 @@ class DitoRetry {
                 DitoLogger.information("✅ [RETRY] receive-ios-notification enviado")
             } catch {
                 notificationReadOffline.updateReceive(id: rowId, retry: rowRetry + 1)
+                DitoRetry.recordFailure()
                 DitoLogger.error(error.localizedDescription)
             }
         }
@@ -264,6 +412,7 @@ class DitoRetry {
                 DitoLogger.information("✅ [RETRY] Notification Read enviada")
             } catch {
                 notificationReadOffline.updateRead(id: notifID, retry: notifRetry + 1)
+                DitoRetry.recordFailure()
                 DitoLogger.error(error.localizedDescription)
             }
         }
@@ -324,6 +473,7 @@ class DitoRetry {
             DitoLogger.information("✅ [RETRY] Token registrado")
         } catch {
             notificationReadOffline.updateRegister(ifMatching: notificationRegister, retry: notificationRegister.retry + 1)
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }
@@ -359,6 +509,7 @@ class DitoRetry {
             DitoLogger.information("✅ [RETRY] Token removido")
         } catch {
             notificationReadOffline.updateUnregister(id: notificationUnregister.id, retry: notificationUnregister.retry + 1)
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }

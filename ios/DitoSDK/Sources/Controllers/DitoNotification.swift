@@ -9,12 +9,15 @@ class DitoNotification {
     private let notificationOffline: DitoNotificationOffline
     private let mapper = ActivityMapper()
     private let client: MobileIngestClientProtocol
+    private let onSent: () -> Void
 
     init(
         notificationOffline: DitoNotificationOffline = .init(),
-        client: MobileIngestClientProtocol? = nil
+        client: MobileIngestClientProtocol? = nil,
+        onSent: @escaping () -> Void = Dito.flushOfflineQueue
     ) {
         self.notificationOffline = notificationOffline
+        self.onSent = onSent
         #if DEBUG
         self.client = client ?? Self.testMobileIngestClient ?? MobileIngestClient.buildFromDitoConfig()
         #else
@@ -150,6 +153,8 @@ class DitoNotification {
                 }
                 DitoLogger.information("✅ [\(label)] Sucesso")
                 completion?(.success(.sent))
+                DitoRetry.endFailureBackoff()
+                onSent()
             } catch {
                 if let anonymous = offlineOwner(startedAs: state, token: token, isRegister: isRegister) {
                     saveTokenOffline(tokenRequest, isRegister: isRegister, anonymous: anonymous)

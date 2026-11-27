@@ -76,6 +76,7 @@ class TestHelpers {
         // Tests must never reach the real ingest: the retry sends anonymous rows without an identify.
         Dito.testIdentifyTrackIngestClient = MockMobileIngestClient()
         Dito.invalidateRetryCacheForTests()
+        DitoRetry.resetForTests()
         #endif
     }
 

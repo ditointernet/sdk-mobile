@@ -4,7 +4,7 @@ public struct DitoEvent: Codable, Sendable {
 
   let action: String?
   let revenue: Double?
-  let createdAt: String?
+  var createdAt: String?
   let data: String?
 
   public init(
@@ -16,7 +16,7 @@ public struct DitoEvent: Codable, Sendable {
 
     self.action = action?.formatToDitoString
     self.revenue = revenue
-    self.createdAt = Util.toDate(createdAt)
+    self.createdAt = createdAt?.formatToISO
     self.data = (customData != nil) ? Util.toString(from: customData) : nil
   }
 

@@ -35,7 +35,11 @@ public class Dito {
   #endif
   private var reachability = try! Reachability()
   private var backingRetry: DitoRetry?
+  private let retryLock = NSLock()
+  private var reconnectRetry: DispatchWorkItem?
   var retry: DitoRetry {
+    retryLock.lock()
+    defer { retryLock.unlock() }
     if let existing = backingRetry {
       return existing
     }
@@ -85,10 +89,23 @@ public class Dito {
 
   public func configure() {
     DispatchQueue.main.async {
+      // configure() runs on every receive; remove first so each observer is registered only once.
+      NotificationCenter.default.removeObserver(self, name: .reachabilityChanged, object: nil)
       NotificationCenter.default.addObserver(
         self,
         selector: #selector(self.reachabilityChanged(_:)),
         name: .reachabilityChanged,
+        object: nil
+      )
+      NotificationCenter.default.removeObserver(
+        self,
+        name: UIApplication.willEnterForegroundNotification,
+        object: nil
+      )
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(self.applicationWillEnterForeground(_:)),
+        name: UIApplication.willEnterForegroundNotification,
         object: nil
       )
 
@@ -332,6 +349,7 @@ public class Dito {
     token: String,
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
+    let receivedAt = Date()
     Dito.shared.configure()
     _ = DitoCoreDataManager.shared.persistentContainer
     DitoNotificationCoreDataManager.shared.insert(
@@ -368,6 +386,7 @@ public class Dito {
       await deliverNotificationReceivedActivities(
         received: received,
         token: token,
+        receivedAt: receivedAt,
         completion: completion
       )
     }
@@ -376,11 +395,11 @@ public class Dito {
   private static func deliverNotificationReceivedActivities(
     received: DitoNotificationReceived,
     token: String,
+    receivedAt: Date,
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) async {
     var backgroundTask: UIBackgroundTaskIdentifier = .invalid
-    let isRunningUnitTests = ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
-    if !isRunningUnitTests {
+    if !Dito.isRunningUnitTests {
       await MainActor.run {
         backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "DitoReceiveNotification") {
           if backgroundTask != .invalid {
@@ -407,7 +426,9 @@ public class Dito {
     let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
     #endif
     let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
-    let trackActivity = mapper.mapFromDitoEvent(createNotificationTrackEvent(received, token: token))
+    let trackActivity = mapper.mapFromDitoEvent(
+      createNotificationTrackEvent(received, token: token, receivedAt: receivedAt)
+    )
 
     do {
       try await ingestClient.activity(mapper.buildRequest(
@@ -433,12 +454,11 @@ public class Dito {
         token: token,
         notification: received.notification,
         logId: received.logId,
-        notificationName: received.notificationName
+        notificationName: received.notificationName,
+        receivedAt: receivedAt.formatToISO
       )
       DitoNotificationOffline().notificationReceive(pending)
-      if !isRunningUnitTests {
-        Dito.shared.retry.loadOffline()
-      }
+      Dito.flushOfflineQueue()
       completion?(.success(()))
     }
   }
@@ -463,9 +483,14 @@ public class Dito {
     DitoNotificationCoreDataManager.shared.markAsRead(id: id)
   }
 
-  static func createNotificationTrackEvent(_ notificationReceived: DitoNotificationReceived, token: String) -> DitoEvent {
+  static func createNotificationTrackEvent(
+    _ notificationReceived: DitoNotificationReceived,
+    token: String,
+    receivedAt: Date? = nil
+  ) -> DitoEvent {
     DitoEvent(
       action: "receive-ios-notification",
+      createdAt: receivedAt,
       customData: [
         "token": token,
         "dispatch_id": notificationReceived.logId,
@@ -569,10 +594,42 @@ public class Dito {
 //MARK: - Network Connection
 extension Dito {
 
-  @objc func reachabilityChanged(_ note: Notification) {
+  static var reconnectRetryDelay: TimeInterval = 5
 
+  static var isRunningUnitTests: Bool {
+    ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+  }
+
+  static func flushOfflineQueue() {
+    if !isRunningUnitTests {
+      shared.retry.loadOffline()
+    }
+  }
+
+  static var isOnline: Bool {
+    shared.reachability.connection != .unavailable
+  }
+
+  // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue.
+  // Offline it would only burn a retry per row (rows are dropped after maxRetries).
+  @objc func applicationWillEnterForeground(_ note: Notification) {
+    guard reachability.connection != .unavailable else { return }
+    retry.loadOffline()
+  }
+
+  @objc func reachabilityChanged(_ note: Notification) {
+    reconnectRetry?.cancel()
+    reconnectRetry = nil
     if self.reachability.connection != .unavailable {
-      retry.loadOffline()
+      DitoRetry.cancelScheduledPass()
+      retry.loadOffline(ignoringBackoff: true)
+      let work = DispatchWorkItem {
+        if self.reachability.connection != .unavailable {
+          self.retry.loadOffline()
+        }
+      }
+      reconnectRetry = work
+      DispatchQueue.main.asyncAfter(deadline: .now() + Dito.reconnectRetryDelay, execute: work)
     }
   }
 }
@@ -581,7 +638,8 @@ extension Dito {
 extension Dito {
   static func awaitNotificationReceivedDelivery(
     userInfo: [AnyHashable: Any],
-    token: String
+    token: String,
+    receivedAt: Date = Date()
   ) async {
     let received = createNotificationReceived(from: userInfo)
     _ = DitoCoreDataManager.shared.persistentContainer
@@ -593,18 +651,26 @@ extension Dito {
       image: received.image,
       customData: received.customData
     )
-    await deliverNotificationReceivedActivities(received: received, token: token)
+    await deliverNotificationReceivedActivities(received: received, token: token, receivedAt: receivedAt)
   }
 
   static func invalidateRetryCacheForTests() {
+    shared.retryLock.lock()
     shared.backingRetry = nil
+    shared.retryLock.unlock()
   }
 
   static func resetFacadeIsolationState() {
     NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
+    NotificationCenter.default.removeObserver(shared, name: UIApplication.willEnterForegroundNotification, object: nil)
     shared.reachability.stopNotifier()
     shared.reachability.debug_connectionOverride = nil
+    shared.reconnectRetry?.cancel()
+    shared.reconnectRetry = nil
+    DitoRetry.resetForTests()
+    shared.retryLock.lock()
     shared.backingRetry = nil
+    shared.retryLock.unlock()
     appKey = ""
     appSecret = ""
     signature = ""
