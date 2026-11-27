@@ -133,6 +133,7 @@ internal class ActivityMapper(private val context: Context) {
         data: Map<String, String> = emptyMap(),
         logId: String = "",
         notificationName: String = "",
+        queuedAt: String? = null,
     ): Api.Activity {
         val clickBuilder = Api.Activity.TrackPushClickActivity.newBuilder()
             .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
@@ -145,7 +146,7 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrackPushClick(click)
-            .setTimestamp(nowTimestamp())
+            .setTimestamp(timestampOf(queuedAt))
             .build()
     }
 

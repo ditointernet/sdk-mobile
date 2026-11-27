@@ -16,8 +16,10 @@ import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_3_4
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_4_5
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_5_6
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_6_7
+import br.com.dito.ditosdk.utils.formatToISOMillis
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.util.Date
 
 internal class TrackerOffline(
     context: Context,
@@ -168,6 +170,7 @@ internal class TrackerOffline(
                     clickDataFromJson(it.dataJson),
                     it.logId.orEmpty(),
                     it.notificationName.orEmpty(),
+                    it.timestamp,
                 )
             }
         } catch (e: Exception) {
@@ -211,6 +214,7 @@ internal class TrackerOffline(
                     dataJson = data.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
                     logId = logId,
                     notificationName = notificationName,
+                    timestamp = Date().formatToISOMillis(),
                 ),
             )
         } catch (e: Exception) {

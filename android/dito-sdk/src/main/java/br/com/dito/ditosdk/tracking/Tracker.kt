@@ -143,7 +143,8 @@ internal class Tracker(
         trackerOffline.event(event, activityId, anonymous = userId == null, userId = userId)
     }
 
-    internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?) {
+    /** @param identifyFirst sem identify pendente deste usuário, manda antes um identify só com o id. */
+    internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?, identifyFirst: Boolean = false) {
         if (userId == null) {
             sendAnonymous(activities, token)
             return
@@ -152,7 +153,8 @@ internal class Tracker(
         // receber atividade de um user_id que ainda não conhece.
         val pending = identifyDisk.withLock { trackerOffline.getIdentify() }?.takeIf { it.id == userId && !it.send }
         if (pending == null) {
-            client.activity(mapper.buildRequest(userId, activities, token))
+            val all = if (identifyFirst) listOf(mapper.mapIdentify(Identify(userId))) + activities else activities
+            client.activity(mapper.buildRequest(userId, all, token))
             return
         }
         val identify = mapper.mapIdentify(mapper.fromIdentifyOff(pending))
@@ -280,7 +282,12 @@ internal class Tracker(
                 // log, sem fila, sem rastro. `createdAt` do evento já está preenchido, então o
                 // reenvio preserva o instante real da entrega, não o do retry.
                 Log.e("Tracker", "Falha ao enviar a entrega da notificação ${data.notificationId}.", e)
-                trackerOffline.event(trackEvent, activityId, userId = data.userId)
+                // Push do aparelho anônimo volta pelo caminho anônimo (user_id vazio + identify anônimo).
+                if (data.userId.equals(anonymousUserId(), ignoreCase = true)) {
+                    trackerOffline.event(trackEvent, activityId, anonymous = true)
+                } else {
+                    trackerOffline.event(trackEvent, activityId, userId = data.userId)
+                }
             }
         }
     }

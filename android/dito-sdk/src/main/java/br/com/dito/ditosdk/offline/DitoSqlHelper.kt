@@ -13,7 +13,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "identify")
-data class IdentifyOffline(
+internal data class IdentifyOffline(
     @PrimaryKey val _id: String,
     val name: String?,
     val email: String?,
@@ -25,7 +25,7 @@ data class IdentifyOffline(
 )
 
 @Dao
-interface IdentifyOfflineDao {
+internal interface IdentifyOfflineDao {
     @Query("SELECT * FROM identify")
     fun getAll(): List<IdentifyOffline>
 
@@ -89,6 +89,8 @@ internal data class NotificationOffline(
     val dataJson: String? = null,
     val logId: String? = null,
     val notificationName: String? = null,
+    /** Hora do enfileiramento; nula em linha anterior à coluna (o reenvio usa a hora atual). */
+    val timestamp: String? = null,
 )
 
 @Dao
@@ -111,7 +113,7 @@ internal interface NotificationOfflineDao {
  * perdida, e é isso que importa aqui: a alternativa (`fallbackToDestructiveMigration`) apagaria
  * exatamente os cliques que ainda não foram entregues.
  */
-val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
+internal val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE notification ADD COLUMN dataJson TEXT")
     }
@@ -135,6 +137,7 @@ internal val OFFLINE_MIGRATION_5_6 = object : Migration(5, 6) {
 internal val OFFLINE_MIGRATION_6_7 = object : Migration(6, 7) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE event ADD COLUMN userId TEXT")
+        db.execSQL("ALTER TABLE notification ADD COLUMN timestamp TEXT")
     }
 }
 

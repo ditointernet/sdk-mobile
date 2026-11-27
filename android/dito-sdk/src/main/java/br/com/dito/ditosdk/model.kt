@@ -78,6 +78,7 @@ internal data class NotificationReadOff(
     val data: Map<String, String> = emptyMap(),
     val logId: String = "",
     val notificationName: String = "",
+    val timestamp: String? = null,
 )
 
 data class NotificationResult(

@@ -143,9 +143,10 @@ internal class TrackerRetry(
         val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
         val events = trackerOffline.getAllEvents().orEmpty()
         prune(events, "Event", { it.id }) { it.retry >= maxRetry || (parseISO(it.timestamp)?.time ?: cutoff) < cutoff }
-        // A tabela de cliques não guarda hora: só o limite de linhas.
         val notifications = trackerOffline.getAllNotificationRead().orEmpty()
-        prune(notifications, "NotificationRead", { it.id }) { it.retry >= maxRetry }
+        prune(notifications, "NotificationRead", { it.id }) {
+            it.retry >= maxRetry || (it.timestamp?.let(::parseISO)?.time ?: cutoff) < cutoff
+        }
     }
 
     private fun <T> prune(rows: List<T>, table: String, id: (T) -> Int, expired: (T) -> Boolean) {
@@ -183,7 +184,9 @@ internal class TrackerRetry(
                 (mapper.customDataFromJson(it.dataJson)?.params?.get("notification_id") as? String).isNullOrEmpty()
         }
         orphanReceipts.forEach {
-            Log.w("TrackerRetry", "Entrega sem notification id apagada da fila.")
+            val unreadable = !it.dataJson.isNullOrBlank() && mapper.customDataFromJson(it.dataJson) == null
+            val reason = if (unreadable) "com dados ilegíveis" else "sem notification id"
+            Log.w("TrackerRetry", "Entrega $reason apagada da fila.")
             trackerOffline.delete(it.id, "Event")
         }
 
@@ -224,7 +227,8 @@ internal class TrackerRetry(
             }
         }
         return try {
-            tracker.send(userId, activities, null)
+            // Como no envio ao vivo, o recebimento vai com o identify do dono do push.
+            tracker.send(userId, activities, null, identifyFirst = events.any { it.action == PUSH_RECEIVE_EVENT })
             events.forEach { trackerOffline.delete(it.id, "Event") }
             true
         } catch (e: Exception) {
@@ -261,6 +265,7 @@ internal class TrackerRetry(
                 notif.data,
                 notif.logId,
                 notif.notificationName,
+                notif.timestamp,
             )
         }
         return try {

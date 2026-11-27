@@ -424,7 +424,8 @@ class TrackerRetryTest {
 
         val request = requests.single()
         assertThat(request.userId).isEqualTo("user123")
-        val activity = request.activitiesList.single()
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        val activity = request.activitiesList.single { it.hasTrackPushReceipt() }
         assertThat(activity.id).isEqualTo("a1")
         assertThat(activity.hasTrack()).isFalse()
         val info = activity.trackPushReceipt.notification
@@ -815,7 +816,7 @@ class TrackerRetryTest {
 
         val request = requests.single()
         assertThat(request.userId).isEqualTo("push-user")
-        val activity = request.activitiesList.single()
+        val activity = request.activitiesList.single { it.hasTrackPushReceipt() }
         assertThat(activity.trackPushReceipt.notification.identifier).isEqualTo("push-user")
         assertThat(activity.timestamp.seconds).isEqualTo(epochSeconds("2026-11-27T13:05:00Z"))
     }
@@ -836,6 +837,84 @@ class TrackerRetryTest {
             verify { trackerOffline.delete(1, "Event") }
             verify { trackerOffline.delete(2, "Event") }
             verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+        }
+
+    @Test
+    fun `queued receipt of another owner should go with the identify of the owner first`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "t", 0, userId = "push-user"),
+            EventOff(2, "a2", "purchase", null, null, "t", 0, userId = "user123"),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val byUser = requests.associateBy { it.userId }
+        val receipt = byUser.getValue("push-user").activitiesList
+        assertThat(receipt.map { it.hasIdentify() }).containsExactly(true, false).inOrder()
+        assertThat(receipt[1].id).isEqualTo("a1")
+        assertThat(byUser.getValue("user123").activitiesList.none { it.hasIdentify() }).isTrue()
+    }
+
+    @Test
+    fun `queued receipt of the user with a pending identify should carry that identify once`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        pendingIdentify()
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "t", 0, userId = "user123"),
+        )
+        var calls = 0
+        // O reenvio do identify sozinho falha; o recebimento leva o identify pendente.
+        coEvery { mockClient.activity(capture(requests)) } answers {
+            if (calls++ == 0) throw Exception("fail") else Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val activities = requests.single { r -> r.activitiesList.any { it.hasTrackPushReceipt() } }.activitiesList
+        assertThat(activities.count { it.hasIdentify() }).isEqualTo(1)
+        assertThat(activities.first().hasIdentify()).isTrue()
+        verify { trackerOffline.updateIdentify("user123", true) }
+    }
+
+    @Test
+    fun `queued receipt with unreadable data should be deleted with its own log`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, "not json", "t", 0, userId = "push-user"),
+        )
+        ShadowLog.clear()
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests).isEmpty()
+        verify { trackerOffline.delete(1, "Event") }
+        val messages = ShadowLog.getLogsForTag("TrackerRetry").map { it.msg }
+        assertThat(messages).contains("Entrega com dados ilegíveis apagada da fila.")
+        assertThat(messages).doesNotContain("Entrega sem notification id apagada da fila.")
+    }
+
+    @Test
+    fun `queued click should be resent with the click time, and without it with the current time`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            every { trackerOffline.getAllNotificationRead() } returns listOf(
+                NotificationReadOff(1, "c1", "n1", "push-user", 0, timestamp = "2026-11-27T10:05:00.250-0300"),
+                NotificationReadOff(2, "c2", "n2", "push-user", 0),
+            )
+            val before = java.time.Instant.now().epochSecond
+
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            val sent = requests.single().activitiesList.associateBy { it.id }
+            val clicked = sent.getValue("c1").timestamp
+            assertThat(java.time.Instant.ofEpochSecond(clicked.seconds, clicked.nanos.toLong()))
+                .isEqualTo(java.time.Instant.parse("2026-11-27T13:05:00.250Z"))
+            assertThat(sent.getValue("c2").timestamp.seconds).isAtLeast(before)
         }
 
     @Test
@@ -922,6 +1001,25 @@ class TrackerRetryTest {
         verify { trackerOffline.delete(4, "Event") }
         verify(exactly = 2) { trackerOffline.delete(any(), any()) }
         verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+    }
+
+    @Test
+    fun `without android id, clicks older than the age limit should be dropped`() = testScope.runTest {
+        captureRequests("")
+        val ageLimit = TimeUnit.DAYS.toMillis(TrackerRetry.MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
+        val old = Date(System.currentTimeMillis() - ageLimit - TimeUnit.DAYS.toMillis(1)).formatToISO()
+        every { trackerOffline.getAllNotificationRead() } returns listOf(
+            NotificationReadOff(1, "old", "n", "i", 0, timestamp = old),
+            NotificationReadOff(2, "recent", "n", "i", 0, timestamp = Date().formatToISO()),
+            NotificationReadOff(3, "undated", "n", "i", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.delete(1, "NotificationRead") }
+        verify(exactly = 1) { trackerOffline.delete(any(), any()) }
         coVerify(exactly = 0) { mockClient.activity(any()) }
     }
 

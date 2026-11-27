@@ -134,6 +134,33 @@ class DitoSqlHelperMigrationTest {
         }
     }
 
+    @Test
+    fun `migration 6 to 7 adds the click time keeping pending clicks`() {
+        openV4Database().use { db ->
+            OFFLINE_MIGRATION_4_5.migrate(db)
+            OFFLINE_MIGRATION_5_6.migrate(db)
+            db.execSQL(
+                "INSERT INTO notification (activityId, notificationId, identifier, retry, logId) " +
+                    "VALUES ('act1', 'notif1', 'user1', 2, 'log1')"
+            )
+            db.version = 6
+        }
+
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val click = room.notificationDao().getAll().single()
+            assertThat(click.activityId).isEqualTo("act1")
+            assertThat(click.retry).isEqualTo(2)
+            assertThat(click.logId).isEqualTo("log1")
+            assertThat(click.timestamp).isNull()
+        } finally {
+            room.close()
+        }
+    }
+
     private fun openV4Database(): SupportSQLiteDatabase {
         val helper = FrameworkSQLiteOpenHelperFactory().create(
             SupportSQLiteOpenHelper.Configuration.builder(context)

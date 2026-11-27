@@ -628,7 +628,7 @@ class TrackerTest {
     }
 
     @Test
-    fun `notificationReceived failure without login should queue the delivery owned by the push user`() =
+    fun `notificationReceived failure of the device user should queue the delivery as anonymous`() =
         testScope.runTest {
             anonymousDevice()
             coEvery { mockClient.activity(any()) } throws Exception("err")
@@ -636,8 +636,20 @@ class TrackerTest {
             tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
 
             advanceUntilIdle()
-            verify { trackerOffline.event(any(), any(), false, sha1Hex("device-1")) }
+            verify { trackerOffline.event(any(), any(), true, null) }
         }
+
+    @Test
+    fun `anonymous push without android id should not call ingest and be queued`() = testScope.runTest {
+        setAndroidId("")
+
+        tracker.notificationReceived(notificationReadData(userId = sha1Hex("")))
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        // Linha nova na fila (retry 0); sem device_id a passada nem a toca.
+        verify(exactly = 1) { trackerOffline.event(any(), any(), false, sha1Hex("")) }
+    }
 
     @Test
     fun `notificationReceived failure of another user without login should be queued with the push user`() =
