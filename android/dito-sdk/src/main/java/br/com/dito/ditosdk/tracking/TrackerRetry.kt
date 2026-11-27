@@ -37,6 +37,12 @@ internal class TrackerRetry(
     // Rede nova: uma falha anterior não diz nada sobre esta passada.
     fun uploadEventsOnReconnect() = requestPass(ignoringBackoff = true)
 
+    // Envio ao vivo deu certo: o backend voltou e a espera da última falha não vale mais.
+    fun uploadEventsAfterLiveSuccess() {
+        synchronized(passLock) { failedAt = null }
+        requestPass(ignoringBackoff = true)
+    }
+
     // Uma passada por vez, para nenhuma linha sair em dobro; pedido no meio de uma passada enfileira
     // uma só. Depois de uma falha que gastou tentativa, as passadas esperam a trava (cada passada que
     // falha gasta uma tentativa de cada linha) e uma pulada roda uma vez no fim dela.
@@ -63,7 +69,11 @@ internal class TrackerRetry(
                 while (!finished) finished = !finishPass(runPass())
             } finally {
                 // Exceção ou cancelamento no meio da passada não pode deixar as próximas travadas.
-                if (!finished) synchronized(passLock) { passRunning = false }
+                if (!finished) synchronized(passLock) {
+                    passRunning = false
+                    nextPass = false
+                    nextPassIgnoresBackoff = false
+                }
             }
         }
     }
