@@ -68,10 +68,13 @@ class DitoIdentify {
             DitoNotification(client: client).registerLastToken()
             retry.loadOffline()
         } catch {
-            identifyOffline.identify(id: id, params: signupRequest, reference: nil, send: false)
+            // Without a device_id nothing was sent: the same user, already confirmed, stays identified until the
+            // retry re-sends this identify.
+            let keepsUser = error is DeviceIdUnavailableError && identifyOffline.getIdentify?.reference == id
+            identifyOffline.identify(id: id, params: signupRequest, reference: keepsUser ? id : nil, send: false)
             identifyOffline.finishIdentify()
             DitoLogger.error(error.localizedDescription)
-            completion?(.failure(error))
+            completion?(keepsUser ? .success(.savedLocally) : .failure(error))
         }
     }
 }

@@ -389,6 +389,28 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.json, newerJson)
     }
 
+    func testRegisterSucceeds_anotherUserLoggedInAndQueuedSameTokenDuringSend_keepsHisRegister() async throws {
+        DeviceIdProvider.setForTests("device-register-user-switch-1")
+        let userA = "uid-register-user-switch-a-1"
+        let userB = "uid-register-user-switch-b-1"
+        let token = "fcm-register-user-switch"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userA, reference: userA, json: nil, send: true))
+        let tokenJson = makeTokenRequest(token: token).toString
+        let sut = DitoNotification(client: SucceedsAfterClient {
+            // identify(B) confirmed while the register for A is in flight; the register for B fails and is queued.
+            DitoIdentifyDataManager.shared.save(id: userB, reference: userB, json: nil, send: true)
+            DitoNotificationRegisterDataManager().save(with: tokenJson, retry: 0)
+        })
+
+        await tokenAndWait(sut, token: token, register: true)
+
+        XCTAssertNotNil(DitoNotificationRegisterDataManager().fetch, "o register de B na fila não pode sair com o envio de A")
+        let mock = MockMobileIngestClient()
+        await DitoRetry(client: mock).runLoadOffline()
+        XCTAssertEqual(tokenRegisterCount(mock, userId: userB, token: token), 1)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
     private func waitUntil(timeout: TimeInterval = 10, _ condition: () -> Bool) async {
         let deadline = Date().addingTimeInterval(timeout)
         while !condition(), Date() < deadline {
@@ -417,6 +439,40 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         XCTAssertEqual(mock.activityCallCount, 0)
         XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.id, userId)
         XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, false)
+    }
+
+    func testIdentifySameUserWithoutDeviceId_keepsUserIdentified_andTracksGoWithUserOnceDeviceIdIsBack() async throws {
+        let userId = "uid-no-device-identified-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        DeviceIdProvider.setForTests("")
+        let mock = MockMobileIngestClient()
+        let sut = DitoIdentify(retry: DitoRetry(client: mock), client: mock)
+
+        let savedLocally = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            sut.identify(id: userId, data: DitoUser(email: "no-device-identified@example.com")) { result in
+                if case .success(.savedLocally) = result {
+                    cont.resume(returning: true)
+                } else {
+                    cont.resume(returning: false)
+                }
+            }
+        }
+
+        XCTAssertTrue(savedLocally)
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertEqual(DitoIdentifyOffline.shared.identityState, .identified(userId))
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, false, "o identify fica guardado para o retry")
+
+        DeviceIdProvider.setForTests("device-no-device-identified-back-1")
+        let trackMock = MockMobileIngestClient()
+        DitoTrack(client: trackMock).track(data: DitoEvent(action: "after_identify_without_device", customData: nil))
+        await waitForActivityCalls(trackMock, count: 1)
+        XCTAssertEqual(trackMock.lastActivityRequest?.userID, userId)
+
+        await DitoRetry(client: mock).runLoadOffline()
+        XCTAssertTrue(mock.allActivityRequests.contains { $0.userID == userId && $0.activities.first?.type == .activityIdentify })
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, true)
+        XCTAssertEqual(DitoIdentifyOffline.shared.identityState, .identified(userId))
     }
 
     func testIdentifiedSendsWithoutDeviceId_callNoIngestAndAreQueued() async throws {
