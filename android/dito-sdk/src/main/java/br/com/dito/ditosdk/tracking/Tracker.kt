@@ -125,7 +125,7 @@ internal class Tracker(
         scope.launch {
             val activityId = UUID.randomUUID().toString()
             val userId = awaitId()
-            val activity = mapper.mapTrack(event, activityId)
+            val activity = mapper.mapTrack(event, activityId, event.createdAt)
             try {
                 send(userId, listOf(activity), null)
                 callback?.invoke(OperationStatus.SENT, null)
@@ -194,7 +194,10 @@ internal class Tracker(
 
     internal suspend fun registerLastToken(userId: String) {
         val token = anonymousState.lastToken ?: return
-        if (anonymousState.confirmedUserId == userId && anonymousState.confirmedToken == token) return
+        val confirmed = synchronized(idLock) {
+            anonymousState.confirmedUserId == userId && anonymousState.confirmedToken == token
+        }
+        if (confirmed) return
         try {
             registerFor(userId, token)
         } catch (e: Exception) {
@@ -244,10 +247,9 @@ internal class Tracker(
             loggedOut = true
             logouts++
             id = null
+            // Como no iOS: o próximo login reenvia o token.
+            anonymousState.setConfirmed(null, null)
         }
-        // Como no iOS: o próximo login reenvia o token. Fora do lock (logouts++ já barra o registerFor
-        // em voo), mas antes de retornar: numa coroutine, um identify() logo depois poderia ler o par antigo.
-        anonymousState.setConfirmed(null, null)
         scope.launch {
             // Um identify() do mesmo usuário feito depois deste logout já está no disco: não apagar.
             identifyDisk.withLock {

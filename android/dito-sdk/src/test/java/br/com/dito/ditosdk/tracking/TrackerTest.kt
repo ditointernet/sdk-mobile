@@ -945,6 +945,32 @@ class TrackerTest {
         verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
     }
 
+    @Test
+    fun `live track should go out with the createdAt informed by the app`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        val event = Event("purchase").apply { createdAt = "2026-11-27T10:00:00.250-0300" }
+
+        tracker.event(event)
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.single().timestamp
+        assertThat(java.time.Instant.ofEpochSecond(sent.seconds, sent.nanos.toLong()))
+            .isEqualTo(java.time.Instant.parse("2026-11-27T13:00:00.250Z"))
+    }
+
+    @Test
+    fun `live track without createdAt should go out with the current time`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        val before = java.time.Instant.now().epochSecond
+
+        tracker.event(Event("purchase").apply { createdAt = null })
+        advanceUntilIdle()
+
+        assertThat(requests.single().activitiesList.single().timestamp.seconds).isAtLeast(before)
+    }
+
     private fun setAndroidId(value: String) {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)
     }
