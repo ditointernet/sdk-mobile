@@ -200,11 +200,18 @@ object Dito {
         val mapper = ActivityMapper(context)
         val trackerOffline = TrackerOffline(context)
         tracker = Tracker(trackerOffline, client, mapper, AnonymousState(context), debug = options?.debug == true)
-        val trackerRetry = TrackerRetry(tracker, trackerOffline, client, mapper, options?.retry ?: 5)
+        val trackerRetry = TrackerRetry(
+            tracker,
+            trackerOffline,
+            client,
+            mapper,
+            options?.retry ?: 5,
+            isOnline = { ConnectivityRetryTrigger.isOnline(applicationContext) },
+        )
         tracker.setTrackerRetry(trackerRetry)
         trackerRetry.uploadEvents()
         // applicationContext: o callback fica preso no ConnectivityManager até o close e não pode segurar uma Activity.
-        val connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEvents)
+        val connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEventsOnReconnect)
         tracker.setConnectivityTrigger(connectivityTrigger)
         connectivityTrigger.start()
     }

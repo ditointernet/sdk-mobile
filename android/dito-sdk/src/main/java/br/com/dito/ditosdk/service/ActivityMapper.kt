@@ -9,12 +9,16 @@ import br.com.dito.ditosdk.CustomData
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
+import br.com.dito.ditosdk.utils.parseISO
 import com.google.gson.Gson
 import com.google.protobuf.Timestamp
 import java.util.UUID
 import mobileingest.v1.Api
 
 private const val PUSH_CHANNEL = "mobile"
+
+internal class DeviceIdUnavailableException :
+    IllegalStateException("device_id indisponível: nenhum request sai para o mobile-ingest sem ele.")
 
 internal class ActivityMapper(private val context: Context) {
 
@@ -70,7 +74,12 @@ internal class ActivityMapper(private val context: Context) {
         return mapIdentify(identify)
     }
 
-    fun mapTrack(event: Event, activityId: String = UUID.randomUUID().toString()): Api.Activity {
+    /** @param queuedAt hora gravada na fila (reenvio); sem ela, a hora atual. */
+    fun mapTrack(
+        event: Event,
+        activityId: String = UUID.randomUUID().toString(),
+        queuedAt: String? = null,
+    ): Api.Activity {
         val track = Api.Activity.TrackActivity.newBuilder()
             .setEvent(event.action)
             .setRevenue(event.revenue?.toFloat() ?: 0f)
@@ -80,7 +89,7 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrack(track)
-            .setTimestamp(nowTimestamp())
+            .setTimestamp(timestampOf(queuedAt))
             .build()
     }
 
@@ -145,6 +154,7 @@ internal class ActivityMapper(private val context: Context) {
         notificationName: String,
         identifier: String,
         activityId: String = UUID.randomUUID().toString(),
+        queuedAt: String? = null,
     ): Api.Activity {
         val receipt = Api.Activity.TrackPushReceiptActivity.newBuilder()
             .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
@@ -153,7 +163,7 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrackPushReceipt(receipt)
-            .setTimestamp(nowTimestamp())
+            .setTimestamp(timestampOf(queuedAt))
             .build()
     }
 
@@ -186,16 +196,26 @@ internal class ActivityMapper(private val context: Context) {
             .build()
     }
 
-    fun buildDeviceInfo(token: String?): Api.DeviceInfo =
-        Api.DeviceInfo.newBuilder()
+    fun buildDeviceInfo(token: String?): Api.DeviceInfo {
+        val id = deviceId
+        if (id.isEmpty()) {
+            throw DeviceIdUnavailableException().also { Log.e("ActivityMapper", it.message, it) }
+        }
+        return Api.DeviceInfo.newBuilder()
             .setOs(Api.DeviceOs.DEVICE_OS_ANDROID)
-            .setDeviceId(deviceId)
+            .setDeviceId(id)
             .setToken(token ?: "")
             .setOsVersion(Build.VERSION.RELEASE ?: "")
             .setDeviceModel(Build.MODEL ?: "")
             .build()
+    }
 
-    val deviceId: String by lazy { DeviceIdProvider.get(context) }
+    @Volatile
+    private var cachedDeviceId: String? = null
+
+    // Vazio não fica em cache: o ANDROID_ID pode aparecer numa leitura seguinte.
+    val deviceId: String
+        get() = cachedDeviceId ?: DeviceIdProvider.get(context).also { if (it.isNotEmpty()) cachedDeviceId = it }
 
     private fun buildAppInfo(): Api.AppInfo {
         val p = context.packageName
@@ -265,11 +285,15 @@ internal class ActivityMapper(private val context: Context) {
         return gson.toJson(custom.params)
     }
 
-    private fun nowTimestamp(): Timestamp {
-        val now = java.time.Instant.now()
-        return Timestamp.newBuilder()
-            .setSeconds(now.epochSecond)
-            .setNanos(now.nano)
+    private fun nowTimestamp(): Timestamp = toTimestamp(java.time.Instant.now())
+
+    // Hora gravada na fila (reenvio); sem ela ou inválida, a hora atual.
+    private fun timestampOf(queuedAt: String?): Timestamp =
+        queuedAt?.let(::parseISO)?.let { toTimestamp(it.toInstant()) } ?: nowTimestamp()
+
+    private fun toTimestamp(instant: java.time.Instant): Timestamp =
+        Timestamp.newBuilder()
+            .setSeconds(instant.epochSecond)
+            .setNanos(instant.nano)
             .build()
-    }
 }

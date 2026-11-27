@@ -9,6 +9,7 @@ import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
 import br.com.dito.ditosdk.service.ActivityMapper
+import br.com.dito.ditosdk.service.DeviceIdUnavailableException
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import com.google.common.truth.Truth.assertThat
 import io.mockk.clearMocks
@@ -17,6 +18,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -46,6 +48,7 @@ class TrackerTest {
     @Before
     fun setup() {
         context = ApplicationProvider.getApplicationContext()
+        setAndroidId("device-1")
         trackerOffline = mockk(relaxed = true)
         every { trackerOffline.getIdentify() } returns null
         mockClient = mockk<MobileIngestClientInterface>(relaxed = true)
@@ -471,7 +474,7 @@ class TrackerTest {
     }
 
     @Test
-    fun `without android id, track is queued without owner and token fails as before`() = testScope.runTest {
+    fun `without android id, logged out track is queued as anonymous and token fails`() = testScope.runTest {
         setAndroidId("")
         every { trackerOffline.getIdentify() } returns null
         var registerError: Throwable? = null
@@ -483,7 +486,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify(exactly = 0) { mockClient.activity(any()) }
-        verify { trackerOffline.event(any(), any(), false) }
+        verify { trackerOffline.event(any(), any(), true) }
         assertThat(registerError).isInstanceOf(IllegalStateException::class.java)
         assertThat(unregisterError).isInstanceOf(IllegalStateException::class.java)
     }
@@ -742,6 +745,117 @@ class TrackerTest {
         advanceUntilIdle()
         verify { trackerOffline.notificationRead(any(), "notif123", "user123", emptyMap(), "log123", "campanha") }
     }
+
+    @Test
+    fun `identify without android id should not call ingest and keep the identify to resend`() = testScope.runTest {
+        setAndroidId("")
+        var error: Throwable? = null
+
+        tracker.identify(Identify("user123")) { _, e -> error = e }
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify { trackerOffline.identify(any(), false) }
+        assertThat(error).isInstanceOf(DeviceIdUnavailableException::class.java)
+        assertThat(tracker.idOrNull).isEqualTo("user123")
+    }
+
+    @Test
+    fun `logged in track without android id should not call ingest and be queued with owner`() = testScope.runTest {
+        setAndroidId("")
+        tracker.id = "user123"
+        var status: Tracker.OperationStatus? = null
+
+        tracker.event(Event("purchase")) { s, _ -> status = s }
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify { trackerOffline.event(any(), any(), false) }
+        assertThat(status).isEqualTo(Tracker.OperationStatus.SAVED_LOCALLY)
+    }
+
+    @Test
+    fun `logged in token without android id should fail in the callback without calling ingest`() =
+        testScope.runTest {
+            setAndroidId("")
+            tracker.id = "user123"
+            var registerError: Throwable? = null
+            var unregisterError: Throwable? = null
+
+            tracker.registerToken("token123") { _, e -> registerError = e }
+            tracker.unregisterToken("token123") { _, e -> unregisterError = e }
+
+            advanceUntilIdle()
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+            assertThat(registerError).isInstanceOf(DeviceIdUnavailableException::class.java)
+            assertThat(unregisterError).isInstanceOf(DeviceIdUnavailableException::class.java)
+        }
+
+    @Test
+    fun `notificationClick without android id should not call ingest and be queued`() = testScope.runTest {
+        setAndroidId("")
+        tracker.id = "user123"
+
+        tracker.notificationClick("notif123", "ref123", "user123")
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify { trackerOffline.notificationRead(any(), "notif123", "user123", any()) }
+    }
+
+    @Test
+    fun `notificationReceived without android id should not call ingest and be queued with owner`() =
+        testScope.runTest {
+            setAndroidId("")
+            tracker.id = "user123"
+
+            tracker.notificationReceived(notificationReadData())
+
+            advanceUntilIdle()
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+            verify { trackerOffline.event(any(), any(), false) }
+        }
+
+    @Test
+    fun `android id that shows up later should be used on the next call`() = testScope.runTest {
+        val requests = anonymousDevice()
+        setAndroidId("")
+        tracker.id = "user123"
+        tracker.event(Event("first"))
+        advanceUntilIdle()
+
+        setAndroidId("device-1")
+        tracker.event(Event("second"))
+
+        advanceUntilIdle()
+        assertThat(requests.single().device.deviceId).isEqualTo("device-1")
+    }
+
+    @Test
+    fun `register in flight during logout should not confirm the token, so the next login resends it`() =
+        testScope.runTest {
+            val requests = anonymousDevice()
+            val hold = CompletableDeferred<Unit>()
+            coEvery { mockClient.activity(capture(requests)) } coAnswers {
+                if (requests.size == 1) hold.await()
+                Api.Response.getDefaultInstance()
+            }
+            tracker.id = "user123"
+            tracker.registerToken("token123")
+            advanceUntilIdle()
+
+            tracker.logout()
+            advanceUntilIdle()
+            hold.complete(Unit)
+            advanceUntilIdle()
+
+            assertThat(AnonymousState(context).confirmedUserId).isNull()
+            tracker.identify(Identify("user123"), null)
+            advanceUntilIdle()
+            val resent = requests.last()
+            assertThat(resent.userId).isEqualTo("user123")
+            assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
+        }
 
     private fun setAndroidId(value: String) {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)

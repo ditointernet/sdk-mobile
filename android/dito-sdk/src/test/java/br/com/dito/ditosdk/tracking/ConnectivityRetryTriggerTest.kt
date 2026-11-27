@@ -14,6 +14,8 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -187,6 +189,47 @@ class ConnectivityRetryTriggerTest {
     }
 
     @Test
+    fun `close cancels its own scope but not an injected one`() {
+        val own = ConnectivityRetryTrigger(context, { uploads++ })
+        own.close()
+        assertThat(own.scope.isActive).isFalse()
+
+        trigger.close()
+        assertThat(testScope.isActive).isTrue()
+    }
+
+    @Test
+    fun `initial delivery of the active network during registration does not trigger`() = testScope.runTest {
+        val cm = mockk<ConnectivityManager>(relaxed = true)
+        val ctx = mockk<Context>()
+        every { ctx.getSystemService(any<String>()) } returns cm
+        every { cm.activeNetwork } returns active
+        every { cm.getNetworkCapabilities(active) } returns capabilities(validated = true)
+        every { cm.registerDefaultNetworkCallback(any<ConnectivityManager.NetworkCallback>()) } answers {
+            firstArg<ConnectivityManager.NetworkCallback>().onCapabilitiesChanged(active, capabilities(validated = true))
+        }
+
+        ConnectivityRetryTrigger(ctx, { uploads++ }, DEBOUNCE_MS, testScope).start()
+        advanceUntilIdle()
+
+        assertThat(uploads).isEqualTo(0)
+    }
+
+    @Test
+    fun `start registers the callback before reading the current network`() {
+        val cm = mockk<ConnectivityManager>(relaxed = true)
+        val ctx = mockk<Context>()
+        every { ctx.getSystemService(any<String>()) } returns cm
+
+        ConnectivityRetryTrigger(ctx, { uploads++ }, DEBOUNCE_MS, testScope).start()
+
+        verifyOrder {
+            cm.registerDefaultNetworkCallback(any<ConnectivityManager.NetworkCallback>())
+            cm.activeNetwork
+        }
+    }
+
+    @Test
     fun `registration failures do not throw`() {
         val throwing = mockk<Context>()
         every { throwing.getSystemService(any<String>()) } throws SecurityException("sem permissão")
@@ -226,7 +269,7 @@ class ConnectivityRetryTriggerTest {
         val mapper = ActivityMapper(context)
         val tracker = Tracker(trackerOffline, client, mapper, AnonymousState(context), scope = testScope)
         val retry = TrackerRetry(tracker, trackerOffline, client, mapper, 5, testScope)
-        trigger = ConnectivityRetryTrigger(context, retry::uploadEvents, DEBOUNCE_MS, testScope)
+        trigger = ConnectivityRetryTrigger(context, retry::uploadEventsOnReconnect, DEBOUNCE_MS, testScope)
         trigger.start()
 
         retry.uploadEvents()
