@@ -69,7 +69,7 @@ class DitoSqlHelperMigrationTest {
 
         // Abrir pelo Room valida o schema migrado contra a entidade (tipo, NOT NULL e default).
         val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
-            .addMigrations(OFFLINE_MIGRATION_4_5, OFFLINE_MIGRATION_5_6)
+            .addMigrations(OFFLINE_MIGRATION_4_5, OFFLINE_MIGRATION_5_6, OFFLINE_MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {
@@ -94,7 +94,7 @@ class DitoSqlHelperMigrationTest {
         }
 
         val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
-            .addMigrations(OFFLINE_MIGRATION_5_6)
+            .addMigrations(OFFLINE_MIGRATION_5_6, OFFLINE_MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {
@@ -103,6 +103,32 @@ class DitoSqlHelperMigrationTest {
             assertThat(click.retry).isEqualTo(2)
             assertThat(click.logId).isNull()
             assertThat(click.notificationName).isNull()
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    fun `migration 6 to 7 adds the owner keeping pending events`() {
+        openV4Database().use { db ->
+            OFFLINE_MIGRATION_4_5.migrate(db)
+            OFFLINE_MIGRATION_5_6.migrate(db)
+            db.execSQL(
+                "INSERT INTO event (activityId, action, timestamp, retry, anonymous) VALUES ('act1', 'compra', 't', 2, 1)"
+            )
+            db.version = 6
+        }
+
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val event = room.eventDao().getAll().single()
+            assertThat(event.activityId).isEqualTo("act1")
+            assertThat(event.retry).isEqualTo(2)
+            assertThat(event.anonymous).isTrue()
+            assertThat(event.userId).isNull()
         } finally {
             room.close()
         }

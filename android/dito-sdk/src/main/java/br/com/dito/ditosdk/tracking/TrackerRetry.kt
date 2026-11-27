@@ -137,15 +137,28 @@ internal class TrackerRetry(
 
         events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
 
-        val (anonymous, owned) = events.filter { it.retry < maxRetry }.partition { it.anonymous }
-        val anonymousFailed = anonymous.isNotEmpty() && !sendEventsBatch(anonymous, null)
-        if (owned.isEmpty()) return anonymousFailed
+        // O ingest descarta em silêncio um Receipt sem notification_id: reenviar só gastaria tentativas.
+        val (orphanReceipts, live) = events.filter { it.retry < maxRetry }.partition {
+            it.action == PUSH_RECEIVE_EVENT &&
+                (mapper.customDataFromJson(it.dataJson)?.params?.get("notification_id") as? String).isNullOrEmpty()
+        }
+        orphanReceipts.forEach {
+            Log.w("TrackerRetry", "Entrega sem notification id apagada da fila.")
+            trackerOffline.delete(it.id, "Event")
+        }
+
+        val (anonymous, owned) = live.partition { it.anonymous }
+        var failed = anonymous.isNotEmpty() && !sendEventsBatch(anonymous, null)
+        // Cada linha sai com o user_id de quando entrou na fila; as anteriores à coluna, com o atual.
+        val (withOwner, legacy) = owned.partition { it.userId != null }
+        withOwner.groupBy { it.userId!! }.forEach { (owner, rows) -> if (!sendEventsBatch(rows, owner)) failed = true }
+        if (legacy.isEmpty()) return failed
 
         val userId = tracker.awaitId() ?: run {
             Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
-            return anonymousFailed
+            return failed
         }
-        return !sendEventsBatch(owned, userId) || anonymousFailed
+        return !sendEventsBatch(legacy, userId) || failed
     }
 
     private suspend fun sendEventsBatch(events: List<EventOff>, userId: String?): Boolean {
@@ -182,18 +195,21 @@ internal class TrackerRetry(
 
     private suspend fun checkNotificationRead(): Boolean {
         val notifications = trackerOffline.getAllNotificationRead() ?: return false
-        val userId = tracker.awaitId() ?: run {
-            Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
-            return false
-        }
 
         notifications.filter { it.retry >= maxRetry }
             .forEach { trackerOffline.delete(it.id, "NotificationRead") }
 
-        val toSend = notifications.filter { it.retry < maxRetry }
-        if (toSend.isEmpty()) return false
+        // O identifier é o user_id do push: o clique sai com ele, logado ou não.
+        val (withOwner, legacy) = notifications.filter { it.retry < maxRetry }.partition { it.identifier.isNotEmpty() }
+        var failed = false
+        withOwner.groupBy { it.identifier }.forEach { (owner, rows) -> if (!sendNotificationsBatch(rows, owner)) failed = true }
+        if (legacy.isEmpty()) return failed
 
-        return !sendNotificationsBatch(toSend, userId)
+        val userId = tracker.awaitId() ?: run {
+            Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+            return failed
+        }
+        return !sendNotificationsBatch(legacy, userId) || failed
     }
 
     private suspend fun sendNotificationsBatch(notifications: List<NotificationReadOff>, userId: String): Boolean {

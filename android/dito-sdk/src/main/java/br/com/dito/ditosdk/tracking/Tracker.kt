@@ -129,17 +129,17 @@ internal class Tracker(
                 send(userId, listOf(activity), null)
                 callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
-                handleEventError(e, event, activityId, anonymous = userId == null)
+                handleEventError(e, event, activityId, userId)
                 callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
             }
         }
     }
 
-    private fun handleEventError(exception: Exception, event: Event, activityId: String, anonymous: Boolean) {
+    private fun handleEventError(exception: Exception, event: Event, activityId: String, userId: String?) {
         if (exception is UninitializedPropertyAccessException) {
             Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
         }
-        trackerOffline.event(event, activityId, anonymous)
+        trackerOffline.event(event, activityId, anonymous = userId == null, userId = userId)
     }
 
     internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?) {
@@ -266,20 +266,10 @@ internal class Tracker(
                 // log, sem fila, sem rastro. `createdAt` do evento já está preenchido, então o
                 // reenvio preserva o instante real da entrega, não o do retry.
                 Log.e("Tracker", "Falha ao enviar a entrega da notificação ${data.notificationId}.", e)
-                // A fila não guarda o user_id: só enfileira se o dono do push for quem o reenvio vai usar.
-                val userId = awaitId()
-                when {
-                    userId != null && data.userId == userId -> trackerOffline.event(trackEvent, activityId)
-                    userId == null && isAnonymousUser(data.userId) ->
-                        trackerOffline.event(trackEvent, activityId, anonymous = true)
-                    else -> Log.w("Tracker", "Entrega de outro usuário descartada, sem retry.")
-                }
+                trackerOffline.event(trackEvent, activityId, userId = data.userId)
             }
         }
     }
-
-    private fun isAnonymousUser(userId: String): Boolean =
-        anonymousUserId()?.equals(userId, ignoreCase = true) == true
 
     // Mesmo user_id que o backend deriva do device_id para o aparelho anônimo.
     internal fun anonymousUserId(): String? {

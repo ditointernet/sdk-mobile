@@ -117,7 +117,7 @@ class TrackerTest {
         tracker.event(event)
 
         delay(500)
-        verify { trackerOffline.event(any(), any()) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
     }
 
     @Test
@@ -163,7 +163,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         assertThat(requests.single().userId).isEmpty()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -177,7 +177,7 @@ class TrackerTest {
         assertThat(request.userId).isEmpty()
         assertThat(request.device.deviceId).isEqualTo("device-1")
         assertThat(request.activitiesList.single { it.hasTrack() }.track.event).isEqualTo("purchase")
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -612,7 +612,7 @@ class TrackerTest {
         advanceUntilIdle()
         // Antes disto a exceção era engolida por um catch vazio: a entrega perdida não deixava
         // fila nem log, e era indistinguível de uma entrega bem-sucedida.
-        verify { trackerOffline.event(any(), any(), any()) }
+        verify { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -627,49 +627,52 @@ class TrackerTest {
     }
 
     @Test
-    fun `notificationReceived failure without login should queue the delivery as anonymous`() = testScope.runTest {
-        anonymousDevice()
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
-
-        advanceUntilIdle()
-        verify { trackerOffline.event(any(), any(), true) }
-    }
-
-    @Test
-    fun `notificationReceived failure of another user without login should not be queued`() = testScope.runTest {
-        anonymousDevice()
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = "user123"))
-
-        advanceUntilIdle()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
-    }
-
-    @Test
-    fun `notificationReceived failure of another user with login should not be queued`() = testScope.runTest {
-        anonymousDevice()
-        tracker.id = "other-user"
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = "user123"))
-
-        advanceUntilIdle()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
-    }
-
-    @Test
-    fun `notificationReceived failure without login and without android id should not be queued`() =
+    fun `notificationReceived failure without login should queue the delivery owned by the push user`() =
         testScope.runTest {
-            setAndroidId("")
+            anonymousDevice()
             coEvery { mockClient.activity(any()) } throws Exception("err")
 
-            tracker.notificationReceived(notificationReadData(userId = sha1Hex("")))
+            tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
 
             advanceUntilIdle()
-            verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+            verify { trackerOffline.event(any(), any(), false, sha1Hex("device-1")) }
+        }
+
+    @Test
+    fun `notificationReceived failure of another user without login should be queued with the push user`() =
+        testScope.runTest {
+            anonymousDevice()
+            coEvery { mockClient.activity(any()) } throws Exception("err")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            verify { trackerOffline.event(any(), any(), false, "user123") }
+        }
+
+    @Test
+    fun `notificationReceived failure of another user with login should be queued with the push user`() =
+        testScope.runTest {
+            anonymousDevice()
+            tracker.id = "other-user"
+            coEvery { mockClient.activity(any()) } throws Exception("err")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            verify { trackerOffline.event(any(), any(), false, "user123") }
+        }
+
+    @Test
+    fun `notificationReceived without login and without android id should be queued with the push user`() =
+        testScope.runTest {
+            setAndroidId("")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+            verify { trackerOffline.event(any(), any(), false, "user123") }
         }
 
     @Test
@@ -681,7 +684,7 @@ class TrackerTest {
         tracker.notificationReceived(notificationReadData())
 
         advanceUntilIdle()
-        verify { trackerOffline.event(any(), any(), false) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
     }
 
     @Test
@@ -690,7 +693,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify { mockClient.activity(any()) }
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -720,7 +723,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify(exactly = 0) { mockClient.activity(any()) }
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -770,7 +773,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify(exactly = 0) { mockClient.activity(any()) }
-        verify { trackerOffline.event(any(), any(), false) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
         assertThat(status).isEqualTo(Tracker.OperationStatus.SAVED_LOCALLY)
     }
 
@@ -813,7 +816,7 @@ class TrackerTest {
 
             advanceUntilIdle()
             coVerify(exactly = 0) { mockClient.activity(any()) }
-            verify { trackerOffline.event(any(), any(), false) }
+            verify { trackerOffline.event(any(), any(), false, "user123") }
         }
 
     @Test

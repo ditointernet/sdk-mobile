@@ -46,7 +46,7 @@ interface IdentifyOfflineDao {
 }
 
 @Entity(tableName = "event")
-data class EventOffline(
+internal data class EventOffline(
     @PrimaryKey(autoGenerate = true) val _id: Int? = null,
     val activityId: String,
     val action: String,
@@ -55,10 +55,12 @@ data class EventOffline(
     val timestamp: String,
     val retry: Int,
     @ColumnInfo(defaultValue = "0") val anonymous: Boolean = false,
+    /** user_id de quando a linha entrou na fila; nulo em linha anônima ou anterior à coluna. */
+    val userId: String? = null,
 )
 
 @Dao
-interface EventOfflineDao {
+internal interface EventOfflineDao {
     @Query("SELECT * FROM event")
     fun getAll(): List<EventOffline>
 
@@ -73,7 +75,7 @@ interface EventOfflineDao {
 }
 
 @Entity(tableName = "notification")
-data class NotificationOffline(
+internal data class NotificationOffline(
     @PrimaryKey(autoGenerate = true) val _id: Int? = null,
     val activityId: String,
     val notificationId: String,
@@ -90,7 +92,7 @@ data class NotificationOffline(
 )
 
 @Dao
-interface NotificationOfflineDao {
+internal interface NotificationOfflineDao {
     @Query("SELECT * FROM notification")
     fun getAll(): List<NotificationOffline>
 
@@ -116,25 +118,32 @@ val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
 }
 
 // Sem ela, o fallbackToDestructiveMigration apaga a fila de eventos pendentes.
-val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
+internal val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE event ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0")
     }
 }
 
-val OFFLINE_MIGRATION_5_6 = object : Migration(5, 6) {
+internal val OFFLINE_MIGRATION_5_6 = object : Migration(5, 6) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE notification ADD COLUMN logId TEXT")
         db.execSQL("ALTER TABLE notification ADD COLUMN notificationName TEXT")
     }
 }
 
+// Sem ela, o fallbackToDestructiveMigration apaga a fila de eventos pendentes.
+internal val OFFLINE_MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE event ADD COLUMN userId TEXT")
+    }
+}
+
 @Database(
     entities = [IdentifyOffline::class, EventOffline::class, NotificationOffline::class],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
-abstract class DitoSqlHelper : RoomDatabase() {
+internal abstract class DitoSqlHelper : RoomDatabase() {
     abstract fun identifyDao(): IdentifyOfflineDao
     abstract fun eventDao(): EventOfflineDao
     abstract fun notificationDao(): NotificationOfflineDao

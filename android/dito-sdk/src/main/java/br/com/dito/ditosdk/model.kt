@@ -52,6 +52,7 @@ internal data class EventOff(
     val timestamp: String,
     val retry: Int,
     val anonymous: Boolean = false,
+    val userId: String? = null,
 )
 
 internal data class IdentifyOff(

@@ -30,7 +30,7 @@ object NotificationDisplayHelper {
     private const val IMAGE_CONNECT_TIMEOUT_MS = 5_000
     private const val IMAGE_READ_TIMEOUT_MS = 10_000
 
-    @SuppressLint("MissingPermission")
+    // Assinatura pública anterior, mantida para quem compilou contra o AAR antigo (sem NoSuchMethodError).
     fun showNotification(
         context: Context,
         title: String?,
@@ -45,8 +45,28 @@ object NotificationDisplayHelper {
         imageUrl: String? = null,
         actions: List<DitoNotificationAction> = emptyList(),
         customDataJson: String? = null,
-        logId: String? = null,
-        notificationName: String? = null,
+    ) = showNotification(
+        context, title, message, notificationId, reference, deepLink, channel, channelDescription,
+        userId, options, imageUrl, actions, customDataJson, logId = null, notificationName = null,
+    )
+
+    @SuppressLint("MissingPermission")
+    internal fun showNotification(
+        context: Context,
+        title: String?,
+        message: String,
+        notificationId: String?,
+        reference: String?,
+        deepLink: String?,
+        channel: String?,
+        channelDescription: String?,
+        userId: String? = null,
+        options: DitoNotificationOptions = DitoNotificationOptions(),
+        imageUrl: String? = null,
+        actions: List<DitoNotificationAction> = emptyList(),
+        customDataJson: String? = null,
+        logId: String?,
+        notificationName: String?,
     ) {
         Log.d(TAG, "showNotification called - Title: $title, Message: $message")
 
