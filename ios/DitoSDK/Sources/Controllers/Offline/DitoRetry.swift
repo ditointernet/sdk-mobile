@@ -65,6 +65,10 @@ class DitoRetry {
     }
 
     internal func runLoadOffline() async {
+        guard !DeviceIdProvider.get().isEmpty else {
+            DitoLogger.error("❌ [RETRY] device_id indisponível (falha ao ler o Keychain): fila offline mantida, nada enviado")
+            return
+        }
         await checkNotificationReceive()
         // Sequential so these requests don't each carry the anonymous Identify (a concurrent immediate send still may).
         await checkTrack(anonymous: true)
@@ -84,21 +88,16 @@ class DitoRetry {
     private func send(_ activities: [Mobileingest_V1_Activity], owner: Owner) async throws {
         switch owner {
         case .anonymous:
-            try await client.sendAnonymous(
-                activities,
-                mapper: mapper,
-                allowIdentify: identifyOffline.identityState == .anonymous
-            )
+            try await client.sendAnonymous(activities, mapper: mapper)
         case .user(let userId):
             try await client.activity(mapper.buildRequest(userId: userId, activities: activities))
         }
     }
 
-    /// nil means wait: no user yet; for an anonymous row, an identify pending or in progress,
-    /// or no device_id (sending would only burn a retry).
+    /// nil means wait: no user yet, or for an anonymous row an identify pending or in progress.
     private func owner(anonymous: Bool, reference: String?) -> Owner? {
         if anonymous {
-            guard identifyOffline.identityState != .pending, !DeviceIdProvider.get().isEmpty else { return nil }
+            guard identifyOffline.identityState != .pending else { return nil }
             return .anonymous
         }
         guard let reference, !reference.isEmpty else { return nil }
@@ -120,9 +119,8 @@ class DitoRetry {
         #endif
 
         let activity = mapper.mapFromDitoUser(userData: signupRequest.userData, userId: id)
-        let request = mapper.buildRequest(userId: id, activities: [activity])
         do {
-            try await client.activity(request)
+            try await client.activity(mapper.buildRequest(userId: id, activities: [activity]))
             identifyOffline.update(id: id, params: signupRequest, reference: id, send: true)
             DitoLogger.information("✅ [RETRY] Identify enviado")
             DitoNotification(client: client).registerLastToken()
@@ -143,7 +141,9 @@ class DitoRetry {
 
         guard !tracks.isEmpty else { return }
         guard let owner = self.owner(anonymous: anonymous, reference: trackOffline.reference) else {
-            DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Track - Identify pendente; eventos anônimos aguardam a conclusão."
+                : "Track - Antes de enviar um evento é preciso identificar o usuário.")
             return
         }
 
@@ -232,10 +232,6 @@ class DitoRetry {
             var receiveEvent = Dito.createNotificationTrackEvent(received, token: pending.token)
             receiveEvent.createdAt = pending.receivedAt
             let trackActivity = mapper.mapFromDitoEvent(receiveEvent)
-            let request = mapper.buildRequest(
-                userId: pending.userId,
-                activities: [identifyActivity, trackActivity]
-            )
 
             do {
                 #if DEBUG
@@ -244,7 +240,10 @@ class DitoRetry {
                 #else
                 let ingestClient: MobileIngestClientProtocol = client
                 #endif
-                try await ingestClient.activity(request)
+                try await ingestClient.activity(mapper.buildRequest(
+                    userId: pending.userId,
+                    activities: [identifyActivity, trackActivity]
+                ))
                 notificationReadOffline.deleteReceive(id: rowId)
                 DitoNotificationReceiveTracker.markDelivered(
                     notification: pending.notification,
@@ -290,9 +289,8 @@ class DitoRetry {
             #endif
 
             let activity = mapper.mapFromNotificationOpen(notificationRequest)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
             do {
-                try await client.activity(request)
+                try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
                 notificationReadOffline.deleteRead(id: notifID)
                 DitoLogger.information("✅ [RETRY] Notification Read enviada")
             } catch {
@@ -310,8 +308,15 @@ class DitoRetry {
               let registerRequest = registerJson.convertToObject(type: DitoTokenRequest.self)
         else { return }
 
+        let lastToken = UserDefaults.lastPushToken
+        // nil: a register queued by an SDK version that didn't record the last token; it is still sent.
+        if let lastToken, registerRequest.token != lastToken {
+            notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
+            DitoLogger.warning("⚠️ [RETRY] Register de token que não é mais o atual descartado sem envio")
+            return
+        }
         // The identify confirmation re-sends the last token with the user (`registerLastToken`).
-        if anonymous, registerRequest.token == UserDefaults.lastPushToken {
+        if anonymous, registerRequest.token == lastToken {
             switch identifyOffline.identityState {
             case .identified:
                 notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
@@ -323,7 +328,9 @@ class DitoRetry {
             }
         }
         guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
-            DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Register Token - Identify pendente; token anônimo aguarda a conclusão."
+                : "Register Token - Antes de registrar o token é preciso identificar o usuário.")
             return
         }
 
@@ -357,7 +364,9 @@ class DitoRetry {
               notificationUnregister.anonymous == anonymous
         else { return }
         guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
-            DitoLogger.warning("Unregister Token - Antes de remover o token é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Unregister Token - Identify pendente; remoção anônima aguarda a conclusão."
+                : "Unregister Token - Antes de remover o token é preciso identificar o usuário.")
             return
         }
         guard let unregisterJson = notificationUnregister.json,

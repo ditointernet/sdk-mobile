@@ -71,7 +71,7 @@ class DitoTrack {
                 if let userId {
                     try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
                 } else {
-                    try await client.sendAnonymous([activity], mapper: mapper, allowIdentify: true)
+                    try await client.sendAnonymous([activity], mapper: mapper)
                 }
                 DitoLogger.information("✅ [TRACK] Sucesso")
                 completion?(.success(.sent))

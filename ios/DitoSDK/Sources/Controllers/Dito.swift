@@ -428,13 +428,12 @@ public class Dito {
     let trackActivity = mapper.mapFromDitoEvent(
       createNotificationTrackEvent(received, token: token, receivedAt: receivedAt)
     )
-    let request = mapper.buildRequest(
-      userId: received.userId,
-      activities: [identifyActivity, trackActivity]
-    )
 
     do {
-      try await ingestClient.activity(request)
+      try await ingestClient.activity(mapper.buildRequest(
+        userId: received.userId,
+        activities: [identifyActivity, trackActivity]
+      ))
       DitoNotificationReceiveTracker.markDelivered(
         notification: received.notification,
         logId: received.logId
