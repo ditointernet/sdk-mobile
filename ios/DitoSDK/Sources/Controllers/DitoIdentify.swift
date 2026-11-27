@@ -50,14 +50,13 @@ class DitoIdentify {
             return
         }
         let activity = mapper.mapFromDitoUser(userData: userData, userId: id)
-        let request = mapper.buildRequest(userId: id, activities: [activity])
         let signupRequest = DitoSignupRequest(
             platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
             sha1Signature: Dito.signature,
             userData: userData
         )
         do {
-            try await client.activity(request)
+            try await client.activity(mapper.buildRequest(userId: id, activities: [activity]))
             identifyOffline.identify(id: id, params: signupRequest, reference: id, send: true)
             identifyOffline.finishIdentify()
 
@@ -66,12 +65,16 @@ class DitoIdentify {
             #endif
 
             completion?(.success(.sent))
+            DitoNotification(client: client).registerLastToken()
             retry.loadOffline()
         } catch {
-            identifyOffline.identify(id: id, params: signupRequest, reference: nil, send: false)
+            // Without a device_id nothing was sent: the same user, already confirmed, stays identified until the
+            // retry re-sends this identify.
+            let keepsUser = error is DeviceIdUnavailableError && identifyOffline.getIdentify?.reference == id
+            identifyOffline.identify(id: id, params: signupRequest, reference: keepsUser ? id : nil, send: false)
             identifyOffline.finishIdentify()
             DitoLogger.error(error.localizedDescription)
-            completion?(.failure(error))
+            completion?(keepsUser ? .success(.savedLocally) : .failure(error))
         }
     }
 }

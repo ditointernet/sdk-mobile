@@ -5,6 +5,7 @@ import UIKit
 struct ActivityMapper {
     private let deviceOsVersion: String
     private let deviceModel: String
+    let sdkVersion = Bundle(for: Dito.self).infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
 
     init() {
         deviceOsVersion = UIDevice.current.systemVersion
@@ -25,6 +26,20 @@ struct ActivityMapper {
         if let dataJson = userData?.data {
             identify.customData = customDataFromJson(dataJson)
         }
+        var activity = Mobileingest_V1_Activity()
+        activity.id = UUID().uuidString
+        activity.type = .activityIdentify
+        activity.identify = identify
+        activity.timestamp = nowTimestamp()
+        return activity
+    }
+
+    func mapAnonymousIdentify() -> Mobileingest_V1_Activity {
+        var identify = Mobileingest_V1_IdentifyActivity()
+        identify.customData = customDataFromStrings([
+            "device_model": deviceModel,
+            "sdk_version": sdkVersion,
+        ])
         var activity = Mobileingest_V1_Activity()
         activity.id = UUID().uuidString
         activity.type = .activityIdentify
@@ -125,20 +140,22 @@ struct ActivityMapper {
         return result
     }
 
-    func buildRequest(userId: String, activities: [Mobileingest_V1_Activity]) -> Mobileingest_V1_Request {
+    func buildRequest(userId: String, activities: [Mobileingest_V1_Activity]) throws -> Mobileingest_V1_Request {
+        let deviceId = DeviceIdProvider.get()
+        guard !deviceId.isEmpty else { throw DeviceIdUnavailableError() }
         var request = Mobileingest_V1_Request()
         request.activities = activities
         request.userID = userId
-        request.device = buildDeviceInfo()
+        request.device = buildDeviceInfo(deviceId: deviceId)
         request.sdk = buildSDKInfo()
         request.app = buildAppInfo()
         return request
     }
 
-    private func buildDeviceInfo() -> Mobileingest_V1_DeviceInfo {
+    private func buildDeviceInfo(deviceId: String) -> Mobileingest_V1_DeviceInfo {
         var info = Mobileingest_V1_DeviceInfo()
         info.os = .ios
-        info.deviceID = DeviceIdProvider.get()
+        info.deviceID = deviceId
         info.osVersion = deviceOsVersion
         info.deviceModel = deviceModel
         return info
@@ -146,7 +163,7 @@ struct ActivityMapper {
 
     private func buildSDKInfo() -> Mobileingest_V1_SDKInfo {
         var sdk = Mobileingest_V1_SDKInfo()
-        sdk.version = Bundle(for: Dito.self).infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        sdk.version = sdkVersion
         sdk.lang = "swift"
         return sdk
     }
@@ -191,5 +208,31 @@ struct ActivityMapper {
             result[key] = cd
         }
         return result
+    }
+}
+
+struct DeviceIdUnavailableError: LocalizedError {
+    var errorDescription: String? {
+        "device_id indisponível (falha ao ler o Keychain)"
+    }
+}
+
+extension MobileIngestClientProtocol {
+    func sendAnonymous(
+        _ activities: [Mobileingest_V1_Activity],
+        mapper: ActivityMapper
+    ) async throws {
+        let deviceId = DeviceIdProvider.get()
+        guard !deviceId.isEmpty else { throw DeviceIdUnavailableError() }
+        let mark = ["device_id": deviceId, "sdk_version": mapper.sdkVersion]
+        let withIdentify = UserDefaults.anonymousIdentifyMark != mark
+        let request = try mapper.buildRequest(
+            userId: "",
+            activities: withIdentify ? [mapper.mapAnonymousIdentify()] + activities : activities
+        )
+        _ = try await activity(request)
+        if withIdentify {
+            UserDefaults.anonymousIdentifyMark = mark
+        }
     }
 }

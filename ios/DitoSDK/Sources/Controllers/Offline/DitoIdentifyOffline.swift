@@ -1,5 +1,11 @@
 import Foundation
 
+enum DitoIdentityState: Equatable {
+  case anonymous
+  case pending
+  case identified(String)
+}
+
 class DitoIdentifyOffline {
 
   static let shared = DitoIdentifyOffline()
@@ -64,6 +70,14 @@ class DitoIdentifyOffline {
 
   var getIdentify: IdentifyDefaults? {
     return identifyDataManager.fetch
+  }
+
+  var identityState: DitoIdentityState {
+    if let identify = getIdentify {
+      guard let reference = identify.reference, !reference.isEmpty else { return .pending }
+      return .identified(reference)
+    }
+    return getSavingState ? .pending : .anonymous
   }
 
   func update(
