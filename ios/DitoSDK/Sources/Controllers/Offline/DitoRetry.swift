@@ -304,6 +304,12 @@ class DitoRetry {
                   let pending = jsonData.convertToObject(type: DitoNotificationReceivePending.self)
             else { continue }
 
+            guard !pending.notification.isEmpty else {
+                notificationReadOffline.deleteReceive(id: rowId)
+                DitoLogger.warning("⚠️ [RETRY] receive-ios-notification sem notification_id descartado sem envio")
+                continue
+            }
+
             if rowRetry >= DitoRetry.maxRetries {
                 notificationReadOffline.deleteReceive(id: rowId)
                 DitoLogger.warning(

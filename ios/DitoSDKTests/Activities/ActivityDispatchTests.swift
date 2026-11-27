@@ -168,6 +168,16 @@ final class ActivityDispatchTests: XCTestCase {
     }
 
     func testNotificationClick_ingestFails_queuesLogIdNameAndChannel() async throws {
+        let readQueue = DitoNotificationReadDataManager()
+        readQueue.fetchAll.forEach { _ = readQueue.delete(with: $0.id) }
+        addTeardownBlock {
+            readQueue.fetchAll.forEach { _ = readQueue.delete(with: $0.id) }
+        }
+        func ownRequests() -> [DitoNotificationOpenRequest] {
+            readQueue.fetchAll
+                .compactMap { $0.json?.convertToObject(type: DitoNotificationOpenRequest.self) }
+                .filter { $0.data.notification == "nid-dispatch-4" }
+        }
         let mock = MockMobileIngestClient()
         mock.shouldSucceed = false
         let sut = DitoNotification(client: mock, onSent: {})
@@ -178,11 +188,10 @@ final class ActivityDispatchTests: XCTestCase {
             notificationName: "Campanha 4"
         )
         let deadline = Date().addingTimeInterval(10)
-        while DitoNotificationReadDataManager().fetchAll.isEmpty, Date() < deadline {
+        while ownRequests().isEmpty, Date() < deadline {
             try? await Task.sleep(nanoseconds: 25_000_000)
         }
-        let row = try XCTUnwrap(DitoNotificationReadDataManager().fetchAll.first)
-        let queued = try XCTUnwrap(row.json?.convertToObject(type: DitoNotificationOpenRequest.self))
+        let queued = try XCTUnwrap(ownRequests().first)
         XCTAssertEqual(queued.data.logId, "log-dispatch-4")
         XCTAssertEqual(queued.data.notificationName, "Campanha 4")
         XCTAssertEqual(queued.data.channel, "mobile")

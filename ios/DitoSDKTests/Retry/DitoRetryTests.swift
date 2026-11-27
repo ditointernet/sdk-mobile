@@ -330,6 +330,25 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertEqual(act.timestamp.date, arrival)
         XCTAssertTrue(DitoNotificationOffline().getNotificationReceive.isEmpty)
     }
+
+    func testLoadOffline_pendingReceiveWithoutNotificationId_isDroppedWithoutSending() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+        DitoNotificationOffline().notificationReceive(DitoNotificationReceivePending(
+            userId: "uid-retry-receive-empty",
+            token: "fcm-retry-receive-empty",
+            notification: "",
+            logId: "log-retry-receive-empty",
+            notificationName: "Campanha antiga"
+        ))
+        XCTAssertEqual(DitoNotificationOffline().getNotificationReceive.count, 1)
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertTrue(DitoNotificationOffline().getNotificationReceive.isEmpty)
+    }
     #endif
 
     func testLoadOffline_identifyNotSent_firstActivityFails_tracksRemainAndNoFurtherActivityCalls() async throws {
