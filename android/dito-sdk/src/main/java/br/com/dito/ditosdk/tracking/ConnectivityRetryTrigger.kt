@@ -9,6 +9,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -16,14 +17,20 @@ internal class ConnectivityRetryTrigger(
     private val context: Context,
     private val onReconnect: () -> Unit,
     private val debounceMs: Long = 2_000,
-    private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
+    injectedScope: CoroutineScope? = null,
 ) {
+
+    private val ownsScope = injectedScope == null
+    internal val scope: CoroutineScope = injectedScope ?: CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private val lock = Any()
     private var connectivityManager: ConnectivityManager? = null
     private var lastValidated: Network? = null
     private var pending: Job? = null
     private var closed = false
+
+    // Entrega inicial da rede já ativa (pode chegar dentro do registro): o configure já fez o flush.
+    private var firstReadPending = true
 
     // Só rede validada dispara: onAvailable chega antes (portal cativo, Wi-Fi sem internet) e cada
     // passada que falha gasta uma das tentativas da fila. Qualquer rede padrão nova dispara, inclusive
@@ -35,6 +42,10 @@ internal class ConnectivityRetryTrigger(
             synchronized(lock) {
                 if (network == lastValidated || closed) return
                 lastValidated = network
+                if (firstReadPending) {
+                    firstReadPending = false
+                    return
+                }
                 schedule()
             }
         }
@@ -55,11 +66,15 @@ internal class ConnectivityRetryTrigger(
                 Log.w("ConnectivityRetry", "ConnectivityManager indisponível; sem reenvio ao voltar a rede.")
                 return
             }
-            // O registro reentrega a rede já ativa: o configure já fez o flush, então ela não dispara.
-            val active = cm.activeNetwork?.takeIf { isValidated(cm.getNetworkCapabilities(it)) }
-            synchronized(lock) { lastValidated = active }
+            // Registrar antes de ler a rede atual: uma queda e volta entre as duas não passa despercebida.
             cm.registerDefaultNetworkCallback(callback)
             connectivityManager = cm
+            // O registro reentrega a rede já ativa: o configure já fez o flush, então ela não dispara.
+            val active = cm.activeNetwork?.takeIf { isValidated(cm.getNetworkCapabilities(it)) }
+            synchronized(lock) {
+                if (firstReadPending) lastValidated = active
+                firstReadPending = false
+            }
         } catch (e: Exception) {
             Log.w("ConnectivityRetry", "Falha ao observar a rede; sem reenvio ao voltar a rede.", e)
         }
@@ -76,12 +91,24 @@ internal class ConnectivityRetryTrigger(
             Log.w("ConnectivityRetry", "Falha ao desregistrar o callback de rede.", e)
         }
         connectivityManager = null
+        if (ownsScope) scope.cancel()
     }
 
-    private fun isValidated(capabilities: NetworkCapabilities?): Boolean =
-        capabilities != null &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+    companion object {
+        private fun isValidated(capabilities: NetworkCapabilities?): Boolean =
+            capabilities != null &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+
+        /** Há rede padrão validada agora; sem como saber, `true` (o envio decide). */
+        fun isOnline(context: Context): Boolean =
+            try {
+                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+                cm == null || isValidated(cm.getNetworkCapabilities(cm.activeNetwork))
+            } catch (e: Exception) {
+                true
+            }
+    }
 
     private fun schedule() {
         pending?.cancel()
