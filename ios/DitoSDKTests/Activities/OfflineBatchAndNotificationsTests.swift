@@ -345,11 +345,128 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
 
         XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
     }
+
+    func testRegisterOfNewTokenSucceeds_dropsQueuedRegisterOfOldToken() async throws {
+        let userId = "uid-register-new-drops-old-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-queued-old").toString,
+            retry: 0
+        ))
+        let mock = MockMobileIngestClient()
+
+        await tokenAndWait(DitoNotification(client: mock), token: "fcm-registered-new", register: true)
+
+        XCTAssertEqual(tokenRegisterCount(mock, userId: userId, token: "fcm-registered-new"), 1)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
+    func testRegisterSucceeds_dropsQueuedRegisterOfSameToken() async throws {
+        let userId = "uid-register-same-token-queued-1"
+        let token = "fcm-same-token-queued"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: makeTokenRequest(token: token).toString, retry: 0))
+        let mock = MockMobileIngestClient()
+
+        await tokenAndWait(DitoNotification(client: mock), token: token, register: true)
+
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+        await DitoRetry(client: mock).runLoadOffline()
+        XCTAssertEqual(tokenRegisterCount(mock, userId: userId, token: token), 1)
+    }
+
+    func testRegisterSucceeds_newerTokenQueuedDuringSend_isKept() async throws {
+        let userId = "uid-register-newer-queued-during-send-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        let newerJson = makeTokenRequest(token: "fcm-newer-queued-during-send").toString
+        let sut = DitoNotification(client: SucceedsAfterClient {
+            UserDefaults.lastPushToken = "fcm-newer-queued-during-send"
+            DitoNotificationRegisterDataManager().save(with: newerJson, retry: 0)
+        })
+
+        await tokenAndWait(sut, token: "fcm-older-sent", register: true)
+
+        XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.json, newerJson)
+    }
+
+    private func waitUntil(timeout: TimeInterval = 10, _ condition: () -> Bool) async {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertTrue(condition(), "timeout à espera da condição")
+    }
+
+    func testIdentifyWithoutDeviceId_callsNoIngestAndStaysPending() async throws {
+        DeviceIdProvider.setForTests("")
+        let userId = "uid-no-device-identify-1"
+        let mock = MockMobileIngestClient()
+        let sut = DitoIdentify(retry: DitoRetry(client: mock), client: mock)
+
+        let failedForDeviceId = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+            sut.identify(id: userId, data: DitoUser(email: "no-device@example.com")) { result in
+                if case .failure(let error) = result {
+                    cont.resume(returning: error is DeviceIdUnavailableError)
+                } else {
+                    cont.resume(returning: false)
+                }
+            }
+        }
+
+        XCTAssertTrue(failedForDeviceId)
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.id, userId)
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, false)
+    }
+
+    func testIdentifiedSendsWithoutDeviceId_callNoIngestAndAreQueued() async throws {
+        DeviceIdProvider.setForTests("")
+        let userId = "uid-no-device-immediate-1"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        let mock = MockMobileIngestClient()
+        let notification = DitoNotification(client: mock)
+
+        await trackAndWait(DitoTrack(client: mock), action: "no_device_owned_evt")
+        await tokenAndWait(notification, token: "fcm-no-device-register", register: true)
+        await tokenAndWait(notification, token: "fcm-no-device-unregister", register: false)
+        notification.notificationClick(notificationId: "notif-no-device-click", identifier: userId)
+        await waitForTrackRowsWithEvents(1)
+        await waitUntil { DitoNotificationReadDataManager().fetchAll.count == 1 }
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertEqual(DitoTrackDataManager().fetchOfflinePersistedTracks().first?.anonymous, false)
+        let register = try XCTUnwrap(DitoNotificationRegisterDataManager().fetch)
+        XCTAssertNil(register.anonymous)
+        XCTAssertTrue(register.json?.contains("fcm-no-device-register") == true)
+        let unregister = try XCTUnwrap(DitoNotificationUnregisterDataManager().fetch)
+        XCTAssertFalse(unregister.anonymous)
+        XCTAssertTrue(unregister.json?.contains("fcm-no-device-unregister") == true)
+    }
+
+    func testNotificationReceivedWithoutDeviceId_callsNoIngestAndIsQueued() async throws {
+        DeviceIdProvider.setForTests("")
+        let mock = MockMobileIngestClient()
+        Dito.testNotificationReceivedIngestClient = mock
+        addTeardownBlock { Dito.testNotificationReceivedIngestClient = nil }
+
+        await Dito.awaitNotificationReceivedDelivery(
+            userInfo: [
+                "user_id": "uid-no-device-receive-1",
+                "notification": "notif-no-device-receive",
+                "log_id": "log-no-device-receive",
+            ],
+            token: "fcm-no-device-receive"
+        )
+        await waitUntil { DitoNotificationReceiveDataManager().fetchAll.count == 1 }
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+    }
     #endif
 
     func testRegisterRetryFails_newerRegisterSavedDuringSend_keepsItsRetry() async throws {
         let userId = "uid-register-retry-newer-1"
         XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: userId, json: nil, send: true))
+        UserDefaults.lastPushToken = "fcm-register-retry-older"
         XCTAssertTrue(DitoNotificationRegisterDataManager().save(
             with: makeTokenRequest(token: "fcm-register-retry-older").toString,
             retry: 2
