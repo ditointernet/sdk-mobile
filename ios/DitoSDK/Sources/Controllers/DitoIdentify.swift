@@ -66,6 +66,7 @@ class DitoIdentify {
 
             completion?(.success(.sent))
             DitoNotification(client: client).registerLastToken()
+            DitoRetry.endFailureBackoff()
             retry.loadOffline()
         } catch {
             // Without a device_id nothing was sent: the same user, already confirmed, stays identified until the

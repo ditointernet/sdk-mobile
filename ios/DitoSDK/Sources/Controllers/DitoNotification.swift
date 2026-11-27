@@ -153,6 +153,7 @@ class DitoNotification {
                 }
                 DitoLogger.information("✅ [\(label)] Sucesso")
                 completion?(.success(.sent))
+                DitoRetry.endFailureBackoff()
                 onSent()
             } catch {
                 if let anonymous = offlineOwner(startedAs: state, token: token, isRegister: isRegister) {

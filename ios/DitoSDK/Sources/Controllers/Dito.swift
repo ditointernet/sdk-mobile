@@ -625,7 +625,7 @@ extension Dito {
       retry.loadOffline(ignoringBackoff: true)
       let work = DispatchWorkItem {
         if self.reachability.connection != .unavailable {
-          self.retry.loadOffline(ignoringBackoff: true)
+          self.retry.loadOffline()
         }
       }
       reconnectRetry = work

@@ -14,22 +14,25 @@ class DitoRetry {
     private static var passRunning = false
     private static var nextPassRetry: DitoRetry?
     private static var nextPassIgnoresBackoff = false
-    private static var lastFailureAt: Date?
+    // Uptime, not wall clock: a clock set back would stretch the backoff.
+    private static var lastFailureAt: TimeInterval?
     private static var passFailures = 0
     private static var scheduledPass: DispatchWorkItem?
+    private static var scheduledPassGeneration = 0
+    private static var passEpoch = 0
     static let failureBackoff: TimeInterval = 60
     #if DEBUG
-    static var now: () -> Date = { Date() }
+    static var now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     static var schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
     static var isOnline: () -> Bool = { Dito.isOnline }
     #else
     private static let isOnline: () -> Bool = { Dito.isOnline }
-    private static let now: () -> Date = { Date() }
+    private static let now: () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }
     private static let schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
     #endif
 
     private static func defaultSchedulePass(_ delay: TimeInterval, _ work: DispatchWorkItem) {
-        DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
     }
 
     private var identifyOffline: DitoIdentifyOffline
@@ -53,41 +56,44 @@ class DitoRetry {
     // One pass at a time across instances so no row goes twice; a call mid-pass queues one more pass.
     // `ignoringBackoff`: a network change, so an earlier failure says nothing about this pass.
     func loadOffline(ignoringBackoff: Bool = false) {
-        guard DitoRetry.startOrQueuePass(self, ignoringBackoff: ignoringBackoff) else { return }
+        guard let epoch = DitoRetry.startOrQueuePass(self, ignoringBackoff: ignoringBackoff) else { return }
         Task {
             var next: DitoRetry? = self
             while let retry = next {
                 await retry.runLoadOffline()
-                next = DitoRetry.finishPass()
+                next = DitoRetry.finishPass(epoch: epoch)
             }
         }
     }
 
     // After a failed send, passes wait out the backoff (each failed pass spends a retry of every row);
     // a skipped pass is run once when the backoff ends.
-    private static func startOrQueuePass(_ retry: DitoRetry, ignoringBackoff: Bool) -> Bool {
+    // A call mid-pass is queued even in the backoff: the end of the pass decides whether it waits.
+    private static func startOrQueuePass(_ retry: DitoRetry, ignoringBackoff: Bool) -> Int? {
         passLock.lock()
         defer { passLock.unlock() }
-        if !ignoringBackoff, inFailureBackoff() {
-            DitoLogger.warning("⚠️ [RETRY] Passada adiada: houve falha de envio há menos de \(Int(failureBackoff))s")
-            schedulePassAfterBackoff(retry)
-            return false
-        }
         if passRunning {
             nextPassRetry = retry
             nextPassIgnoresBackoff = nextPassIgnoresBackoff || ignoringBackoff
-            return false
+            return nil
+        }
+        if !ignoringBackoff, inFailureBackoff() {
+            DitoLogger.warning("⚠️ [RETRY] Passada adiada: houve falha de envio há menos de \(Int(failureBackoff))s")
+            schedulePassAfterBackoff(retry)
+            return nil
         }
         passRunning = true
         passFailures = 0
-        return true
+        return passEpoch
     }
 
-    private static func finishPass() -> DitoRetry? {
+    private static func finishPass(epoch: Int) -> DitoRetry? {
         passLock.lock()
         defer { passLock.unlock() }
+        guard epoch == passEpoch else { return nil }
         if passFailures == 0 {
             lastFailureAt = nil
+            clearScheduledPass()
         }
         var next = nextPassRetry
         if let queued = next, !nextPassIgnoresBackoff, inFailureBackoff() {
@@ -104,30 +110,49 @@ class DitoRetry {
     /// Call with `passLock` held.
     private static func schedulePassAfterBackoff(_ retry: DitoRetry) {
         guard scheduledPass == nil, let failedAt = lastFailureAt else { return }
+        scheduledPassGeneration += 1
+        let generation = scheduledPassGeneration
         let work = DispatchWorkItem {
             DitoRetry.passLock.lock()
-            DitoRetry.scheduledPass = nil
+            let isCurrent = DitoRetry.scheduledPassGeneration == generation
+            if isCurrent {
+                DitoRetry.scheduledPass = nil
+            }
             DitoRetry.passLock.unlock()
             // Offline it would only spend a retry per row; the reconnection runs a pass instead.
-            if DitoRetry.isOnline() {
+            if isCurrent, DitoRetry.isOnline() {
                 retry.loadOffline()
             }
         }
         scheduledPass = work
-        schedulePass(failureBackoff - now().timeIntervalSince(failedAt), work)
+        schedulePass(failureBackoff - (now() - failedAt), work)
+    }
+
+    /// Call with `passLock` held.
+    private static func clearScheduledPass() {
+        scheduledPass?.cancel()
+        scheduledPass = nil
+        scheduledPassGeneration += 1
     }
 
     static func cancelScheduledPass() {
         passLock.lock()
         defer { passLock.unlock() }
-        scheduledPass?.cancel()
-        scheduledPass = nil
+        clearScheduledPass()
+    }
+
+    /// A live send went through: the backend is up, so the queue need not wait out the backoff.
+    static func endFailureBackoff() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        lastFailureAt = nil
+        clearScheduledPass()
     }
 
     /// Call with `passLock` held.
     private static func inFailureBackoff() -> Bool {
         guard let failedAt = lastFailureAt else { return false }
-        return now().timeIntervalSince(failedAt) < failureBackoff
+        return now() - failedAt < failureBackoff
     }
 
     private static func recordFailure() {
@@ -141,14 +166,14 @@ class DitoRetry {
     static func resetForTests() {
         passLock.lock()
         defer { passLock.unlock() }
+        passEpoch += 1
         passRunning = false
         nextPassRetry = nil
         nextPassIgnoresBackoff = false
         lastFailureAt = nil
         passFailures = 0
-        scheduledPass?.cancel()
-        scheduledPass = nil
-        now = { Date() }
+        clearScheduledPass()
+        now = { ProcessInfo.processInfo.systemUptime }
         schedulePass = defaultSchedulePass
         isOnline = { Dito.isOnline }
     }
