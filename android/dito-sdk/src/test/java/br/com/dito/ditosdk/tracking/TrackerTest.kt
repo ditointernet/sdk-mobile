@@ -17,6 +17,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.spyk
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.delay
@@ -859,6 +860,78 @@ class TrackerTest {
             assertThat(resent.userId).isEqualTo("user123")
             assertThat(resent.activitiesList.single().tokenRegister.token).isEqualTo("token123")
         }
+
+    @Test
+    fun `unregisterToken without android id should keep the local token state`() = testScope.runTest {
+        setAndroidId("")
+        val state = AnonymousState(context)
+        state.lastToken = "token123"
+        state.setConfirmed("user123", "token123")
+        tracker.id = "user123"
+        var error: Throwable? = null
+
+        tracker.unregisterToken("token123") { _, e -> error = e }
+
+        advanceUntilIdle()
+        assertThat(error).isInstanceOf(DeviceIdUnavailableException::class.java)
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        assertThat(state.lastToken).isEqualTo("token123")
+        assertThat(state.confirmedUserId).isEqualTo("user123")
+        assertThat(state.confirmedToken).isEqualTo("token123")
+    }
+
+    @Test
+    fun `android id showing up during an anonymous call should not resend the anonymous identify`() =
+        testScope.runTest {
+            val requests = anonymousDevice()
+            val mapper = spyk(ActivityMapper(context))
+            every { mapper.deviceId } returnsMany listOf("", "device-1")
+            val anonTracker = Tracker(trackerOffline, mockClient, mapper, AnonymousState(context), scope = testScope)
+
+            anonTracker.event(Event("first"))
+            advanceUntilIdle()
+            anonTracker.event(Event("second"))
+            advanceUntilIdle()
+            anonTracker.event(Event("third"))
+            advanceUntilIdle()
+
+            assertThat(requests.count { r -> r.activitiesList.any { it.hasIdentify() } }).isEqualTo(1)
+            assertThat(AnonymousState(context).identifyMark).isEqualTo("device-1|${BuildConfig.DITO_SDK_VERSION}")
+        }
+
+    @Test
+    fun `live track with a pending identify of the same user should carry the identify first`() =
+        testScope.runTest {
+            val requests = anonymousDevice()
+            var stored = storedIdentify().copy(send = false)
+            every { trackerOffline.getIdentify() } answers { stored }
+            every { trackerOffline.updateIdentify(any(), any()) } answers { stored = stored.copy(send = secondArg()) }
+            tracker.id = "user123"
+
+            tracker.event(Event("first"))
+            advanceUntilIdle()
+            tracker.event(Event("second"))
+            advanceUntilIdle()
+
+            val first = requests[0]
+            assertThat(first.userId).isEqualTo("user123")
+            assertThat(first.activitiesList.map { it.hasIdentify() }).containsExactly(true, false).inOrder()
+            verify { trackerOffline.updateIdentify("user123", true) }
+            assertThat(requests[1].activitiesList.none { it.hasIdentify() }).isTrue()
+        }
+
+    @Test
+    fun `live track should not carry a pending identify of another user`() = testScope.runTest {
+        val requests = anonymousDevice()
+        every { trackerOffline.getIdentify() } returns storedIdentify().copy(id = "other-user", send = false)
+        tracker.id = "user123"
+
+        tracker.event(Event("purchase"))
+
+        advanceUntilIdle()
+        assertThat(requests.single().activitiesList.none { it.hasIdentify() }).isTrue()
+        verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
+    }
 
     private fun setAndroidId(value: String) {
         Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, value)

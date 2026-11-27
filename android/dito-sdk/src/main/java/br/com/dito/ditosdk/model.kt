@@ -3,6 +3,7 @@ package br.com.dito.ditosdk
 import android.content.Intent
 import androidx.annotation.IdRes
 import br.com.dito.ditosdk.utils.formatToISO
+import br.com.dito.ditosdk.utils.formatToISOMillis
 import java.util.Date
 import okhttp3.OkHttpClient
 
@@ -39,7 +40,8 @@ data class Identify(val id: String) {
 }
 
 data class Event(val action: String, val revenue: Double? = null) {
-    var createdAt: String? = Date().formatToISO()
+    // Com milissegundos: é a hora gravada na fila, e eventos do mesmo segundo mantêm a ordem no reenvio.
+    var createdAt: String? = Date().formatToISOMillis()
     var data: CustomData? = null
 }
 

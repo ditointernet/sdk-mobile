@@ -32,6 +32,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.shadows.ShadowLog
+import br.com.dito.ditosdk.utils.formatToISO
+import java.util.Date
+import java.util.concurrent.TimeUnit
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
@@ -68,6 +71,7 @@ class TrackerRetryTest {
             isOnline = { online },
             now = { testScope.testScheduler.currentTime },
         )
+        tracker.setTrackerRetry(trackerRetry)
     }
 
     @After
@@ -371,7 +375,7 @@ class TrackerRetryTest {
     fun `checkIdentify success should register the last token again`() = testScope.runTest {
         val requests = captureRequests("device-1")
         AnonymousState(context).lastToken = "token123"
-        every { trackerOffline.getIdentify() } returns storedIdentify().copy(send = false)
+        pendingIdentify()
 
         trackerRetry.uploadEvents()
         advanceUntilIdle()
@@ -478,7 +482,9 @@ class TrackerRetryTest {
 
             coVerify(exactly = 0) { mockClient.activity(any()) }
             verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
-            verify(exactly = 0) { trackerOffline.delete(any(), any()) }
+            // Só o que já esgotou as tentativas sai da fila.
+            verify(exactly = 1) { trackerOffline.delete(any(), any()) }
+            verify { trackerOffline.delete(3, "Event") }
             verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
 
             Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
@@ -561,6 +567,21 @@ class TrackerRetryTest {
 
         advanceTimeBy(120_000)
         assertThat(requests).hasSize(2)
+    }
+
+    @Test
+    fun `reconnection on a network that never validated should respect the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        trackerRetry.uploadEventsOnReconnect(validated = false)
+        advanceTimeBy(1_000)
+        assertThat(requests).hasSize(1)
+
+        advanceTimeBy(60_000)
+        assertThat(requests).hasSize(2)
+        verify { trackerOffline.update(1, 2, "Event") }
     }
 
     @Test
@@ -652,6 +673,29 @@ class TrackerRetryTest {
         val sent = requests.single().activitiesList.associate { it.id to it.timestamp.seconds }
         assertThat(sent["a1"]).isEqualTo(epochSeconds("2026-11-27T13:00:00Z"))
         assertThat(sent["a2"]).isEqualTo(epochSeconds("2026-11-27T13:05:00Z"))
+    }
+
+    @Test
+    fun `events queued in the same second should be resent with distinct times, in order`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "add_to_cart", null, null, "2026-11-27T10:00:00.100-0300", 0),
+            EventOff(2, "a2", "purchase", null, null, "2026-11-27T10:00:00.900-0300", 0),
+            EventOff(3, "a3", "legacy", null, null, "2026-11-27T10:00:01-0300", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.map {
+            it.id to java.time.Instant.ofEpochSecond(it.timestamp.seconds, it.timestamp.nanos.toLong())
+        }
+        assertThat(sent.map { it.first }).containsExactly("a1", "a2", "a3").inOrder()
+        assertThat(sent.map { it.second }).containsExactly(
+            java.time.Instant.parse("2026-11-27T13:00:00.100Z"),
+            java.time.Instant.parse("2026-11-27T13:00:00.900Z"),
+            java.time.Instant.parse("2026-11-27T13:00:01Z"),
+        ).inOrder()
     }
 
     @Test
@@ -834,6 +878,108 @@ class TrackerRetryTest {
         every { trackerOffline.update(1, any(), "Event") } answers { row = row.copy(retry = secondArg()) }
         coEvery { mockClient.activity(capture(requests)) } throws Exception("fail")
         return requests
+    }
+
+    @Test
+    fun `without android id, queue above the limit should drop the oldest rows without spending attempts`() =
+        testScope.runTest {
+            captureRequests("")
+            val recent = Date().formatToISO()
+            every { trackerOffline.getAllEvents() } returns (1..TrackerRetry.MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID + 2)
+                .map { EventOff(it, "a$it", "x", null, null, recent, 0) }
+                .reversed()
+            every { trackerOffline.getAllNotificationRead() } returns
+                (1..TrackerRetry.MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID + 1).map { NotificationReadOff(it, "a$it", "n", "i", 0) }
+
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            verify { trackerOffline.delete(1, "Event") }
+            verify { trackerOffline.delete(2, "Event") }
+            verify { trackerOffline.delete(1, "NotificationRead") }
+            verify(exactly = 3) { trackerOffline.delete(any(), any()) }
+            verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+        }
+
+    @Test
+    fun `without android id, events older than the age limit should be dropped`() = testScope.runTest {
+        captureRequests("")
+        val ageLimit = TimeUnit.DAYS.toMillis(TrackerRetry.MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
+        val old = Date(System.currentTimeMillis() - ageLimit - TimeUnit.DAYS.toMillis(1)).formatToISO()
+        val recent = Date().formatToISO()
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "old", "x", null, null, old, 0, anonymous = true),
+            EventOff(2, "recent", "x", null, null, recent, 0),
+            EventOff(3, "undated", "x", null, null, "t", 0),
+            EventOff(4, "exhausted", "x", null, null, recent, 5),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.delete(1, "Event") }
+        verify { trackerOffline.delete(4, "Event") }
+        verify(exactly = 2) { trackerOffline.delete(any(), any()) }
+        verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+    }
+
+    @Test
+    fun `android id showing up should flush the queue and the pending identify without a new upload call`() =
+        testScope.runTest {
+            val requests = captureRequests("")
+            pendingIdentify()
+            every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+
+            Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
+            tracker.notificationClick("n1", "r1", "user123")
+            advanceUntilIdle()
+
+            verify { trackerOffline.updateIdentify("user123", true) }
+            verify { trackerOffline.delete(1, "Event") }
+            assertThat(requests.flatMap { it.activitiesList }.map { it.id }).contains("a1")
+        }
+
+    @Test
+    fun `android id showing up on a live identify should flush once, after the identify`() = testScope.runTest {
+        val requests = captureRequests("")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
+        tracker.identify(Identify("user123"), null)
+        advanceUntilIdle()
+
+        // Uma leitura na poda sem device_id e uma no único flush.
+        verify(exactly = 2) { trackerOffline.getAllEvents() }
+        assertThat(requests.first().activitiesList.single().hasIdentify()).isTrue()
+        assertThat(requests.last().activitiesList.map { it.id }).containsExactly("a1")
+    }
+
+    @Test
+    fun `android id showing up on a failed live identify should still flush the queue`() = testScope.runTest {
+        captureRequests("")
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
+        tracker.identify(Identify("user123"), null)
+        advanceUntilIdle()
+
+        verify(exactly = 2) { trackerOffline.getAllNotificationRead() }
+    }
+
+    /** Identify do disco ainda não enviado, que passa a `send = true` quando o SDK o confirma. */
+    private fun pendingIdentify() {
+        var stored = storedIdentify().copy(send = false)
+        every { trackerOffline.getIdentify() } answers { stored }
+        every { trackerOffline.updateIdentify(any(), any()) } answers { stored = stored.copy(send = secondArg()) }
     }
 
     private fun captureRequests(androidId: String): MutableList<Api.Request> {
