@@ -92,16 +92,66 @@ struct ActivityMapper {
         buildPushClickActivity(
             notificationId: req.data.notification,
             identifier: req.data.identifier,
-            data: req.data.clickCustomData
+            data: req.data.clickCustomData,
+            logId: req.data.logId,
+            notificationName: req.data.notificationName
         )
     }
 
     func mapNotificationClick(
         notificationId: String,
         identifier: String,
-        data: [String: String] = [:]
+        data: [String: String] = [:],
+        logId: String = "",
+        notificationName: String = ""
     ) -> Mobileingest_V1_Activity {
-        buildPushClickActivity(notificationId: notificationId, identifier: identifier, data: data)
+        buildPushClickActivity(
+            notificationId: notificationId,
+            identifier: identifier,
+            data: data,
+            logId: logId,
+            notificationName: notificationName
+        )
+    }
+
+    /// `receivedAt` is the ISO arrival time; nil falls back to send time.
+    func mapPushReceipt(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String,
+        token: String,
+        receivedAt: String?
+    ) -> Mobileingest_V1_Activity {
+        var receipt = Mobileingest_V1_Activity.TrackPushReceiptActivity()
+        receipt.notification = notificationInfo(
+            notificationId: notificationId,
+            logId: logId,
+            notificationName: notificationName,
+            identifier: identifier
+        )
+        receipt.data = customDataFromStrings(["token": token])
+        var activity = Mobileingest_V1_Activity()
+        activity.id = UUID().uuidString
+        activity.type = .activityTrack
+        activity.trackPushReceipt = receipt
+        activity.timestamp = eventTimestamp(receivedAt)
+        return activity
+    }
+
+    private func notificationInfo(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String
+    ) -> Mobileingest_V1_NotificationInfo {
+        var info = Mobileingest_V1_NotificationInfo()
+        info.notificationID = notificationId
+        info.dispatchID = logId
+        info.name = notificationName
+        info.identifier = identifier
+        info.channel = "mobile"
+        return info
     }
 
     /// Builds the `click-notification` activity.
@@ -112,13 +162,17 @@ struct ActivityMapper {
     private func buildPushClickActivity(
         notificationId: String,
         identifier: String,
-        data: [String: String] = [:]
+        data: [String: String],
+        logId: String,
+        notificationName: String
     ) -> Mobileingest_V1_Activity {
-        var notifInfo = Mobileingest_V1_NotificationInfo()
-        notifInfo.notificationID = notificationId
-        notifInfo.identifier = identifier
         var click = Mobileingest_V1_Activity.TrackPushClickActivity()
-        click.notification = notifInfo
+        click.notification = notificationInfo(
+            notificationId: notificationId,
+            logId: logId,
+            notificationName: notificationName,
+            identifier: identifier
+        )
         click.data = customDataFromStrings(data)
         var activity = Mobileingest_V1_Activity()
         activity.id = UUID().uuidString

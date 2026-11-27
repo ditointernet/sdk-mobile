@@ -6,12 +6,13 @@ struct OfflinePersistedTrack: Sendable {
   let event: String?
   let retry: Int16
   let anonymous: Bool
+  let userId: String?
 }
 
 struct DitoTrackDataManager {
 
   @discardableResult
-  func save(event: String?, retry: Int16 = 1, anonymous: Bool = false) -> Bool {
+  func save(event: String?, retry: Int16 = 1, anonymous: Bool = false, userId: String? = nil) -> Bool {
     var success = false
     let semaphore = DispatchSemaphore(value: 0)
 
@@ -30,6 +31,7 @@ struct DitoTrackDataManager {
       track.event = event
       track.retry = retry
       track.anonymous = anonymous ? NSNumber(value: true) : nil
+      track.userId = userId
 
       do {
         try context.save()
@@ -107,7 +109,8 @@ struct DitoTrackDataManager {
             objectID: $0.objectID,
             event: $0.event,
             retry: $0.retry,
-            anonymous: $0.anonymous?.boolValue == true
+            anonymous: $0.anonymous?.boolValue == true,
+            userId: $0.userId
           )
         }
         DitoLogger.information(

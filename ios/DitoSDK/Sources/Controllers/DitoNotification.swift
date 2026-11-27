@@ -191,28 +191,14 @@ class DitoNotification {
         }
     }
 
-    func notificationRead(with userInfo: [AnyHashable: Any]) {
-        DispatchQueue.global(qos: .background).async {
-            let notificationData = DitoDataNotification(from: userInfo)
-            let notificationRequest = self.makeNotificationRequest(data: notificationData)
-
-            #if DEBUG
-            DitoLogger.information("🔔 [NOTIFICATION RECEIVED] id=\(notificationData.notification)")
-            #endif
-            // Full payload dump, behind DitoPushDebugLog's flag. The extension
-            // emits the same line from its own process with source="nse".
-            DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
-
-            self.notificationOffline.notificationRead(notificationRequest)
-        }
-    }
-
     /// - Parameter data: extra custom data for the click event. For an action
     ///   button tap it carries `action_id` / `action_label` (D-03).
     func notificationClick(
         notificationId: String,
         identifier: String,
-        data: [String: String] = [:]
+        data: [String: String] = [:],
+        logId: String = "",
+        notificationName: String = ""
     ) {
         #if DEBUG
         let action = data[DitoRichPushKeys.actionId].map { " action=\($0)" } ?? ""
@@ -225,7 +211,9 @@ class DitoNotification {
             await processNotificationClick(
                 notificationId: notificationId,
                 identifier: identifier,
-                data: data
+                data: data,
+                logId: logId,
+                notificationName: notificationName
             )
         }
     }
@@ -233,7 +221,9 @@ class DitoNotification {
     private func processNotificationClick(
         notificationId: String,
         identifier: String,
-        data: [String: String]
+        data: [String: String],
+        logId: String,
+        notificationName: String
     ) async {
         guard !identifier.isEmpty else {
             DitoLogger.warning("⚠️ [NOTIFICATION CLICK] identifier vazio; operação cancelada")
@@ -242,7 +232,9 @@ class DitoNotification {
         let activity = mapper.mapNotificationClick(
             notificationId: notificationId,
             identifier: identifier,
-            data: data
+            data: data,
+            logId: logId,
+            notificationName: notificationName
         )
         do {
             try await client.activity(mapper.buildRequest(userId: identifier, activities: [activity]))
@@ -258,15 +250,15 @@ class DitoNotification {
                 identifier: identifier,
                 reference: "",
                 notification: notificationId,
-                notificationLogId: "",
+                notificationLogId: logId,
                 userId: identifier,
                 deviceType: "",
-                channel: "",
-                notificationName: "",
+                channel: "mobile",
+                notificationName: notificationName,
                 title: "",
                 message: "",
                 link: "",
-                logId: "",
+                logId: logId,
                 customData: customData,
                 actionId: actionId,
                 actionLabel: actionLabel

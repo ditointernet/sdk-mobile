@@ -24,24 +24,26 @@ struct DitoTrackOffline {
         self.identifyOffline.setIdentityCompletionClosure{closure()}
     }
 
-    func track(event: DitoEventRequest, anonymous: Bool = false) {
+    /// `userId`: the confirmed user when the event was tracked; nil when anonymous or the identify is unconfirmed
+    /// (sent with the user current at retry).
+    func track(event: DitoEventRequest, anonymous: Bool = false, userId: String? = nil) {
 
         if self.identifyOffline.getSavingState {
             self.identifyOffline.setIdentityCompletionClosure{
-                self.completeTrack(event: event, anonymous: anonymous)
+                self.completeTrack(event: event, anonymous: anonymous, userId: userId)
             }
         } else {
-            self.completeTrack(event: event, anonymous: anonymous)
+            self.completeTrack(event: event, anonymous: anonymous, userId: userId)
         }
     }
 
-    func completeTrack(event: DitoEventRequest, anonymous: Bool = false) {
+    func completeTrack(event: DitoEventRequest, anonymous: Bool = false, userId: String? = nil) {
         Self.persistenceQueue.async {
             guard let json = event.toString, !json.isEmpty else {
                 DitoLogger.error("Track offline: falha ao serializar DitoEventRequest")
                 return
             }
-            self.trackDataManager.save(event: json, anonymous: anonymous)
+            self.trackDataManager.save(event: json, anonymous: anonymous, userId: anonymous ? nil : userId)
         }
     }
 

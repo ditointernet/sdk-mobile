@@ -108,6 +108,17 @@ public class Dito {
         name: UIApplication.willEnterForegroundNotification,
         object: nil
       )
+      NotificationCenter.default.removeObserver(
+        self,
+        name: UIApplication.protectedDataDidBecomeAvailableNotification,
+        object: nil
+      )
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(self.applicationWillEnterForeground(_:)),
+        name: UIApplication.protectedDataDidBecomeAvailableNotification,
+        object: nil
+      )
 
       do {
         try self.reachability.startNotifier()
@@ -282,9 +293,7 @@ public class Dito {
     completion: ((Result<Void, Error>) -> Void)? = nil
   ) {
     // Dump do payload no processo do app, par da linha `source:"nse"` que a extensão emite. Fica
-    // aqui, na entrada pública, e não no caminho legado `DitoNotification.notificationRead`: era ele
-    // o único a dumpar, e ninguém que usa a API atual passa por lá — o diagnóstico ficava cego
-    // exatamente do lado do app.
+    // aqui, na entrada pública, para cobrir todo app que usa a API atual.
     DitoPushDebugLog.dump(event: .received, source: .app, userInfo: userInfo)
     let received = createNotificationReceived(from: userInfo)
     sendNotificationReceivedActivities(received, token: token, completion: completion)
@@ -369,6 +378,13 @@ public class Dito {
       return
     }
 
+    // O ingest descarta em silêncio um Receipt sem notification_id.
+    guard !received.notification.isEmpty else {
+      DitoLogger.warning("receive-ios-notification não enviado: notification ausente no payload")
+      completion?(.success(()))
+      return
+    }
+
     // Reivindicação, não consulta: a marcação só acontece depois do `await` da rede, e em primeiro
     // plano dois callbacks disparam este caminho para o mesmo push.
     guard DitoNotificationReceiveTracker.claimDelivery(
@@ -426,14 +442,19 @@ public class Dito {
     let ingestClient: MobileIngestClientProtocol = MobileIngestClient.buildFromDitoConfig()
     #endif
     let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: received.userId)
-    let trackActivity = mapper.mapFromDitoEvent(
-      createNotificationTrackEvent(received, token: token, receivedAt: receivedAt)
+    let receiptActivity = mapper.mapPushReceipt(
+      notificationId: received.notification,
+      logId: received.logId,
+      notificationName: received.notificationName,
+      identifier: received.userId,
+      token: token,
+      receivedAt: receivedAt.formatToISO
     )
 
     do {
       try await ingestClient.activity(mapper.buildRequest(
         userId: received.userId,
-        activities: [identifyActivity, trackActivity]
+        activities: [identifyActivity, receiptActivity]
       ))
       DitoNotificationReceiveTracker.markDelivered(
         notification: received.notification,
@@ -483,23 +504,6 @@ public class Dito {
     DitoNotificationCoreDataManager.shared.markAsRead(id: id)
   }
 
-  static func createNotificationTrackEvent(
-    _ notificationReceived: DitoNotificationReceived,
-    token: String,
-    receivedAt: Date? = nil
-  ) -> DitoEvent {
-    DitoEvent(
-      action: "receive-ios-notification",
-      createdAt: receivedAt,
-      customData: [
-        "token": token,
-        "dispatch_id": notificationReceived.logId,
-        "notification_id": notificationReceived.notification,
-        "notification_name": notificationReceived.notificationName,
-      ]
-    )
-  }
-
   /// Called when a notification is clicked
   /// - Parameters:
   ///   - userInfo: The notification data dictionary
@@ -528,7 +532,9 @@ public class Dito {
       notificationController.notificationClick(
         notificationId: notificationReceived.notification,
         identifier: notificationReceived.identifier,
-        data: clickData
+        data: clickData,
+        logId: notificationReceived.logId,
+        notificationName: notificationReceived.notificationName
       )
     }
     if !notificationReceived.notification.isEmpty {
@@ -610,7 +616,8 @@ extension Dito {
     shared.reachability.connection != .unavailable
   }
 
-  // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue.
+  // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue;
+  // also run on the first unlock, as every request needs the device_id from the Keychain.
   // Offline it would only burn a retry per row (rows are dropped after maxRetries).
   @objc func applicationWillEnterForeground(_ note: Notification) {
     guard reachability.connection != .unavailable else { return }
@@ -663,6 +670,11 @@ extension Dito {
   static func resetFacadeIsolationState() {
     NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
     NotificationCenter.default.removeObserver(shared, name: UIApplication.willEnterForegroundNotification, object: nil)
+    NotificationCenter.default.removeObserver(
+      shared,
+      name: UIApplication.protectedDataDidBecomeAvailableNotification,
+      object: nil
+    )
     shared.reachability.stopNotifier()
     shared.reachability.debug_connectionOverride = nil
     shared.reconnectRetry?.cancel()

@@ -110,6 +110,7 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         let rows = DitoTrackDataManager().fetchOfflinePersistedTracks()
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.anonymous, false)
+        XCTAssertNil(rows.first?.userId)
     }
 
     func testTrackDuringIdentifyInProgress_sendsNothingAnonymously() async throws {
@@ -644,7 +645,7 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         XCTAssertEqual(match?.title, title)
     }
 
-    func testCoreDataMigration_fromModelWithoutAnonymous_keepsRowsWithNilAnonymous() throws {
+    func testCoreDataMigration_fromModelWithoutAnonymousAndUserId_keepsRowsWithNilValues() throws {
         let currentModel = try XCTUnwrap(DitoCoreDataManager.shared.persistentContainer?.managedObjectModel)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("dito-migration-\(UUID().uuidString)", isDirectory: true)
@@ -678,6 +679,7 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         XCTAssertEqual(tracks.first?.value(forKey: "event") as? String, "{\"legacy\":\"track\"}")
         XCTAssertEqual((tracks.first?.value(forKey: "retry") as? NSNumber)?.int16Value, 2)
         XCTAssertNil(tracks.first?.value(forKey: "anonymous"))
+        XCTAssertNil(tracks.first?.value(forKey: "userId"))
 
         let unregisters = try context.fetch(NSFetchRequest<NSManagedObject>(entityName: "NotificationUnregister"))
         XCTAssertEqual(unregisters.count, 1)

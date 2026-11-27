@@ -177,6 +177,12 @@ class DitoRetry {
         schedulePass = defaultSchedulePass
         isOnline = { Dito.isOnline }
     }
+
+    static var isPassRunningForTests: Bool {
+        passLock.lock()
+        defer { passLock.unlock() }
+        return passRunning
+    }
     #endif
 
     internal func runLoadOffline() async {
@@ -185,15 +191,17 @@ class DitoRetry {
             return
         }
         await checkNotificationReceive()
+        // Before the anonymous rows: those waiting for a pending identify go in this same pass.
+        let identifySuccess = await checkIdentify()
         // Sequential so these requests don't each carry the anonymous Identify (a concurrent immediate send still may).
         await checkTrack(anonymous: true)
         await checkNotificationRegister(anonymous: true)
         await checkNotificationUnregister(anonymous: true)
-        let identifySuccess = await checkIdentify()
-        if identifySuccess {
-            await withTaskGroup(of: Void.self) { group in
+        await withTaskGroup(of: Void.self) { group in
+            // Clicks carry their own user, so a failing identify doesn't hold them.
+            group.addTask { await self.checkNotification() }
+            if identifySuccess {
                 group.addTask { await self.checkTrack(anonymous: false) }
-                group.addTask { await self.checkNotification() }
                 group.addTask { await self.checkNotificationRegister(anonymous: false) }
                 group.addTask { await self.checkNotificationUnregister(anonymous: false) }
             }
@@ -255,13 +263,35 @@ class DitoRetry {
         #endif
 
         guard !tracks.isEmpty else { return }
-        guard let owner = self.owner(anonymous: anonymous, reference: trackOffline.reference) else {
-            DitoLogger.warning(anonymous
-                ? "Track - Identify pendente; eventos anônimos aguardam a conclusão."
-                : "Track - Antes de enviar um evento é preciso identificar o usuário.")
+        if anonymous {
+            guard let owner = self.owner(anonymous: true, reference: nil) else {
+                DitoLogger.warning("Track - Identify pendente; eventos anônimos aguardam a conclusão.")
+                return
+            }
+            await sendTracks(tracks, owner: owner)
             return
         }
 
+        // Each row goes with the user that owned it; rows without a recorded owner go with the current one.
+        let currentReference = trackOffline.reference
+        var tracksByUser: [String: [OfflinePersistedTrack]] = [:]
+        var waiting = false
+        for track in tracks {
+            guard let userId = track.userId ?? currentReference, !userId.isEmpty else {
+                waiting = true
+                continue
+            }
+            tracksByUser[userId, default: []].append(track)
+        }
+        if waiting {
+            DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
+        }
+        for (userId, userTracks) in tracksByUser {
+            await sendTracks(userTracks, owner: .user(userId))
+        }
+    }
+
+    private func sendTracks(_ tracks: [OfflinePersistedTrack], owner: Owner) async {
         var trackBatch: [(id: NSManagedObjectID, request: DitoEventRequest, retry: Int16)] = []
         trackBatch.reserveCapacity(tracks.count)
 
@@ -329,6 +359,12 @@ class DitoRetry {
                   let pending = jsonData.convertToObject(type: DitoNotificationReceivePending.self)
             else { continue }
 
+            guard !pending.notification.isEmpty else {
+                notificationReadOffline.deleteReceive(id: rowId)
+                DitoLogger.warning("⚠️ [RETRY] receive-ios-notification sem notification_id descartado sem envio")
+                continue
+            }
+
             if rowRetry >= DitoRetry.maxRetries {
                 notificationReadOffline.deleteReceive(id: rowId)
                 DitoLogger.warning(
@@ -337,17 +373,15 @@ class DitoRetry {
                 continue
             }
 
-            let received = DitoNotificationReceived(with: [
-                "notification": pending.notification,
-                "log_id": pending.logId,
-                "notification_name": pending.notificationName,
-                "user_id": pending.userId,
-            ])
             let identifyActivity = mapper.mapFromDitoUser(userData: DitoUser(), userId: pending.userId)
-            // Arrival time, not resend time; a row from before receivedAt existed falls back to now.
-            var receiveEvent = Dito.createNotificationTrackEvent(received, token: pending.token)
-            receiveEvent.createdAt = pending.receivedAt
-            let trackActivity = mapper.mapFromDitoEvent(receiveEvent)
+            let receiptActivity = mapper.mapPushReceipt(
+                notificationId: pending.notification,
+                logId: pending.logId,
+                notificationName: pending.notificationName,
+                identifier: pending.userId,
+                token: pending.token,
+                receivedAt: pending.receivedAt
+            )
 
             do {
                 #if DEBUG
@@ -358,7 +392,7 @@ class DitoRetry {
                 #endif
                 try await ingestClient.activity(mapper.buildRequest(
                     userId: pending.userId,
-                    activities: [identifyActivity, trackActivity]
+                    activities: [identifyActivity, receiptActivity]
                 ))
                 notificationReadOffline.deleteReceive(id: rowId)
                 DitoNotificationReceiveTracker.markDelivered(
@@ -383,17 +417,20 @@ class DitoRetry {
         }
         #endif
 
-        guard let userId = notificationReadOffline.reference, !userId.isEmpty else {
-            DitoLogger.warning("Notification Read - Antes de informar uma notificação lida é preciso identificar o usuário.")
-            return
-        }
-
+        let currentReference = notificationReadOffline.reference
         for notification in notifications {
             let notifID = notification.id
             let notifRetry = notification.retry
             guard let jsonData = notification.json,
                   let notificationRequest = jsonData.convertToObject(type: DitoNotificationOpenRequest.self)
             else { continue }
+
+            // The click belongs to the push's user; rows saved without it fall back to the current user.
+            let identifier = notificationRequest.data.identifier
+            guard let userId = identifier.isEmpty ? currentReference : identifier, !userId.isEmpty else {
+                DitoLogger.warning("Notification Read - Antes de informar uma notificação lida é preciso identificar o usuário.")
+                continue
+            }
 
             if notifRetry >= DitoRetry.maxRetries {
                 notificationReadOffline.deleteRead(id: notifID)
