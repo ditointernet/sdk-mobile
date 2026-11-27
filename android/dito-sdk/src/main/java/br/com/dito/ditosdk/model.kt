@@ -54,6 +54,7 @@ internal data class EventOff(
     val timestamp: String,
     val retry: Int,
     val anonymous: Boolean = false,
+    val userId: String? = null,
 )
 
 internal data class IdentifyOff(
@@ -75,6 +76,9 @@ internal data class NotificationReadOff(
     val retry: Int,
     /** `action_id` / `action_label` do clique, quando foi num botão. */
     val data: Map<String, String> = emptyMap(),
+    val logId: String = "",
+    val notificationName: String = "",
+    val timestamp: String? = null,
 )
 
 data class NotificationResult(

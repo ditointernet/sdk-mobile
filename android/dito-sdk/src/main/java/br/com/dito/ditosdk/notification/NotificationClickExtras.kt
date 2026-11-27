@@ -24,6 +24,8 @@ internal data class NotificationClickExtras(
     val actionId: String,
     val actionLabel: String,
     val customDataJson: String,
+    val logId: String = "",
+    val notificationName: String = "",
 ) {
 
     /** `true` quando o toque veio de um botão de ação, e não do corpo da notificação. */
@@ -37,6 +39,8 @@ internal data class NotificationClickExtras(
         putExtra(Dito.DITO_ACTION_ID, actionId)
         putExtra(Dito.DITO_ACTION_LABEL, actionLabel)
         putExtra(Dito.DITO_CUSTOM_DATA, customDataJson)
+        putExtra(DitoNotificationActionReceiver.EXTRA_LOG_ID, logId)
+        putExtra(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, notificationName)
     }
 
     /**
@@ -49,6 +53,8 @@ internal data class NotificationClickExtras(
         put("deeplink", deepLink)
         put("user_id", userId)
         put(DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA, customDataJson)
+        put(DitoNotificationActionReceiver.EXTRA_LOG_ID, logId)
+        put(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME, notificationName)
         if (isActionClick) {
             put(DitoNotificationActionReceiver.EXTRA_ACTION_ID, actionId)
             put(DitoNotificationActionReceiver.EXTRA_ACTION_LABEL, actionLabel)
@@ -81,6 +87,8 @@ internal data class NotificationClickExtras(
                     DitoNotificationActionReceiver.EXTRA_CUSTOM_DATA,
                     Dito.DITO_CUSTOM_DATA,
                 ),
+                logId = intent.firstNonEmpty(DitoNotificationActionReceiver.EXTRA_LOG_ID),
+                notificationName = intent.firstNonEmpty(DitoNotificationActionReceiver.EXTRA_NOTIFICATION_NAME),
             )
         }
 

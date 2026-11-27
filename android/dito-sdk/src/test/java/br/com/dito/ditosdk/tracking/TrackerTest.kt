@@ -118,7 +118,7 @@ class TrackerTest {
         tracker.event(event)
 
         delay(500)
-        verify { trackerOffline.event(any(), any()) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
     }
 
     @Test
@@ -164,7 +164,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         assertThat(requests.single().userId).isEmpty()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -178,7 +178,7 @@ class TrackerTest {
         assertThat(request.userId).isEmpty()
         assertThat(request.device.deviceId).isEqualTo("device-1")
         assertThat(request.activitiesList.single { it.hasTrack() }.track.event).isEqualTo("purchase")
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -613,7 +613,7 @@ class TrackerTest {
         advanceUntilIdle()
         // Antes disto a exceção era engolida por um catch vazio: a entrega perdida não deixava
         // fila nem log, e era indistinguível de uma entrega bem-sucedida.
-        verify { trackerOffline.event(any(), any(), any()) }
+        verify { trackerOffline.event(any(), any(), any(), any()) }
     }
 
     @Test
@@ -628,49 +628,64 @@ class TrackerTest {
     }
 
     @Test
-    fun `notificationReceived failure without login should queue the delivery as anonymous`() = testScope.runTest {
-        anonymousDevice()
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
-
-        advanceUntilIdle()
-        verify { trackerOffline.event(any(), any(), true) }
-    }
-
-    @Test
-    fun `notificationReceived failure of another user without login should not be queued`() = testScope.runTest {
-        anonymousDevice()
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = "user123"))
-
-        advanceUntilIdle()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
-    }
-
-    @Test
-    fun `notificationReceived failure of another user with login should not be queued`() = testScope.runTest {
-        anonymousDevice()
-        tracker.id = "other-user"
-        coEvery { mockClient.activity(any()) } throws Exception("err")
-
-        tracker.notificationReceived(notificationReadData(userId = "user123"))
-
-        advanceUntilIdle()
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
-    }
-
-    @Test
-    fun `notificationReceived failure without login and without android id should not be queued`() =
+    fun `notificationReceived failure of the device user should queue the delivery as anonymous`() =
         testScope.runTest {
-            setAndroidId("")
+            anonymousDevice()
             coEvery { mockClient.activity(any()) } throws Exception("err")
 
-            tracker.notificationReceived(notificationReadData(userId = sha1Hex("")))
+            tracker.notificationReceived(notificationReadData(userId = sha1Hex("device-1")))
 
             advanceUntilIdle()
-            verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+            verify { trackerOffline.event(any(), any(), true, null) }
+        }
+
+    @Test
+    fun `anonymous push without android id should not call ingest and be queued`() = testScope.runTest {
+        setAndroidId("")
+
+        tracker.notificationReceived(notificationReadData(userId = sha1Hex("")))
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        // Linha nova na fila (retry 0); sem device_id a passada nem a toca.
+        verify(exactly = 1) { trackerOffline.event(any(), any(), false, sha1Hex("")) }
+    }
+
+    @Test
+    fun `notificationReceived failure of another user without login should be queued with the push user`() =
+        testScope.runTest {
+            anonymousDevice()
+            coEvery { mockClient.activity(any()) } throws Exception("err")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            verify { trackerOffline.event(any(), any(), false, "user123") }
+        }
+
+    @Test
+    fun `notificationReceived failure of another user with login should be queued with the push user`() =
+        testScope.runTest {
+            anonymousDevice()
+            tracker.id = "other-user"
+            coEvery { mockClient.activity(any()) } throws Exception("err")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            verify { trackerOffline.event(any(), any(), false, "user123") }
+        }
+
+    @Test
+    fun `notificationReceived without login and without android id should be queued with the push user`() =
+        testScope.runTest {
+            setAndroidId("")
+
+            tracker.notificationReceived(notificationReadData(userId = "user123"))
+
+            advanceUntilIdle()
+            coVerify(exactly = 0) { mockClient.activity(any()) }
+            verify { trackerOffline.event(any(), any(), false, "user123") }
         }
 
     @Test
@@ -682,7 +697,7 @@ class TrackerTest {
         tracker.notificationReceived(notificationReadData())
 
         advanceUntilIdle()
-        verify { trackerOffline.event(any(), any(), false) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
     }
 
     @Test
@@ -691,7 +706,60 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify { mockClient.activity(any()) }
-        verify(exactly = 0) { trackerOffline.event(any(), any(), any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `notificationReceived should send a push receipt with the notification info`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.notificationReceived(notificationReadData())
+
+        advanceUntilIdle()
+        val request = requests.single()
+        assertThat(request.userId).isEqualTo("user123")
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        assertThat(request.activitiesList.none { it.hasTrack() }).isTrue()
+        val info = request.activitiesList.single { it.hasTrackPushReceipt() }.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("notif123")
+        assertThat(info.dispatchId).isEqualTo("log123")
+        assertThat(info.name).isEqualTo("campanha")
+        assertThat(info.identifier).isEqualTo("user123")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `notificationReceived without notification id should not send nor queue`() = testScope.runTest {
+        tracker.id = "user123"
+
+        tracker.notificationReceived(notificationReadData().copy(notificationId = ""))
+
+        advanceUntilIdle()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+        verify(exactly = 0) { trackerOffline.event(any(), any(), any(), any()) }
+    }
+
+    @Test
+    fun `notificationClick should send dispatch id, name and channel`() = testScope.runTest {
+        val requests = anonymousDevice()
+
+        tracker.notificationClick("notif123", "ref123", "user123", logId = "log123", notificationName = "campanha")
+
+        advanceUntilIdle()
+        val info = requests.single().activitiesList.single().trackPushClick.notification
+        assertThat(info.dispatchId).isEqualTo("log123")
+        assertThat(info.name).isEqualTo("campanha")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `notificationClick failure should queue log id and name`() = testScope.runTest {
+        coEvery { mockClient.activity(any()) } throws Exception("err")
+
+        tracker.notificationClick("notif123", "ref123", "user123", logId = "log123", notificationName = "campanha")
+
+        advanceUntilIdle()
+        verify { trackerOffline.notificationRead(any(), "notif123", "user123", emptyMap(), "log123", "campanha") }
     }
 
     @Test
@@ -718,7 +786,7 @@ class TrackerTest {
 
         advanceUntilIdle()
         coVerify(exactly = 0) { mockClient.activity(any()) }
-        verify { trackerOffline.event(any(), any(), false) }
+        verify { trackerOffline.event(any(), any(), false, "user123") }
         assertThat(status).isEqualTo(Tracker.OperationStatus.SAVED_LOCALLY)
     }
 
@@ -761,7 +829,7 @@ class TrackerTest {
 
             advanceUntilIdle()
             coVerify(exactly = 0) { mockClient.activity(any()) }
-            verify { trackerOffline.event(any(), any(), false) }
+            verify { trackerOffline.event(any(), any(), false, "user123") }
         }
 
     @Test
@@ -875,6 +943,32 @@ class TrackerTest {
         advanceUntilIdle()
         assertThat(requests.single().activitiesList.none { it.hasIdentify() }).isTrue()
         verify(exactly = 0) { trackerOffline.updateIdentify(any(), any()) }
+    }
+
+    @Test
+    fun `live track should go out with the createdAt informed by the app`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        val event = Event("purchase").apply { createdAt = "2026-11-27T10:00:00.250-0300" }
+
+        tracker.event(event)
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.single().timestamp
+        assertThat(java.time.Instant.ofEpochSecond(sent.seconds, sent.nanos.toLong()))
+            .isEqualTo(java.time.Instant.parse("2026-11-27T13:00:00.250Z"))
+    }
+
+    @Test
+    fun `live track without createdAt should go out with the current time`() = testScope.runTest {
+        val requests = anonymousDevice()
+        tracker.id = "user123"
+        val before = java.time.Instant.now().epochSecond
+
+        tracker.event(Event("purchase").apply { createdAt = null })
+        advanceUntilIdle()
+
+        assertThat(requests.single().activitiesList.single().timestamp.seconds).isAtLeast(before)
     }
 
     private fun setAndroidId(value: String) {

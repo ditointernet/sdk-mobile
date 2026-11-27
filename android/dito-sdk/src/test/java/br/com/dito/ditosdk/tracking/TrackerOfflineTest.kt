@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
+import br.com.dito.ditosdk.utils.parseISO
 import com.google.common.truth.Truth.assertThat
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -209,6 +210,26 @@ class TrackerOfflineTest {
 
         val stored = trackerOffline.getAllNotificationRead()?.first()
         assertThat(stored?.data).isEmpty()
+    }
+
+    @Test
+    fun `notificationRead should round-trip log id and notification name`() = runBlocking {
+        trackerOffline.notificationRead("act1", "notif123", "ident123", emptyMap(), "log123", "Campanha")
+
+        val stored = trackerOffline.getAllNotificationRead()?.first()
+        assertThat(stored?.logId).isEqualTo("log123")
+        assertThat(stored?.notificationName).isEqualTo("Campanha")
+    }
+
+    @Test
+    fun `notificationRead should store the queue time with milliseconds`() = runBlocking {
+        val before = System.currentTimeMillis()
+
+        trackerOffline.notificationRead("act1", "notif123", "ident123")
+
+        val stored = trackerOffline.getAllNotificationRead()?.first()?.timestamp
+        assertThat(stored).matches("""\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}[+-]\d{4}""")
+        assertThat(parseISO(stored!!)!!.time).isAtLeast(before)
     }
 
     @Test

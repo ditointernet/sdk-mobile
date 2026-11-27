@@ -46,7 +46,14 @@ internal object DitoNotificationHandler {
         val userId = userInfo["user_id"] ?: ""
         val clickData = extractClickData(userInfo)
         if (notificationId != null && reference != null) {
-            tracker.notificationClick(notificationId, reference, userId, clickData)
+            tracker.notificationClick(
+                notificationId,
+                reference,
+                userId,
+                clickData,
+                userInfo["log_id"].orEmpty(),
+                userInfo["notification_name"].orEmpty(),
+            )
         }
         callback?.invoke(deepLink)
         return NotificationResult(

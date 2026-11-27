@@ -136,4 +136,21 @@ class NotificationClickExtrasTest {
         assertThat(action[DitoNotificationActionReceiver.EXTRA_ACTION_LABEL]).isEqualTo("Comprar")
         assertThat(action["deeplink"]).isEqualTo("https://loja.example.com/carrinho")
     }
+
+    @Test
+    fun `from le log_id e notification_name e toUserInfo repassa`() {
+        val intent = Intent().apply {
+            putExtra(Dito.DITO_NOTIFICATION_ID, "n4")
+            putExtra("log_id", "log4")
+            putExtra("notification_name", "Campanha 4")
+        }
+
+        val click = NotificationClickExtras.from(intent)
+
+        assertThat(click.logId).isEqualTo("log4")
+        assertThat(click.notificationName).isEqualTo("Campanha 4")
+        assertThat(click.toUserInfo()["log_id"]).isEqualTo("log4")
+        assertThat(click.toUserInfo()["notification_name"]).isEqualTo("Campanha 4")
+        assertThat(NotificationClickExtras.from(click.writeTo(Intent()))).isEqualTo(click)
+    }
 }

@@ -14,8 +14,12 @@ import br.com.dito.ditosdk.offline.IdentifyOffline
 import br.com.dito.ditosdk.offline.NotificationOffline
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_3_4
 import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_4_5
+import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_5_6
+import br.com.dito.ditosdk.offline.OFFLINE_MIGRATION_6_7
+import br.com.dito.ditosdk.utils.formatToISOMillis
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import java.util.Date
 
 internal class TrackerOffline(
     context: Context,
@@ -34,7 +38,7 @@ internal class TrackerOffline(
             Room.inMemoryDatabaseBuilder(context, DitoSqlHelper::class.java)
         } else {
             Room.databaseBuilder(context, DitoSqlHelper::class.java, "dito-offline")
-                .addMigrations(OFFLINE_MIGRATION_3_4, OFFLINE_MIGRATION_4_5)
+                .addMigrations(OFFLINE_MIGRATION_3_4, OFFLINE_MIGRATION_4_5, OFFLINE_MIGRATION_5_6, OFFLINE_MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
         }
 
@@ -84,7 +88,7 @@ internal class TrackerOffline(
         }
     }
 
-    fun event(event: Event, activityId: String, anonymous: Boolean = false) {
+    fun event(event: Event, activityId: String, anonymous: Boolean = false, userId: String? = null) {
         try {
             val dataJson = event.data?.params?.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) }
             database.eventDao().insert(
@@ -96,6 +100,7 @@ internal class TrackerOffline(
                     timestamp = event.createdAt ?: "",
                     retry = 0,
                     anonymous = anonymous,
+                    userId = userId,
                 ),
             )
         } catch (e: Exception) {
@@ -141,6 +146,7 @@ internal class TrackerOffline(
                     it.timestamp,
                     it.retry,
                     it.anonymous,
+                    it.userId,
                 )
             }
         } catch (e: Exception) {
@@ -162,6 +168,9 @@ internal class TrackerOffline(
                     it.identifier,
                     it.retry,
                     clickDataFromJson(it.dataJson),
+                    it.logId.orEmpty(),
+                    it.notificationName.orEmpty(),
+                    it.timestamp,
                 )
             }
         } catch (e: Exception) {
@@ -192,6 +201,8 @@ internal class TrackerOffline(
         notificationId: String,
         identifier: String,
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
     ) {
         try {
             database.notificationDao().insert(
@@ -201,6 +212,9 @@ internal class TrackerOffline(
                     identifier = identifier,
                     retry = 0,
                     dataJson = data.takeIf { it.isNotEmpty() }?.let { gson.toJson(it) },
+                    logId = logId,
+                    notificationName = notificationName,
+                    timestamp = Date().formatToISOMillis(),
                 ),
             )
         } catch (e: Exception) {

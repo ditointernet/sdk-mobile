@@ -72,16 +72,16 @@ internal class TrackerRetry(
             passRunning = true
         }
         scope.launch {
-            var finished = false
-            try {
-                while (!finished) finished = !finishPass(runPass())
-            } finally {
-                // Exceção ou cancelamento no meio da passada não pode deixar as próximas travadas.
-                if (!finished) synchronized(passLock) {
-                    passRunning = false
-                    nextPass = false
-                    nextPassIgnoresBackoff = false
-                }
+            do {
+                val again = finishPass(runPass())
+            } while (again)
+        }.invokeOnCompletion { cause ->
+            // Exceção, cancelamento no meio da passada ou scope já fechado (a passada nem começa) não
+            // pode deixar as próximas travadas.
+            if (cause != null) synchronized(passLock) {
+                passRunning = false
+                nextPass = false
+                nextPassIgnoresBackoff = false
             }
         }
     }
@@ -128,10 +128,12 @@ internal class TrackerRetry(
             pruneWithoutDeviceId()
             return null
         }
-        checkIdentify()
-        val eventsFailed = checkEvent()
+        val identifyFailedFor = checkIdentify()
+        val held = mutableListOf<EventOff>()
+        val eventsFailed = checkEvent(identifyFailedFor, held)
         val clicksFailed = checkNotificationRead()
-        return eventsFailed || clicksFailed
+        val heldFailed = identifyFailedFor != null && settleHeld(held, identifyFailedFor)
+        return heldFailed || eventsFailed || clicksFailed
     }
 
     fun close() {
@@ -143,9 +145,10 @@ internal class TrackerRetry(
         val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
         val events = trackerOffline.getAllEvents().orEmpty()
         prune(events, "Event", { it.id }) { it.retry >= maxRetry || (parseISO(it.timestamp)?.time ?: cutoff) < cutoff }
-        // A tabela de cliques não guarda hora: só o limite de linhas.
         val notifications = trackerOffline.getAllNotificationRead().orEmpty()
-        prune(notifications, "NotificationRead", { it.id }) { it.retry >= maxRetry }
+        prune(notifications, "NotificationRead", { it.id }) {
+            it.retry >= maxRetry || (it.timestamp?.let(::parseISO)?.time ?: cutoff) < cutoff
+        }
     }
 
     private fun <T> prune(rows: List<T>, table: String, id: (T) -> Int, expired: (T) -> Boolean) {
@@ -157,35 +160,81 @@ internal class TrackerRetry(
         }
     }
 
-    private suspend fun checkIdentify() {
-        val identifyOff = trackerOffline.getIdentify() ?: return
-        if (identifyOff.send) return
-        try {
+    /** O id do identify pendente cujo reenvio falhou; `null` se não havia ou se saiu. */
+    private suspend fun checkIdentify(): String? {
+        val identifyOff = trackerOffline.getIdentify() ?: return null
+        if (identifyOff.send) return null
+        return try {
             val identify = mapper.fromIdentifyOff(identifyOff)
             val activity = mapper.mapIdentify(identify)
             val request = mapper.buildRequest(identify.id, listOf(activity), null)
             client.activity(request)
             trackerOffline.updateIdentify(identifyOff.id, true)
             if (tracker.idOrNull == identify.id) tracker.registerLastToken(identify.id)
+            null
         } catch (e: Exception) {
             Log.d("TrackerRetry", "identify retry failed: ${e.message}")
+            identifyOff.id
         }
     }
 
-    private suspend fun checkEvent(): Boolean {
+    /**
+     * @param identifyFailedFor dono cujo identify pendente falhou: dos eventos dele, só o recebimento sai
+     *   (com o identify embutido); os demais vão para [held].
+     */
+    private suspend fun checkEvent(identifyFailedFor: String?, held: MutableList<EventOff>): Boolean {
         val events = trackerOffline.getAllEvents() ?: return false
 
         events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
 
-        val (anonymous, owned) = events.filter { it.retry < maxRetry }.partition { it.anonymous }
-        val anonymousFailed = anonymous.isNotEmpty() && !sendEventsBatch(anonymous, null)
-        if (owned.isEmpty()) return anonymousFailed
+        // O ingest descarta em silêncio um Receipt sem notification_id: reenviar só gastaria tentativas.
+        val (orphanReceipts, live) = events.filter { it.retry < maxRetry }.partition {
+            it.action == PUSH_RECEIVE_EVENT &&
+                (mapper.customDataFromJson(it.dataJson)?.params?.get("notification_id") as? String).isNullOrEmpty()
+        }
+        orphanReceipts.forEach {
+            val unreadable = !it.dataJson.isNullOrBlank() && mapper.customDataFromJson(it.dataJson) == null
+            val reason = if (unreadable) "com dados ilegíveis" else "sem notification id"
+            Log.w("TrackerRetry", "Entrega $reason apagada da fila.")
+            trackerOffline.delete(it.id, "Event")
+        }
+
+        val (anonymous, owned) = live.partition { it.anonymous }
+        var failed = anonymous.isNotEmpty() && !sendEventsBatch(anonymous, null)
+        // Cada linha sai com o user_id de quando entrou na fila; as anteriores à coluna, com o atual.
+        val (withOwner, legacy) = owned.partition { it.userId != null }
+        fun sendable(rows: List<EventOff>, owner: String): List<EventOff> {
+            if (owner != identifyFailedFor) return rows
+            val (receipts, others) = rows.partition { it.action == PUSH_RECEIVE_EVENT }
+            held += others
+            return receipts
+        }
+        withOwner.groupBy { it.userId!! }.forEach { (owner, rows) ->
+            val batch = sendable(rows, owner)
+            if (batch.isNotEmpty() && !sendEventsBatch(batch, owner)) failed = true
+        }
+        if (legacy.isEmpty()) return failed
 
         val userId = tracker.awaitId() ?: run {
             Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
-            return anonymousFailed
+            return failed
         }
-        return !sendEventsBatch(owned, userId) || anonymousFailed
+        val batch = sendable(legacy, userId)
+        return (batch.isNotEmpty() && !sendEventsBatch(batch, userId)) || failed
+    }
+
+    /**
+     * Fim da passada para os eventos segurados por [checkEvent]. Identify ainda pendente: gastam uma
+     * tentativa, para um identify recusado sempre não prender a fila sem limite; `true` (falha). Se
+     * um recebimento ou clique do dono levou o identify, saem agora.
+     */
+    private suspend fun settleHeld(rows: List<EventOff>, owner: String): Boolean {
+        val pending = trackerOffline.getIdentify()?.let { it.id == owner && !it.send } == true
+        if (pending) {
+            rows.forEach { trackerOffline.update(it.id, it.retry + 1, "Event") }
+            return true
+        }
+        return rows.isNotEmpty() && !sendEventsBatch(rows, owner)
     }
 
     private suspend fun sendEventsBatch(events: List<EventOff>, userId: String?): Boolean {
@@ -196,10 +245,23 @@ internal class TrackerRetry(
                 eventOff.dataJson,
                 eventOff.timestamp,
             )
-            mapper.mapTrack(event, eventOff.activityId, eventOff.timestamp)
+            if (event.action == PUSH_RECEIVE_EVENT) {
+                val params = event.data?.params.orEmpty()
+                mapper.mapPushReceipt(
+                    params["notification_id"] as? String ?: "",
+                    params["dispatch_id"] as? String ?: "",
+                    params["notification_name"] as? String ?: "",
+                    userId ?: tracker.anonymousUserId().orEmpty(),
+                    eventOff.activityId,
+                    eventOff.timestamp,
+                )
+            } else {
+                mapper.mapTrack(event, eventOff.activityId, eventOff.timestamp)
+            }
         }
         return try {
-            tracker.send(userId, activities, null)
+            // Como no envio ao vivo, o recebimento vai com o identify do dono do push.
+            tracker.send(userId, activities, null, identifyFirst = events.any { it.action == PUSH_RECEIVE_EVENT })
             events.forEach { trackerOffline.delete(it.id, "Event") }
             true
         } catch (e: Exception) {
@@ -210,18 +272,21 @@ internal class TrackerRetry(
 
     private suspend fun checkNotificationRead(): Boolean {
         val notifications = trackerOffline.getAllNotificationRead() ?: return false
-        val userId = tracker.awaitId() ?: run {
-            Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
-            return false
-        }
 
         notifications.filter { it.retry >= maxRetry }
             .forEach { trackerOffline.delete(it.id, "NotificationRead") }
 
-        val toSend = notifications.filter { it.retry < maxRetry }
-        if (toSend.isEmpty()) return false
+        // O identifier é o user_id do push: o clique sai com ele, logado ou não.
+        val (withOwner, legacy) = notifications.filter { it.retry < maxRetry }.partition { it.identifier.isNotEmpty() }
+        var failed = false
+        withOwner.groupBy { it.identifier }.forEach { (owner, rows) -> if (!sendNotificationsBatch(rows, owner)) failed = true }
+        if (legacy.isEmpty()) return failed
 
-        return !sendNotificationsBatch(toSend, userId)
+        val userId = tracker.awaitId() ?: run {
+            Log.e("TrackerRetry", "Antes de enviar um evento é preciso identificar o usuário.")
+            return failed
+        }
+        return !sendNotificationsBatch(legacy, userId) || failed
     }
 
     private suspend fun sendNotificationsBatch(notifications: List<NotificationReadOff>, userId: String): Boolean {
@@ -231,11 +296,14 @@ internal class TrackerRetry(
                 notif.identifier,
                 notif.activityId,
                 notif.data,
+                notif.logId,
+                notif.notificationName,
+                notif.timestamp,
             )
         }
         return try {
-            val request = mapper.buildRequest(userId, activities, null)
-            client.activity(request)
+            // Como o recebimento, leva o identify pendente do dono; ao vivo o clique não manda identify.
+            tracker.send(userId, activities, null)
             notifications.forEach { trackerOffline.delete(it.id, "NotificationRead") }
             true
         } catch (e: Exception) {

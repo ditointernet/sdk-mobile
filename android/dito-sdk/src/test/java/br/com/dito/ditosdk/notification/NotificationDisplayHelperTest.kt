@@ -298,4 +298,30 @@ class NotificationDisplayHelperTest {
             customDataJson = customDataJson,
         )
     }
+
+    @Test
+    fun `showNotification puts log id and notification name in body and button intents`() {
+        NotificationDisplayHelper.showNotification(
+            context = context,
+            title = "Título",
+            message = "Mensagem",
+            notificationId = "notif123",
+            reference = "ref123",
+            deepLink = "https://dito.com.br",
+            channel = "App notifications",
+            channelDescription = "App application notifications",
+            userId = "user123",
+            actions = listOf(DitoNotificationAction("comprar", "Comprar", "https://dito.com.br/comprar")),
+            logId = "log123",
+            notificationName = "Campanha",
+        )
+
+        val notification = shadowOf(notificationManager).allNotifications.single()
+        val intents = listOf(notification.contentIntent, notification.actions.single().actionIntent)
+            .map { shadowOf(it).savedIntent }
+        intents.forEach { intent ->
+            assertThat(intent.getStringExtra("log_id")).isEqualTo("log123")
+            assertThat(intent.getStringExtra("notification_name")).isEqualTo("Campanha")
+        }
+    }
 }

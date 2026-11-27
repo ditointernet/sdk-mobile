@@ -13,7 +13,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "identify")
-data class IdentifyOffline(
+internal data class IdentifyOffline(
     @PrimaryKey val _id: String,
     val name: String?,
     val email: String?,
@@ -25,7 +25,7 @@ data class IdentifyOffline(
 )
 
 @Dao
-interface IdentifyOfflineDao {
+internal interface IdentifyOfflineDao {
     @Query("SELECT * FROM identify")
     fun getAll(): List<IdentifyOffline>
 
@@ -46,7 +46,7 @@ interface IdentifyOfflineDao {
 }
 
 @Entity(tableName = "event")
-data class EventOffline(
+internal data class EventOffline(
     @PrimaryKey(autoGenerate = true) val _id: Int? = null,
     val activityId: String,
     val action: String,
@@ -55,10 +55,12 @@ data class EventOffline(
     val timestamp: String,
     val retry: Int,
     @ColumnInfo(defaultValue = "0") val anonymous: Boolean = false,
+    /** user_id de quando a linha entrou na fila; nulo em linha anônima ou anterior à coluna. */
+    val userId: String? = null,
 )
 
 @Dao
-interface EventOfflineDao {
+internal interface EventOfflineDao {
     @Query("SELECT * FROM event")
     fun getAll(): List<EventOffline>
 
@@ -73,7 +75,7 @@ interface EventOfflineDao {
 }
 
 @Entity(tableName = "notification")
-data class NotificationOffline(
+internal data class NotificationOffline(
     @PrimaryKey(autoGenerate = true) val _id: Int? = null,
     val activityId: String,
     val notificationId: String,
@@ -85,10 +87,14 @@ data class NotificationOffline(
      * silêncio. Nulo quando o clique foi no corpo da notificação.
      */
     val dataJson: String? = null,
+    val logId: String? = null,
+    val notificationName: String? = null,
+    /** Hora do enfileiramento; nula em linha anterior à coluna (o reenvio usa a hora atual). */
+    val timestamp: String? = null,
 )
 
 @Dao
-interface NotificationOfflineDao {
+internal interface NotificationOfflineDao {
     @Query("SELECT * FROM notification")
     fun getAll(): List<NotificationOffline>
 
@@ -107,25 +113,40 @@ interface NotificationOfflineDao {
  * perdida, e é isso que importa aqui: a alternativa (`fallbackToDestructiveMigration`) apagaria
  * exatamente os cliques que ainda não foram entregues.
  */
-val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
+internal val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE notification ADD COLUMN dataJson TEXT")
     }
 }
 
 // Sem ela, o fallbackToDestructiveMigration apaga a fila de eventos pendentes.
-val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
+internal val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE event ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0")
     }
 }
 
+internal val OFFLINE_MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE notification ADD COLUMN logId TEXT")
+        db.execSQL("ALTER TABLE notification ADD COLUMN notificationName TEXT")
+    }
+}
+
+// Sem ela, o fallbackToDestructiveMigration apaga a fila de eventos pendentes.
+internal val OFFLINE_MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE event ADD COLUMN userId TEXT")
+        db.execSQL("ALTER TABLE notification ADD COLUMN timestamp TEXT")
+    }
+}
+
 @Database(
     entities = [IdentifyOffline::class, EventOffline::class, NotificationOffline::class],
-    version = 5,
+    version = 7,
     exportSchema = false,
 )
-abstract class DitoSqlHelper : RoomDatabase() {
+internal abstract class DitoSqlHelper : RoomDatabase() {
     abstract fun identifyDao(): IdentifyOfflineDao
     abstract fun eventDao(): EventOfflineDao
     abstract fun notificationDao(): NotificationOfflineDao

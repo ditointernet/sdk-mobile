@@ -4,6 +4,7 @@ import android.content.Context
 import android.provider.Settings
 import android.util.Log
 import androidx.test.core.app.ApplicationProvider
+import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
@@ -209,7 +210,7 @@ class TrackerRetryTest {
         testScope.runTest {
             every { trackerOffline.getIdentify() } returns storedIdentify()
             every { trackerOffline.getAllNotificationRead() } returns
-                listOf(NotificationReadOff(1, "a1", "n1", "i1", 0))
+                listOf(NotificationReadOff(1, "a1", "n1", "", 0))
             val coldRetry = coldStartRetry()
 
             coldRetry.uploadEvents()
@@ -397,6 +398,73 @@ class TrackerRetryTest {
         verify { trackerOffline.updateIdentify("user123", true) }
         assertThat(requests.none { r -> r.activitiesList.any { it.hasTokenRegister() } }).isTrue()
     }
+
+    @Test
+    fun `checkNotificationRead should resend log id and name with the click`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllNotificationRead() } returns
+            listOf(NotificationReadOff(1, "a1", "n1", "i1", 0, logId = "log1", notificationName = "Campanha"))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val info = requests.single().activitiesList.single().trackPushClick.notification
+        assertThat(info.dispatchId).isEqualTo("log1")
+        assertThat(info.name).isEqualTo("Campanha")
+        assertThat(info.channel).isEqualTo("mobile")
+    }
+
+    @Test
+    fun `queued delivery should be resent as a push receipt`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(receiveOff(anonymous = false))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single()
+        assertThat(request.userId).isEqualTo("user123")
+        assertThat(request.activitiesList.first().hasIdentify()).isTrue()
+        val activity = request.activitiesList.single { it.hasTrackPushReceipt() }
+        assertThat(activity.id).isEqualTo("a1")
+        assertThat(activity.hasTrack()).isFalse()
+        val info = activity.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("n1")
+        assertThat(info.dispatchId).isEqualTo("log1")
+        assertThat(info.name).isEqualTo("Campanha")
+        assertThat(info.identifier).isEqualTo("user123")
+        assertThat(info.channel).isEqualTo("mobile")
+        verify { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `anonymous queued delivery should be resent as a push receipt of the device user`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(receiveOff(anonymous = true))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single()
+        assertThat(request.userId).isEmpty()
+        val info = request.activitiesList.single { it.hasTrackPushReceipt() }.trackPushReceipt.notification
+        assertThat(info.notificationId).isEqualTo("n1")
+        assertThat(info.identifier).isEqualTo(sha1Hex("device-1"))
+    }
+
+    private fun receiveOff(anonymous: Boolean) = EventOff(
+        1,
+        "a1",
+        "receive-android-notification",
+        null,
+        """{"dispatch_id":"log1","notification_id":"n1","notification_name":"Campanha"}""",
+        "t",
+        0,
+        anonymous,
+    )
+
+    private fun sha1Hex(value: String): String =
+        java.security.MessageDigest.getInstance("SHA-1").digest(value.toByteArray()).joinToString("") { "%02x".format(it) }
 
     @Test
     fun `retry without android id should send nothing nor spend attempts, and send all when it comes back`() =
@@ -597,7 +665,7 @@ class TrackerRetryTest {
         val requests = captureRequests("device-1")
         every { trackerOffline.getAllEvents() } returns listOf(
             EventOff(1, "a1", "purchase", null, null, "2026-11-27T10:00:00-0300", 0),
-            EventOff(2, "a2", "receive-android-notification", null, null, "2026-11-27T10:05:00-0300", 0),
+            EventOff(2, "a2", "receive-android-notification", null, NOTIF_JSON, "2026-11-27T10:05:00-0300", 0),
         )
 
         trackerRetry.uploadEvents()
@@ -662,7 +730,7 @@ class TrackerRetryTest {
     @Test
     fun `pass without user and with pending clicks should log an error`() = testScope.runTest {
         captureRequests("device-1")
-        every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(1, "c1", "n1", "i1", 0))
+        every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(1, "c1", "n1", "", 0))
         val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
         val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
         ShadowLog.clear()
@@ -672,6 +740,332 @@ class TrackerRetryTest {
 
         assertThat(ShadowLog.getLogsForTag("TrackerRetry").any { it.type == Log.ERROR }).isTrue()
         coVerify(exactly = 0) { mockClient.activity(any()) }
+    }
+
+    @Test
+    fun `event of A queued before logout should go out with A after B logs in`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        val queue = mutableListOf<EventOff>()
+        every { trackerOffline.event(any(), any(), any(), any()) } answers {
+            queue += EventOff(queue.size + 1, secondArg(), firstArg<Event>().action, null, null, "t", 0, thirdArg(), arg(3))
+        }
+        every { trackerOffline.getAllEvents() } answers { queue.toList().takeIf { it.isNotEmpty() } }
+        every { trackerOffline.delete(any(), "Event") } answers { queue.removeAll { it.id == firstArg<Int>() } }
+        coEvery { mockClient.activity(any()) } throws Exception("offline")
+        tracker.id = "A"
+        tracker.event(Event("purchase"))
+        advanceUntilIdle()
+
+        tracker.logout()
+        tracker.id = "B"
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        trackerRetry.uploadEventsOnReconnect()
+        advanceUntilIdle()
+
+        assertThat(requests.single().userId).isEqualTo("A")
+        assertThat(queue).isEmpty()
+    }
+
+    @Test
+    fun `owned rows should go out in one request per owner, old rows with the current user`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "x", null, null, "t", 0, userId = "A"),
+            EventOff(2, "b1", "x", null, null, "t", 0, userId = "B"),
+            EventOff(3, "a2", "x", null, null, "t", 0, userId = "A"),
+            EventOff(4, "old", "x", null, null, "t", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val byUser = requests.associate { r -> r.userId to r.activitiesList.map { it.id } }
+        assertThat(byUser).containsExactly("A", listOf("a1", "a2"), "B", listOf("b1"), "user123", listOf("old"))
+        (1..4).forEach { verify { trackerOffline.delete(it, "Event") } }
+    }
+
+    @Test
+    fun `failed owner group should spend a try only on its own rows`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "x", null, null, "t", 0, userId = "A"),
+            EventOff(2, "b1", "x", null, null, "t", 2, userId = "B"),
+        )
+        coEvery { mockClient.activity(capture(requests)) } answers {
+            if (firstArg<Api.Request>().userId == "B") throw Exception("fail")
+            Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.delete(1, "Event") }
+        verify { trackerOffline.update(2, 3, "Event") }
+        verify(exactly = 0) { trackerOffline.update(1, any(), "Event") }
+    }
+
+    @Test
+    fun `queued receipt should be resent with the push user and the original time`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "2026-11-27T10:05:00-0300", 0, userId = "push-user"),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single()
+        assertThat(request.userId).isEqualTo("push-user")
+        val activity = request.activitiesList.single { it.hasTrackPushReceipt() }
+        assertThat(activity.trackPushReceipt.notification.identifier).isEqualTo("push-user")
+        assertThat(activity.timestamp.seconds).isEqualTo(epochSeconds("2026-11-27T13:05:00Z"))
+    }
+
+    @Test
+    fun `queued receipt without notification id should be deleted without sending nor spending a try`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            every { trackerOffline.getAllEvents() } returns listOf(
+                EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, """{"dispatch_id":"log1"}""", "t", 0, userId = "push-user"),
+                EventOff(2, "a2", PUSH_RECEIVE_EVENT, null, null, "t", 0, anonymous = true),
+            )
+
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            assertThat(requests).isEmpty()
+            verify { trackerOffline.delete(1, "Event") }
+            verify { trackerOffline.delete(2, "Event") }
+            verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+        }
+
+    @Test
+    fun `queued receipt of another owner should go with the identify of the owner first`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "t", 0, userId = "push-user"),
+            EventOff(2, "a2", "purchase", null, null, "t", 0, userId = "user123"),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val byUser = requests.associateBy { it.userId }
+        val receipt = byUser.getValue("push-user").activitiesList
+        assertThat(receipt.map { it.hasIdentify() }).containsExactly(true, false).inOrder()
+        assertThat(receipt[1].id).isEqualTo("a1")
+        assertThat(byUser.getValue("user123").activitiesList.none { it.hasIdentify() }).isTrue()
+    }
+
+    @Test
+    fun `queued receipt of the user with a pending identify should carry that identify once`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        pendingIdentify()
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "t", 0, userId = "user123"),
+        )
+        var calls = 0
+        // O reenvio do identify sozinho falha; o recebimento leva o identify pendente.
+        coEvery { mockClient.activity(capture(requests)) } answers {
+            if (calls++ == 0) throw Exception("fail") else Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val activities = requests.single { r -> r.activitiesList.any { it.hasTrackPushReceipt() } }.activitiesList
+        assertThat(activities.count { it.hasIdentify() }).isEqualTo(1)
+        assertThat(activities.first().hasIdentify()).isTrue()
+        verify { trackerOffline.updateIdentify("user123", true) }
+    }
+
+    @Test
+    fun `queued receipt with unreadable data should be deleted with its own log`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", PUSH_RECEIVE_EVENT, null, "not json", "t", 0, userId = "push-user"),
+        )
+        ShadowLog.clear()
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests).isEmpty()
+        verify { trackerOffline.delete(1, "Event") }
+        val messages = ShadowLog.getLogsForTag("TrackerRetry").map { it.msg }
+        assertThat(messages).contains("Entrega com dados ilegíveis apagada da fila.")
+        assertThat(messages).doesNotContain("Entrega sem notification id apagada da fila.")
+    }
+
+    @Test
+    fun `queued click should be resent with the click time, and without it with the current time`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            every { trackerOffline.getAllNotificationRead() } returns listOf(
+                NotificationReadOff(1, "c1", "n1", "push-user", 0, timestamp = "2026-11-27T10:05:00.250-0300"),
+                NotificationReadOff(2, "c2", "n2", "push-user", 0),
+            )
+            val before = java.time.Instant.now().epochSecond
+
+            trackerRetry.uploadEvents()
+            advanceUntilIdle()
+
+            val sent = requests.single().activitiesList.associateBy { it.id }
+            val clicked = sent.getValue("c1").timestamp
+            assertThat(java.time.Instant.ofEpochSecond(clicked.seconds, clicked.nanos.toLong()))
+                .isEqualTo(java.time.Instant.parse("2026-11-27T13:05:00.250Z"))
+            assertThat(sent.getValue("c2").timestamp.seconds).isAtLeast(before)
+        }
+
+    @Test
+    fun `queued click without login should be resent with its identifier`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(1, "c1", "n1", "push-user", 0))
+        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
+        val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
+
+        retry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests.single().userId).isEqualTo("push-user")
+        verify { trackerOffline.delete(1, "NotificationRead") }
+    }
+
+    @Test
+    fun `queued click of A with B logged in should go out with A`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        tracker.id = "B"
+        every { trackerOffline.getAllNotificationRead() } returns listOf(
+            NotificationReadOff(1, "c1", "n1", "A", 0),
+            NotificationReadOff(2, "c2", "n2", "B", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val byUser = requests.associate { r -> r.userId to r.activitiesList.map { it.id } }
+        assertThat(byUser).containsExactly("A", listOf("c1"), "B", listOf("c2"))
+    }
+
+    @Test
+    fun `failed pending identify should hold the owner events, spend a try and arm the backoff`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            pendingIdentify()
+            every { trackerOffline.getAllEvents() } returns listOf(
+                EventOff(1, "own", "purchase", null, null, "t", 0, userId = "user123"),
+                EventOff(2, "old", "purchase", null, null, "t", 0),
+                EventOff(3, "other", "purchase", null, null, "t", 0, userId = "A"),
+            )
+            coEvery { mockClient.activity(capture(requests)) } answers {
+                if (firstArg<Api.Request>().activitiesList.any { it.hasIdentify() }) throw Exception("fail")
+                Api.Response.getDefaultInstance()
+            }
+
+            trackerRetry.uploadEvents()
+            advanceTimeBy(1_000)
+
+            val sent = requests.flatMap { r -> r.activitiesList.filter { !it.hasIdentify() }.map { it.id } }
+            assertThat(sent).containsExactly("other")
+            verify { trackerOffline.update(1, 1, "Event") }
+            verify { trackerOffline.update(2, 1, "Event") }
+            verify(exactly = 0) { trackerOffline.delete(1, "Event") }
+            verify(exactly = 0) { trackerOffline.delete(2, "Event") }
+
+            val before = requests.size
+            trackerRetry.uploadEvents()
+            advanceTimeBy(1_000)
+            assertThat(requests).hasSize(before)
+        }
+
+    @Test
+    fun `pending identify sent by a receipt in the same pass should release the held events and the backoff`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            pendingIdentify()
+            every { trackerOffline.getAllEvents() } returns listOf(
+                EventOff(1, "own", "purchase", null, null, "t", 0, userId = "user123"),
+                EventOff(2, "old", "purchase", null, null, "t", 0),
+                EventOff(3, "other", "purchase", null, null, "t", 0, userId = "A"),
+                EventOff(4, "rcpt", PUSH_RECEIVE_EVENT, null, NOTIF_JSON, "t", 0, userId = "user123"),
+            )
+            every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(5, "c1", "n1", "user123", 0))
+            var calls = 0
+            coEvery { mockClient.activity(capture(requests)) } answers {
+                if (calls++ == 0) throw Exception("fail") else Api.Response.getDefaultInstance()
+            }
+
+            trackerRetry.uploadEvents()
+            advanceTimeBy(1_000)
+
+            val sent = requests.flatMap { r -> r.activitiesList.filter { !it.hasIdentify() }.map { it.id } }
+            assertThat(sent).containsExactly("other", "rcpt", "c1", "own", "old")
+            verify { trackerOffline.delete(1, "Event") }
+            verify { trackerOffline.delete(2, "Event") }
+            verify(exactly = 0) { trackerOffline.update(any(), any(), "Event") }
+
+            val before = requests.size
+            trackerRetry.uploadEvents()
+            advanceTimeBy(1_000)
+            assertThat(requests.size).isGreaterThan(before)
+        }
+
+    @Test
+    fun `events held by an identify that always fails should be dropped after the retry limit`() =
+        testScope.runTest {
+            val requests = captureRequests("device-1")
+            pendingIdentify()
+            var row = EventOff(1, "own", "purchase", null, null, "t", 0, userId = "user123")
+            every { trackerOffline.getAllEvents() } answers { listOf(row) }
+            every { trackerOffline.update(1, any(), "Event") } answers { row = row.copy(retry = secondArg()) }
+            coEvery { mockClient.activity(capture(requests)) } throws Exception("fail")
+
+            repeat(6) {
+                trackerRetry.uploadEventsOnReconnect()
+                advanceUntilIdle()
+            }
+
+            verify { trackerOffline.delete(1, "Event") }
+            assertThat(requests.none { r -> r.activitiesList.any { it.hasTrack() } }).isTrue()
+        }
+
+    @Test
+    fun `queued click of the user with a pending identify should carry that identify`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        pendingIdentify()
+        every { trackerOffline.getAllNotificationRead() } returns listOf(
+            NotificationReadOff(1, "c1", "n1", "user123", 0, timestamp = "2026-11-27T10:05:00.250-0300"),
+        )
+        var calls = 0
+        // O reenvio do identify sozinho falha; o clique leva o identify pendente.
+        coEvery { mockClient.activity(capture(requests)) } answers {
+            if (calls++ == 0) throw Exception("fail") else Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val request = requests.single { r -> r.activitiesList.any { it.hasTrackPushClick() } }
+        assertThat(request.userId).isEqualTo("user123")
+        assertThat(request.activitiesList.map { it.hasIdentify() }).containsExactly(true, false).inOrder()
+        val click = request.activitiesList.last()
+        assertThat(click.id).isEqualTo("c1")
+        assertThat(click.trackPushClick.notification.identifier).isEqualTo("user123")
+        assertThat(java.time.Instant.ofEpochSecond(click.timestamp.seconds, click.timestamp.nanos.toLong()))
+            .isEqualTo(java.time.Instant.parse("2026-11-27T13:05:00.250Z"))
+        verify { trackerOffline.updateIdentify("user123", true) }
+        verify { trackerOffline.delete(1, "NotificationRead") }
+    }
+
+    @Test
+    fun `queued click of another owner should not carry an identify`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(1, "c1", "n1", "push-user", 0))
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests.single().activitiesList.none { it.hasIdentify() }).isTrue()
     }
 
     private fun epochSeconds(iso: String) = java.time.Instant.parse(iso).epochSecond
@@ -728,6 +1122,25 @@ class TrackerRetryTest {
         verify { trackerOffline.delete(4, "Event") }
         verify(exactly = 2) { trackerOffline.delete(any(), any()) }
         verify(exactly = 0) { trackerOffline.update(any(), any(), any()) }
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+    }
+
+    @Test
+    fun `without android id, clicks older than the age limit should be dropped`() = testScope.runTest {
+        captureRequests("")
+        val ageLimit = TimeUnit.DAYS.toMillis(TrackerRetry.MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
+        val old = Date(System.currentTimeMillis() - ageLimit - TimeUnit.DAYS.toMillis(1)).formatToISO()
+        every { trackerOffline.getAllNotificationRead() } returns listOf(
+            NotificationReadOff(1, "old", "n", "i", 0, timestamp = old),
+            NotificationReadOff(2, "recent", "n", "i", 0, timestamp = Date().formatToISO()),
+            NotificationReadOff(3, "undated", "n", "i", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        verify { trackerOffline.delete(1, "NotificationRead") }
+        verify(exactly = 1) { trackerOffline.delete(any(), any()) }
         coVerify(exactly = 0) { mockClient.activity(any()) }
     }
 
@@ -810,5 +1223,9 @@ class TrackerRetryTest {
         verify { trackerOffline.getIdentify() }
         verify { trackerOffline.getAllEvents() }
         verify { trackerOffline.getAllNotificationRead() }
+    }
+
+    private companion object {
+        const val NOTIF_JSON = """{"dispatch_id":"log1","notification_id":"n1","notification_name":"Campanha"}"""
     }
 }

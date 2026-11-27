@@ -69,7 +69,7 @@ class DitoSqlHelperMigrationTest {
 
         // Abrir pelo Room valida o schema migrado contra a entidade (tipo, NOT NULL e default).
         val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
-            .addMigrations(OFFLINE_MIGRATION_4_5)
+            .addMigrations(OFFLINE_MIGRATION_4_5, OFFLINE_MIGRATION_5_6, OFFLINE_MIGRATION_6_7)
             .allowMainThreadQueries()
             .build()
         try {
@@ -77,6 +77,85 @@ class DitoSqlHelperMigrationTest {
             assertThat(event.activityId).isEqualTo("act1")
             assertThat(event.retry).isEqualTo(2)
             assertThat(event.anonymous).isFalse()
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    fun `migration 5 to 6 adds log id and notification name keeping pending clicks`() {
+        openV4Database().use { db ->
+            db.execSQL(
+                "INSERT INTO notification (activityId, notificationId, identifier, retry) " +
+                    "VALUES ('act1', 'notif1', 'user1', 2)"
+            )
+            OFFLINE_MIGRATION_4_5.migrate(db)
+            db.version = 5
+        }
+
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_5_6, OFFLINE_MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val click = room.notificationDao().getAll().single()
+            assertThat(click.activityId).isEqualTo("act1")
+            assertThat(click.retry).isEqualTo(2)
+            assertThat(click.logId).isNull()
+            assertThat(click.notificationName).isNull()
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    fun `migration 6 to 7 adds the owner keeping pending events`() {
+        openV4Database().use { db ->
+            OFFLINE_MIGRATION_4_5.migrate(db)
+            OFFLINE_MIGRATION_5_6.migrate(db)
+            db.execSQL(
+                "INSERT INTO event (activityId, action, timestamp, retry, anonymous) VALUES ('act1', 'compra', 't', 2, 1)"
+            )
+            db.version = 6
+        }
+
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val event = room.eventDao().getAll().single()
+            assertThat(event.activityId).isEqualTo("act1")
+            assertThat(event.retry).isEqualTo(2)
+            assertThat(event.anonymous).isTrue()
+            assertThat(event.userId).isNull()
+        } finally {
+            room.close()
+        }
+    }
+
+    @Test
+    fun `migration 6 to 7 adds the click time keeping pending clicks`() {
+        openV4Database().use { db ->
+            OFFLINE_MIGRATION_4_5.migrate(db)
+            OFFLINE_MIGRATION_5_6.migrate(db)
+            db.execSQL(
+                "INSERT INTO notification (activityId, notificationId, identifier, retry, logId) " +
+                    "VALUES ('act1', 'notif1', 'user1', 2, 'log1')"
+            )
+            db.version = 6
+        }
+
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_6_7)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val click = room.notificationDao().getAll().single()
+            assertThat(click.activityId).isEqualTo("act1")
+            assertThat(click.retry).isEqualTo(2)
+            assertThat(click.logId).isEqualTo("log1")
+            assertThat(click.timestamp).isNull()
         } finally {
             room.close()
         }

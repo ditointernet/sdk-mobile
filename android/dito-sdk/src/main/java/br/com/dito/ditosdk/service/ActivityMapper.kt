@@ -16,6 +16,8 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import mobileingest.v1.Api
 
+private const val PUSH_CHANNEL = "mobile"
+
 internal class DeviceIdUnavailableException :
     IllegalStateException("device_id indisponível: nenhum request sai para o mobile-ingest sem ele.")
 
@@ -88,7 +90,7 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrack(track)
-            .setTimestamp(queuedAt?.let(::parseISO)?.let { toTimestamp(it.toInstant()) } ?: nowTimestamp())
+            .setTimestamp(timestampOf(queuedAt))
             .build()
     }
 
@@ -129,13 +131,12 @@ internal class ActivityMapper(private val context: Context) {
         identifier: String,
         activityId: String = UUID.randomUUID().toString(),
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
+        queuedAt: String? = null,
     ): Api.Activity {
-        val ni = Api.NotificationInfo.newBuilder()
-            .setNotificationId(notificationId)
-            .setIdentifier(identifier)
-            .build()
         val clickBuilder = Api.Activity.TrackPushClickActivity.newBuilder()
-            .setNotification(ni)
+            .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
         if (data.isNotEmpty()) {
             val customData = CustomData().apply { data.forEach { (key, value) -> add(key, value) } }
             clickBuilder.putAllData(customDataToProto(customData))
@@ -145,9 +146,41 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrackPushClick(click)
-            .setTimestamp(nowTimestamp())
+            .setTimestamp(timestampOf(queuedAt))
             .build()
     }
+
+    fun mapPushReceipt(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String,
+        activityId: String = UUID.randomUUID().toString(),
+        queuedAt: String? = null,
+    ): Api.Activity {
+        val receipt = Api.Activity.TrackPushReceiptActivity.newBuilder()
+            .setNotification(notificationInfo(notificationId, logId, notificationName, identifier))
+            .build()
+        return Api.Activity.newBuilder()
+            .setId(activityId)
+            .setType(Api.ActivityType.ACTIVITY_TRACK)
+            .setTrackPushReceipt(receipt)
+            .setTimestamp(timestampOf(queuedAt))
+            .build()
+    }
+
+    private fun notificationInfo(
+        notificationId: String,
+        logId: String,
+        notificationName: String,
+        identifier: String,
+    ): Api.NotificationInfo = Api.NotificationInfo.newBuilder()
+        .setNotificationId(notificationId)
+        .setDispatchId(logId)
+        .setName(notificationName)
+        .setIdentifier(identifier)
+        .setChannel(PUSH_CHANNEL)
+        .build()
 
     fun buildRequest(userId: String, activities: List<Api.Activity>, token: String?): Api.Request {
         val device = buildDeviceInfo(token)
@@ -283,6 +316,10 @@ internal class ActivityMapper(private val context: Context) {
     }
 
     private fun nowTimestamp(): Timestamp = toTimestamp(java.time.Instant.now())
+
+    // Hora gravada na fila (reenvio); sem ela ou inválida, a hora atual.
+    private fun timestampOf(queuedAt: String?): Timestamp =
+        queuedAt?.let(::parseISO)?.let { toTimestamp(it.toInstant()) } ?: nowTimestamp()
 
     private fun toTimestamp(instant: java.time.Instant): Timestamp =
         Timestamp.newBuilder()

@@ -117,6 +117,8 @@ class DitoNotificationHandler(private val context: Context) {
             imageUrl = imageUrl,
             actions = actions,
             customDataJson = customDataJson,
+            logId = logId,
+            notificationName = notificationName,
         )
 
         val record = DitoNotificationRecord(

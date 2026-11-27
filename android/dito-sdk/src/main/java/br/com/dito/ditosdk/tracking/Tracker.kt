@@ -20,6 +20,8 @@ import mobileingest.v1.Api
 import java.security.MessageDigest
 import java.util.UUID
 
+internal const val PUSH_RECEIVE_EVENT = "receive-android-notification"
+
 internal class Tracker(
     private val trackerOffline: TrackerOffline,
     private val client: MobileIngestClientInterface,
@@ -123,25 +125,26 @@ internal class Tracker(
         scope.launch {
             val activityId = UUID.randomUUID().toString()
             val userId = awaitId()
-            val activity = mapper.mapTrack(event, activityId)
+            val activity = mapper.mapTrack(event, activityId, event.createdAt)
             try {
                 send(userId, listOf(activity), null)
                 callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
-                handleEventError(e, event, activityId, anonymous = userId == null)
+                handleEventError(e, event, activityId, userId)
                 callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
             }
         }
     }
 
-    private fun handleEventError(exception: Exception, event: Event, activityId: String, anonymous: Boolean) {
+    private fun handleEventError(exception: Exception, event: Event, activityId: String, userId: String?) {
         if (exception is UninitializedPropertyAccessException) {
             Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
         }
-        trackerOffline.event(event, activityId, anonymous)
+        trackerOffline.event(event, activityId, anonymous = userId == null, userId = userId)
     }
 
-    internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?) {
+    /** @param identifyFirst sem identify pendente deste usuário, manda antes um identify só com o id. */
+    internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?, identifyFirst: Boolean = false) {
         if (userId == null) {
             sendAnonymous(activities, token)
             return
@@ -150,7 +153,8 @@ internal class Tracker(
         // receber atividade de um user_id que ainda não conhece.
         val pending = identifyDisk.withLock { trackerOffline.getIdentify() }?.takeIf { it.id == userId && !it.send }
         if (pending == null) {
-            client.activity(mapper.buildRequest(userId, activities, token))
+            val all = if (identifyFirst) listOf(mapper.mapIdentify(Identify(userId))) + activities else activities
+            client.activity(mapper.buildRequest(userId, all, token))
             return
         }
         val identify = mapper.mapIdentify(mapper.fromIdentifyOff(pending))
@@ -190,7 +194,10 @@ internal class Tracker(
 
     internal suspend fun registerLastToken(userId: String) {
         val token = anonymousState.lastToken ?: return
-        if (anonymousState.confirmedUserId == userId && anonymousState.confirmedToken == token) return
+        val confirmed = synchronized(idLock) {
+            anonymousState.confirmedUserId == userId && anonymousState.confirmedToken == token
+        }
+        if (confirmed) return
         try {
             registerFor(userId, token)
         } catch (e: Exception) {
@@ -240,10 +247,9 @@ internal class Tracker(
             loggedOut = true
             logouts++
             id = null
+            // Como no iOS: o próximo login reenvia o token.
+            anonymousState.setConfirmed(null, null)
         }
-        // Como no iOS: o próximo login reenvia o token. Fora do lock (logouts++ já barra o registerFor
-        // em voo), mas antes de retornar: numa coroutine, um identify() logo depois poderia ler o par antigo.
-        anonymousState.setConfirmed(null, null)
         scope.launch {
             // Um identify() do mesmo usuário feito depois deste logout já está no disco: não apagar.
             identifyDisk.withLock {
@@ -256,8 +262,13 @@ internal class Tracker(
     fun notificationReceived(data: Dito.NotificationReadData) {
         scope.launch {
             if (data.userId.isEmpty()) return@launch
+            // O ingest descarta em silêncio um Receipt sem notification_id.
+            if (data.notificationId.isEmpty()) {
+                Log.w("Tracker", "Entrega sem notification id descartada.")
+                return@launch
+            }
             val identifyActivity = mapper.mapIdentify(Identify(data.userId))
-            val trackEvent = Event("receive-android-notification").apply {
+            val trackEvent = Event(PUSH_RECEIVE_EVENT).apply {
                 this.data = CustomData().apply {
                     params["dispatch_id"] = data.logId
                     params["notification_id"] = data.notificationId
@@ -265,31 +276,29 @@ internal class Tracker(
                 }
             }
             val activityId = UUID.randomUUID().toString()
-            val trackActivity = mapper.mapTrack(trackEvent, activityId)
+            val receipt = mapper.mapPushReceipt(data.notificationId, data.logId, data.notificationName, data.userId, activityId)
             try {
-                client.activity(mapper.buildRequest(data.userId, listOf(identifyActivity, trackActivity), null))
+                client.activity(mapper.buildRequest(data.userId, listOf(identifyActivity, receipt), null))
             } catch (e: Exception) {
                 // Sem isto, uma entrega perdida era indistinguível de uma entrega bem-sucedida: sem
                 // log, sem fila, sem rastro. `createdAt` do evento já está preenchido, então o
                 // reenvio preserva o instante real da entrega, não o do retry.
                 Log.e("Tracker", "Falha ao enviar a entrega da notificação ${data.notificationId}.", e)
-                // A fila não guarda o user_id: só enfileira se o dono do push for quem o reenvio vai usar.
-                val userId = awaitId()
-                when {
-                    userId != null && data.userId == userId -> trackerOffline.event(trackEvent, activityId)
-                    userId == null && isAnonymousUser(data.userId) ->
-                        trackerOffline.event(trackEvent, activityId, anonymous = true)
-                    else -> Log.w("Tracker", "Entrega de outro usuário descartada, sem retry.")
+                // Push do aparelho anônimo volta pelo caminho anônimo (user_id vazio + identify anônimo).
+                if (data.userId.equals(anonymousUserId(), ignoreCase = true)) {
+                    trackerOffline.event(trackEvent, activityId, anonymous = true)
+                } else {
+                    trackerOffline.event(trackEvent, activityId, userId = data.userId)
                 }
             }
         }
     }
 
     // Mesmo user_id que o backend deriva do device_id para o aparelho anônimo.
-    private fun isAnonymousUser(userId: String): Boolean {
-        if (mapper.deviceId.isEmpty()) return false
+    internal fun anonymousUserId(): String? {
+        if (mapper.deviceId.isEmpty()) return null
         val digest = MessageDigest.getInstance("SHA-1").digest(mapper.deviceId.trim().lowercase().toByteArray())
-        return userId.equals(digest.joinToString("") { "%02x".format(it) }, ignoreCase = true)
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     /**
@@ -302,16 +311,18 @@ internal class Tracker(
         notificationReference: String,
         userId: String,
         data: Map<String, String> = emptyMap(),
+        logId: String = "",
+        notificationName: String = "",
     ) {
         scope.launch {
             if (userId.isEmpty() || notificationId.isEmpty()) return@launch
             val activityId = UUID.randomUUID().toString()
-            val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data)
+            val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data, logId, notificationName)
             try {
                 client.activity(mapper.buildRequest(userId, listOf(activity), null))
             } catch (e: Exception) {
                 Log.e("Tracker", "Falha ao enviar o clique da notificação $notificationId; enfileirado para retry.", e)
-                trackerOffline.notificationRead(activityId, notificationId, userId, data)
+                trackerOffline.notificationRead(activityId, notificationId, userId, data, logId, notificationName)
             }
         }
     }
