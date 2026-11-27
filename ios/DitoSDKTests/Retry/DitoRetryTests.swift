@@ -115,6 +115,7 @@ final class DitoRetryTests: XCTestCase {
         let userId = "uid-retry-token-register-1"
         let token = "fcm-register-pending-abc"
         savePostIdentify(userId: userId)
+        UserDefaults.lastPushToken = token
 
         let tokenRequest = makeTokenRequest(token: token)
         guard let registerJson = tokenRequest.toString else {
@@ -457,6 +458,7 @@ final class DitoRetryTests: XCTestCase {
 
     func testAnonymousTokenRows_retryWithoutIdentifySendsThemAnonymouslyAndClearsQueues() async throws {
         DeviceIdProvider.setForTests("device-retry-anon-token-1")
+        UserDefaults.lastPushToken = "fcm-anon-register"
         let registerJson = try XCTUnwrap(makeTokenRequest(token: "fcm-anon-register").toString)
         let unregisterJson = try XCTUnwrap(makeTokenRequest(token: "fcm-anon-unregister").toString)
         XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: registerJson, retry: 0, anonymous: true))
@@ -548,21 +550,170 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertEqual(mock.activityCallCount, 2)
         let anonymousReq = try XCTUnwrap(mock.allActivityRequests.first { $0.userID.isEmpty })
         XCTAssertEqual(trackEvents(anonymousReq), ["mixed_anon_evt"])
-        XCTAssertFalse(
-            anonymousReq.activities.contains { $0.type == .activityIdentify },
-            "com usuário logado não se envia Identify anônimo"
+        XCTAssertEqual(
+            anonymousReq.activities.map(\.type),
+            [.activityIdentify, .activityTrack],
+            "linha anônima de antes do login leva o Identify anônimo do aparelho"
         )
         let ownedReq = try XCTUnwrap(mock.allActivityRequests.first { $0.userID == userId })
         XCTAssertEqual(trackEvents(ownedReq), ["mixed_owned_evt"])
         XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
     }
 
+    func testAnonymousRowQueuedBeforeLogin_retryAfterLogin_sendsAnonymousIdentifyAndSavesMark() async throws {
+        let deviceId = "device-retry-anon-after-login-1"
+        DeviceIdProvider.setForTests(deviceId)
+        saveTrack(action: "anon_before_login_evt", anonymous: true)
+        await waitForTrackRowsWithEvents(1)
+        savePostIdentify(userId: "uid-retry-anon-after-login-1")
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 1)
+        let req = try XCTUnwrap(mock.lastActivityRequest)
+        XCTAssertEqual(req.userID, "")
+        XCTAssertEqual(req.device.deviceID, deviceId)
+        XCTAssertEqual(req.activities.map(\.type), [.activityIdentify, .activityTrack])
+        XCTAssertEqual(trackEvents(req), ["anon_before_login_evt"])
+        XCTAssertEqual(UserDefaults.anonymousIdentifyMark, ["device_id": deviceId, "sdk_version": req.sdk.version])
+        XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
+    }
+
+    func testRetryWithoutDeviceId_sendsNothingAndSpendsNoRetry_thenSendsEverythingWithDeviceId() async throws {
+        DeviceIdProvider.setForTests("")
+        let userId = "uid-retry-no-device-1"
+        let token = "fcm-retry-no-device"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: nil, json: makeSignup().toString, send: false))
+        saveTrack(action: "no_device_owned_evt")
+        saveTrack(action: "no_device_anon_evt", anonymous: true)
+        XCTAssertTrue(DitoTrackDataManager().save(
+            event: DitoEventRequest(
+                platformAppKey: Dito.appKey,
+                sha1Signature: Dito.signature,
+                event: DitoEvent(action: "no_device_exhausted_evt", customData: nil)
+            ).toString,
+            retry: DitoRetry.maxRetries
+        ))
+        let anonUnregisterToken = "fcm-retry-no-device-anon-unregister"
+        XCTAssertTrue(DitoNotificationUnregisterDataManager().save(
+            with: makeTokenRequest(token: anonUnregisterToken).toString,
+            retry: 0,
+            anonymous: true
+        ))
+        UserDefaults.lastPushToken = token
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: makeTokenRequest(token: token).toString, retry: 0))
+        XCTAssertTrue(DitoNotificationReadDataManager().save(
+            with: makeClickRequest(notificationId: "notif-retry-no-device", userId: userId).toString,
+            retry: 0
+        ))
+        let receive = DitoNotificationReceivePending(
+            userId: userId,
+            token: token,
+            notification: "notif-retry-no-device-receive",
+            logId: "log-retry-no-device-receive",
+            notificationName: "campanha-sem-device"
+        )
+        XCTAssertTrue(DitoNotificationReceiveDataManager().save(with: receive.toString, retry: 0))
+        await waitForTrackRowsWithEvents(3)
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, false)
+        XCTAssertEqual(
+            DitoTrackOffline().offlinePersistedTracks.map(\.retry).sorted(),
+            [1, 1, DitoRetry.maxRetries],
+            "sem device_id nem a linha esgotada é descartada, e nenhuma tentativa é gasta"
+        )
+        XCTAssertEqual(DitoNotificationUnregisterDataManager().fetch?.retry, 0)
+        XCTAssertEqual(DitoNotificationUnregisterDataManager().fetch?.anonymous, true)
+        XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.retry, 0)
+        XCTAssertEqual(DitoNotificationReadDataManager().fetchAll.map(\.retry), [0])
+        XCTAssertEqual(DitoNotificationReceiveDataManager().fetchAll.map(\.retry), [0])
+
+        DeviceIdProvider.setForTests("device-retry-back-1")
+        await DitoRetry(client: mock).runLoadOffline()
+        // Anonymous rows are checked before the identify in a run, so they go on the next one.
+        await DitoRetry(client: mock).runLoadOffline()
+
+        let requests = mock.allActivityRequests
+        XCTAssertFalse(requests.isEmpty)
+        XCTAssertTrue(requests.allSatisfy { $0.device.deviceID == "device-retry-back-1" })
+        XCTAssertEqual(DitoIdentifyOffline.shared.getIdentify?.send, true)
+        XCTAssertTrue(requests.contains { self.hasTokenRegister($0, token: token) })
+        XCTAssertTrue(requests.contains { req in req.activities.contains { $0.type == .activityTrack && $0.trackPushClick.notification.notificationID == "notif-retry-no-device" } })
+        XCTAssertEqual(
+            Set(requests.flatMap { self.trackEvents($0) }),
+            ["no_device_owned_evt", "no_device_anon_evt"]
+        )
+        XCTAssertTrue(requests.contains { req in
+            req.activities.contains { $0.trackPushReceipt.notification.notificationID == "notif-retry-no-device-receive" }
+        })
+        XCTAssertTrue(requests.contains { req in
+            req.userID.isEmpty && req.activities.contains {
+                $0.tokenUnregister.token == anonUnregisterToken
+            }
+        })
+        XCTAssertNil(DitoNotificationUnregisterDataManager().fetch)
+        XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+        XCTAssertTrue(DitoNotificationReadDataManager().fetchAll.isEmpty)
+        XCTAssertTrue(DitoNotificationReceiveDataManager().fetchAll.isEmpty)
+    }
     #endif
+
+    func testQueuedRegisterOfReplacedToken_isDroppedWithoutSending() async throws {
+        savePostIdentify(userId: "uid-retry-replaced-token-1")
+        UserDefaults.lastPushToken = "fcm-replaced-new"
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(
+            with: makeTokenRequest(token: "fcm-replaced-old").toString,
+            retry: 0
+        ))
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
+    func testQueuedAnonymousRegister_withoutLastToken_isSentAnonymously() async throws {
+        let token = "fcm-anon-no-last-token"
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(
+            with: makeTokenRequest(token: token).toString,
+            retry: 0,
+            anonymous: true
+        ))
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 1)
+        XCTAssertEqual(tokenRegisterRequests(mock, userId: "", token: token).count, 1)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
+
+    func testQueuedOwnedRegister_withoutLastToken_isSentWithUser() async throws {
+        let userId = "uid-retry-owned-no-last-token-1"
+        let token = "fcm-owned-no-last-token"
+        savePostIdentify(userId: userId)
+        XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: makeTokenRequest(token: token).toString, retry: 0))
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch?.anonymous)
+        let mock = MockMobileIngestClient()
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(tokenRegisterRequests(mock, userId: userId, token: token).count, 1)
+        XCTAssertNil(DitoNotificationRegisterDataManager().fetch)
+    }
 
     func testLoadOffline_postIdentify_pendingRegister_ingestFails_keepsTokenJsonAndIncrementsRetry() async throws {
         let mock = MockMobileIngestClient()
         mock.shouldSucceed = false
         savePostIdentify(userId: "uid-retry-register-fail-1")
+        UserDefaults.lastPushToken = "fcm-register-fail"
         let registerJson = try XCTUnwrap(makeTokenRequest(token: "fcm-register-fail").toString)
         XCTAssertTrue(DitoNotificationRegisterDataManager().save(with: registerJson, retry: 0))
 
@@ -649,7 +800,8 @@ final class DitoRetryTests: XCTestCase {
 
         await DitoRetry(client: mock).runLoadOffline()
         await waitUntil { !self.tokenRegisterRequests(mock, userId: userId, token: token).isEmpty }
-        XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.anonymous, true)
+        // The register with the user succeeded, so the anonymous slot of the same token goes with it.
+        await waitUntil { DitoNotificationRegisterDataManager().fetch == nil }
 
         await DitoRetry(client: mock).runLoadOffline()
         try await Task.sleep(nanoseconds: 300_000_000)

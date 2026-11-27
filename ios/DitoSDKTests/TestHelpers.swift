@@ -1,5 +1,6 @@
 import CoreData
 import Foundation
+import Security
 import XCTest
 @testable import DitoSDK
 
@@ -58,6 +59,11 @@ class TestHelpers {
         UserDefaults.anonymousIdentifyMark = nil
         #if DEBUG
         DeviceIdProvider.resetForTests()
+        // The test simulator has no Keychain access, and no request leaves without a device_id.
+        DeviceIdProvider.copyMatching = { _, result in
+            result?.pointee = Data("test-device-id".utf8) as CFData
+            return errSecSuccess
+        }
         #endif
     }
 
@@ -70,6 +76,7 @@ class TestHelpers {
         // Tests must never reach the real ingest: the retry sends anonymous rows without an identify.
         Dito.testIdentifyTrackIngestClient = MockMobileIngestClient()
         Dito.invalidateRetryCacheForTests()
+        DitoRetry.resetForTests()
         #endif
     }
 

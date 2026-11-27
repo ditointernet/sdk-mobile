@@ -137,7 +137,16 @@ class DitoNotification {
                         UserDefaults.lastUserTokenRegister = ["user_id": userId, "token": token]
                     }
                 } else {
-                    try await client.sendAnonymous([activity], mapper: mapper, allowIdentify: true)
+                    try await client.sendAnonymous([activity], mapper: mapper)
+                }
+                if isRegister, let pending = notificationOffline.getNotificationRegister {
+                    let pendingToken = DitoNotification.token(of: pending.json)
+                    // Same token: already registered, unless the queued one belongs to a user who logged in
+                    // during an anonymous send. Other token: dropped only if it isn't the last one.
+                    let sameTokenSent = pendingToken == token && (state != .anonymous || pending.anonymous == true)
+                    if sameTokenSent || (pendingToken != token && pendingToken != UserDefaults.lastPushToken) {
+                        notificationOffline.deleteRegister(ifMatching: pending)
+                    }
                 }
                 DitoLogger.information("✅ [\(label)] Sucesso")
                 completion?(.success(.sent))
@@ -223,9 +232,8 @@ class DitoNotification {
             logId: logId,
             notificationName: notificationName
         )
-        let request = mapper.buildRequest(userId: identifier, activities: [activity])
         do {
-            try await client.activity(request)
+            try await client.activity(mapper.buildRequest(userId: identifier, activities: [activity]))
             DitoLogger.information("✅ [NOTIFICATION CLICK] Sucesso")
         } catch {
             DitoLogger.error(error.localizedDescription)

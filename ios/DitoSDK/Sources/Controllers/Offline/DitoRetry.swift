@@ -13,6 +13,24 @@ class DitoRetry {
     private static let passLock = NSLock()
     private static var passRunning = false
     private static var nextPassRetry: DitoRetry?
+    private static var nextPassIgnoresBackoff = false
+    private static var lastFailureAt: Date?
+    private static var passFailures = 0
+    private static var scheduledPass: DispatchWorkItem?
+    static let failureBackoff: TimeInterval = 60
+    #if DEBUG
+    static var now: () -> Date = { Date() }
+    static var schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
+    static var isOnline: () -> Bool = { Dito.isOnline }
+    #else
+    private static let isOnline: () -> Bool = { Dito.isOnline }
+    private static let now: () -> Date = { Date() }
+    private static let schedulePass: (TimeInterval, DispatchWorkItem) -> Void = DitoRetry.defaultSchedulePass
+    #endif
+
+    private static func defaultSchedulePass(_ delay: TimeInterval, _ work: DispatchWorkItem) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + delay, execute: work)
+    }
 
     private var identifyOffline: DitoIdentifyOffline
     private var trackOffline: DitoTrackOffline
@@ -33,8 +51,9 @@ class DitoRetry {
     }
 
     // One pass at a time across instances so no row goes twice; a call mid-pass queues one more pass.
-    func loadOffline() {
-        guard DitoRetry.startOrQueuePass(self) else { return }
+    // `ignoringBackoff`: a network change, so an earlier failure says nothing about this pass.
+    func loadOffline(ignoringBackoff: Bool = false) {
+        guard DitoRetry.startOrQueuePass(self, ignoringBackoff: ignoringBackoff) else { return }
         Task {
             var next: DitoRetry? = self
             while let retry = next {
@@ -44,27 +63,102 @@ class DitoRetry {
         }
     }
 
-    private static func startOrQueuePass(_ retry: DitoRetry) -> Bool {
+    // After a failed send, passes wait out the backoff (each failed pass spends a retry of every row);
+    // a skipped pass is run once when the backoff ends.
+    private static func startOrQueuePass(_ retry: DitoRetry, ignoringBackoff: Bool) -> Bool {
         passLock.lock()
         defer { passLock.unlock() }
+        if !ignoringBackoff, inFailureBackoff() {
+            DitoLogger.warning("⚠️ [RETRY] Passada adiada: houve falha de envio há menos de \(Int(failureBackoff))s")
+            schedulePassAfterBackoff(retry)
+            return false
+        }
         if passRunning {
             nextPassRetry = retry
+            nextPassIgnoresBackoff = nextPassIgnoresBackoff || ignoringBackoff
             return false
         }
         passRunning = true
+        passFailures = 0
         return true
     }
 
     private static func finishPass() -> DitoRetry? {
         passLock.lock()
         defer { passLock.unlock() }
-        let next = nextPassRetry
+        if passFailures == 0 {
+            lastFailureAt = nil
+        }
+        var next = nextPassRetry
+        if let queued = next, !nextPassIgnoresBackoff, inFailureBackoff() {
+            schedulePassAfterBackoff(queued)
+            next = nil
+        }
         nextPassRetry = nil
+        nextPassIgnoresBackoff = false
         passRunning = next != nil
+        passFailures = 0
         return next
     }
 
+    /// Call with `passLock` held.
+    private static func schedulePassAfterBackoff(_ retry: DitoRetry) {
+        guard scheduledPass == nil, let failedAt = lastFailureAt else { return }
+        let work = DispatchWorkItem {
+            DitoRetry.passLock.lock()
+            DitoRetry.scheduledPass = nil
+            DitoRetry.passLock.unlock()
+            // Offline it would only spend a retry per row; the reconnection runs a pass instead.
+            if DitoRetry.isOnline() {
+                retry.loadOffline()
+            }
+        }
+        scheduledPass = work
+        schedulePass(failureBackoff - now().timeIntervalSince(failedAt), work)
+    }
+
+    static func cancelScheduledPass() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        scheduledPass?.cancel()
+        scheduledPass = nil
+    }
+
+    /// Call with `passLock` held.
+    private static func inFailureBackoff() -> Bool {
+        guard let failedAt = lastFailureAt else { return false }
+        return now().timeIntervalSince(failedAt) < failureBackoff
+    }
+
+    private static func recordFailure() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        lastFailureAt = now()
+        passFailures += 1
+    }
+
+    #if DEBUG
+    static func resetForTests() {
+        passLock.lock()
+        defer { passLock.unlock() }
+        passRunning = false
+        nextPassRetry = nil
+        nextPassIgnoresBackoff = false
+        lastFailureAt = nil
+        passFailures = 0
+        scheduledPass?.cancel()
+        scheduledPass = nil
+        now = { Date() }
+        schedulePass = defaultSchedulePass
+        isOnline = { Dito.isOnline }
+    }
+    #endif
+
     internal func runLoadOffline() async {
+        guard !DeviceIdProvider.get().isEmpty else {
+            DitoLogger.error("❌ [RETRY] device_id indisponível (falha ao ler o Keychain): fila offline mantida, nada enviado")
+            return
+        }
         await checkNotificationReceive()
         // Sequential so these requests don't each carry the anonymous Identify (a concurrent immediate send still may).
         await checkTrack(anonymous: true)
@@ -84,21 +178,16 @@ class DitoRetry {
     private func send(_ activities: [Mobileingest_V1_Activity], owner: Owner) async throws {
         switch owner {
         case .anonymous:
-            try await client.sendAnonymous(
-                activities,
-                mapper: mapper,
-                allowIdentify: identifyOffline.identityState == .anonymous
-            )
+            try await client.sendAnonymous(activities, mapper: mapper)
         case .user(let userId):
             try await client.activity(mapper.buildRequest(userId: userId, activities: activities))
         }
     }
 
-    /// nil means wait: no user yet; for an anonymous row, an identify pending or in progress,
-    /// or no device_id (sending would only burn a retry).
+    /// nil means wait: no user yet, or for an anonymous row an identify pending or in progress.
     private func owner(anonymous: Bool, reference: String?) -> Owner? {
         if anonymous {
-            guard identifyOffline.identityState != .pending, !DeviceIdProvider.get().isEmpty else { return nil }
+            guard identifyOffline.identityState != .pending else { return nil }
             return .anonymous
         }
         guard let reference, !reference.isEmpty else { return nil }
@@ -120,9 +209,8 @@ class DitoRetry {
         #endif
 
         let activity = mapper.mapFromDitoUser(userData: signupRequest.userData, userId: id)
-        let request = mapper.buildRequest(userId: id, activities: [activity])
         do {
-            try await client.activity(request)
+            try await client.activity(mapper.buildRequest(userId: id, activities: [activity]))
             identifyOffline.update(id: id, params: signupRequest, reference: id, send: true)
             DitoLogger.information("✅ [RETRY] Identify enviado")
             DitoNotification(client: client).registerLastToken()
@@ -143,7 +231,9 @@ class DitoRetry {
 
         guard !tracks.isEmpty else { return }
         guard let owner = self.owner(anonymous: anonymous, reference: trackOffline.reference) else {
-            DitoLogger.warning("Track - Antes de enviar um evento é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Track - Identify pendente; eventos anônimos aguardam a conclusão."
+                : "Track - Antes de enviar um evento é preciso identificar o usuário.")
             return
         }
 
@@ -191,6 +281,7 @@ class DitoRetry {
             for item in trackBatch {
                 trackOffline.update(id: item.id, event: item.request, retry: item.retry + 1)
             }
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }
@@ -230,10 +321,6 @@ class DitoRetry {
                 token: pending.token,
                 receivedAt: pending.receivedAt
             )
-            let request = mapper.buildRequest(
-                userId: pending.userId,
-                activities: [identifyActivity, receiptActivity]
-            )
 
             do {
                 #if DEBUG
@@ -242,7 +329,10 @@ class DitoRetry {
                 #else
                 let ingestClient: MobileIngestClientProtocol = client
                 #endif
-                try await ingestClient.activity(request)
+                try await ingestClient.activity(mapper.buildRequest(
+                    userId: pending.userId,
+                    activities: [identifyActivity, receiptActivity]
+                ))
                 notificationReadOffline.deleteReceive(id: rowId)
                 DitoNotificationReceiveTracker.markDelivered(
                     notification: pending.notification,
@@ -251,6 +341,7 @@ class DitoRetry {
                 DitoLogger.information("✅ [RETRY] receive-ios-notification enviado")
             } catch {
                 notificationReadOffline.updateReceive(id: rowId, retry: rowRetry + 1)
+                DitoRetry.recordFailure()
                 DitoLogger.error(error.localizedDescription)
             }
         }
@@ -288,13 +379,13 @@ class DitoRetry {
             #endif
 
             let activity = mapper.mapFromNotificationOpen(notificationRequest)
-            let request = mapper.buildRequest(userId: userId, activities: [activity])
             do {
-                try await client.activity(request)
+                try await client.activity(mapper.buildRequest(userId: userId, activities: [activity]))
                 notificationReadOffline.deleteRead(id: notifID)
                 DitoLogger.information("✅ [RETRY] Notification Read enviada")
             } catch {
                 notificationReadOffline.updateRead(id: notifID, retry: notifRetry + 1)
+                DitoRetry.recordFailure()
                 DitoLogger.error(error.localizedDescription)
             }
         }
@@ -308,8 +399,15 @@ class DitoRetry {
               let registerRequest = registerJson.convertToObject(type: DitoTokenRequest.self)
         else { return }
 
+        let lastToken = UserDefaults.lastPushToken
+        // nil: a register queued by an SDK version that didn't record the last token; it is still sent.
+        if let lastToken, registerRequest.token != lastToken {
+            notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
+            DitoLogger.warning("⚠️ [RETRY] Register de token que não é mais o atual descartado sem envio")
+            return
+        }
         // The identify confirmation re-sends the last token with the user (`registerLastToken`).
-        if anonymous, registerRequest.token == UserDefaults.lastPushToken {
+        if anonymous, registerRequest.token == lastToken {
             switch identifyOffline.identityState {
             case .identified:
                 notificationReadOffline.deleteRegister(ifMatching: notificationRegister)
@@ -321,7 +419,9 @@ class DitoRetry {
             }
         }
         guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
-            DitoLogger.warning("Register Token - Antes de registrar o token é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Register Token - Identify pendente; token anônimo aguarda a conclusão."
+                : "Register Token - Antes de registrar o token é preciso identificar o usuário.")
             return
         }
 
@@ -346,6 +446,7 @@ class DitoRetry {
             DitoLogger.information("✅ [RETRY] Token registrado")
         } catch {
             notificationReadOffline.updateRegister(ifMatching: notificationRegister, retry: notificationRegister.retry + 1)
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }
@@ -355,7 +456,9 @@ class DitoRetry {
               notificationUnregister.anonymous == anonymous
         else { return }
         guard let owner = self.owner(anonymous: anonymous, reference: notificationReadOffline.reference) else {
-            DitoLogger.warning("Unregister Token - Antes de remover o token é preciso identificar o usuário.")
+            DitoLogger.warning(anonymous
+                ? "Unregister Token - Identify pendente; remoção anônima aguarda a conclusão."
+                : "Unregister Token - Antes de remover o token é preciso identificar o usuário.")
             return
         }
         guard let unregisterJson = notificationUnregister.json,
@@ -379,6 +482,7 @@ class DitoRetry {
             DitoLogger.information("✅ [RETRY] Token removido")
         } catch {
             notificationReadOffline.updateUnregister(id: notificationUnregister.id, retry: notificationUnregister.retry + 1)
+            DitoRetry.recordFailure()
             DitoLogger.error(error.localizedDescription)
         }
     }

@@ -194,20 +194,22 @@ struct ActivityMapper {
         return result
     }
 
-    func buildRequest(userId: String, activities: [Mobileingest_V1_Activity]) -> Mobileingest_V1_Request {
+    func buildRequest(userId: String, activities: [Mobileingest_V1_Activity]) throws -> Mobileingest_V1_Request {
+        let deviceId = DeviceIdProvider.get()
+        guard !deviceId.isEmpty else { throw DeviceIdUnavailableError() }
         var request = Mobileingest_V1_Request()
         request.activities = activities
         request.userID = userId
-        request.device = buildDeviceInfo()
+        request.device = buildDeviceInfo(deviceId: deviceId)
         request.sdk = buildSDKInfo()
         request.app = buildAppInfo()
         return request
     }
 
-    private func buildDeviceInfo() -> Mobileingest_V1_DeviceInfo {
+    private func buildDeviceInfo(deviceId: String) -> Mobileingest_V1_DeviceInfo {
         var info = Mobileingest_V1_DeviceInfo()
         info.os = .ios
-        info.deviceID = DeviceIdProvider.get()
+        info.deviceID = deviceId
         info.osVersion = deviceOsVersion
         info.deviceModel = deviceModel
         return info
@@ -233,12 +235,16 @@ struct ActivityMapper {
         return Google_Protobuf_Timestamp(date: now)
     }
 
-    private func eventTimestamp(_ createdAt: String?) -> Google_Protobuf_Timestamp {
+    private static let createdAtFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return formatter
+    }()
+
+    private func eventTimestamp(_ createdAt: String?) -> Google_Protobuf_Timestamp {
         // Older queued rows carry only "yyyy-MM-dd": must fall back to now, not midnight.
-        guard let createdAt, let date = formatter.date(from: createdAt) else { return nowTimestamp() }
+        guard let createdAt, let date = Self.createdAtFormatter.date(from: createdAt) else { return nowTimestamp() }
         return Google_Protobuf_Timestamp(date: date)
     }
 
@@ -272,19 +278,22 @@ struct ActivityMapper {
     }
 }
 
+struct DeviceIdUnavailableError: LocalizedError {
+    var errorDescription: String? {
+        "device_id indisponível (falha ao ler o Keychain)"
+    }
+}
+
 extension MobileIngestClientProtocol {
     func sendAnonymous(
         _ activities: [Mobileingest_V1_Activity],
-        mapper: ActivityMapper,
-        allowIdentify: Bool
+        mapper: ActivityMapper
     ) async throws {
         let deviceId = DeviceIdProvider.get()
-        guard !deviceId.isEmpty else {
-            throw MobileIngestError(message: "device_id indisponível para envio anônimo")
-        }
+        guard !deviceId.isEmpty else { throw DeviceIdUnavailableError() }
         let mark = ["device_id": deviceId, "sdk_version": mapper.sdkVersion]
-        let withIdentify = allowIdentify && UserDefaults.anonymousIdentifyMark != mark
-        let request = mapper.buildRequest(
+        let withIdentify = UserDefaults.anonymousIdentifyMark != mark
+        let request = try mapper.buildRequest(
             userId: "",
             activities: withIdentify ? [mapper.mapAnonymousIdentify()] + activities : activities
         )

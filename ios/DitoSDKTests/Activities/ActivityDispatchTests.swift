@@ -304,6 +304,7 @@ final class ActivityDispatchTests: XCTestCase {
     }
 
     func testDeviceIdProvider_realKeychain_returnsSameNonEmptyValue() throws {
+        DeviceIdProvider.resetForTests()
         let first = DeviceIdProvider.get()
         if first.isEmpty {
             throw XCTSkip("Keychain indisponível neste simulador (testes sem app host); estabilidade coberta pelos testes com Keychain simulado")

@@ -50,14 +50,13 @@ class DitoIdentify {
             return
         }
         let activity = mapper.mapFromDitoUser(userData: userData, userId: id)
-        let request = mapper.buildRequest(userId: id, activities: [activity])
         let signupRequest = DitoSignupRequest(
             platformAppKey: Dito.appKey.isEmpty ? Dito.apiKey : Dito.appKey,
             sha1Signature: Dito.signature,
             userData: userData
         )
         do {
-            try await client.activity(request)
+            try await client.activity(mapper.buildRequest(userId: id, activities: [activity]))
             identifyOffline.identify(id: id, params: signupRequest, reference: id, send: true)
             identifyOffline.finishIdentify()
 
