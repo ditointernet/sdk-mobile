@@ -595,28 +595,48 @@ final class DitoRetryTests: XCTestCase {
         )
     }
 
-    func testTrackWhileIdentifyOfAIsPending_logoutAndLoginOfB_retrySendsItWithUserA() async throws {
-        let userA = "uid-retry-pending-owner-a"
-        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userA, reference: nil, json: makeSignup().toString, send: false))
+    private func trackWithPendingIdentify(of userId: String, action: String) async {
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userId, reference: nil, json: makeSignup().toString, send: false))
         let offline = MockMobileIngestClient()
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
-            DitoTrack(client: offline).track(data: DitoEvent(action: "pending_owner_evt", customData: nil)) { _ in
+            DitoTrack(client: offline).track(data: DitoEvent(action: action, customData: nil)) { _ in
                 cont.resume()
             }
         }
         await waitForTrackRowsWithEvents(1)
         XCTAssertEqual(offline.activityCallCount, 0)
-        XCTAssertEqual(DitoTrackOffline().offlinePersistedTracks.first?.userId, userA)
+        XCTAssertNil(DitoTrackOffline().offlinePersistedTracks.first?.userId)
+    }
+
+    func testTrackWhileIdentifyOfAIsPending_logoutAndLoginOfB_retrySendsItWithUserB() async throws {
+        await trackWithPendingIdentify(of: "uid-retry-pending-owner-a", action: "pending_owner_evt")
 
         DitoIdentifyOffline.shared.logout()
-        savePostIdentify(userId: "uid-retry-pending-owner-b")
+        let userB = "uid-retry-pending-owner-b"
+        savePostIdentify(userId: userB)
         let mock = MockMobileIngestClient()
         await DitoRetry(client: mock).runLoadOffline()
 
         XCTAssertEqual(mock.activityCallCount, 1)
         let req = try XCTUnwrap(mock.lastActivityRequest)
-        XCTAssertEqual(req.userID, userA)
+        XCTAssertEqual(req.userID, userB)
         XCTAssertEqual(trackEvents(req), ["pending_owner_evt"])
+        XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
+    }
+
+    func testTrackWhileIdentifyOfAIsPending_pendingIdentifyOfBReplacesIt_retrySendsEverythingOnlyForB() async throws {
+        await trackWithPendingIdentify(of: "uid-retry-replaced-owner-a", action: "replaced_owner_evt")
+
+        let userB = "uid-retry-replaced-owner-b"
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: userB, reference: nil, json: makeSignup().toString, send: false))
+        let mock = MockMobileIngestClient()
+        await DitoRetry(client: mock).runLoadOffline()
+
+        let requests = mock.allActivityRequests
+        XCTAssertEqual(requests.count, 2)
+        XCTAssertEqual(requests.map(\.userID), [userB, userB])
+        XCTAssertEqual(requests.first?.activities.map(\.type), [.activityIdentify])
+        XCTAssertEqual(requests.last.map { trackEvents($0) }, ["replaced_owner_evt"])
         XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
     }
 
@@ -688,6 +708,31 @@ final class DitoRetryTests: XCTestCase {
         XCTAssertTrue(DitoNotificationReadDataManager().fetchAll.isEmpty)
     }
 
+    func testQueuedClick_queuedIdentifyFailing_isStillSentWithThePushUser() async throws {
+        XCTAssertTrue(DitoIdentifyDataManager.shared.save(
+            id: "uid-retry-click-identify-fails",
+            reference: nil,
+            json: makeSignup().toString,
+            send: false
+        ))
+        let pushUser = "uid-retry-click-identify-fails-push"
+        XCTAssertTrue(DitoNotificationReadDataManager().save(
+            with: makeClickRequest(notificationId: "notif-click-identify-fails", userId: pushUser).toString,
+            retry: 0
+        ))
+        let mock = MockMobileIngestClient()
+        mock.shouldSucceed = false
+
+        await DitoRetry(client: mock).runLoadOffline()
+
+        XCTAssertEqual(mock.activityCallCount, 2)
+        let click = try XCTUnwrap(mock.allActivityRequests.first {
+            $0.activities.first?.trackPushClick.notification.notificationID == "notif-click-identify-fails"
+        })
+        XCTAssertEqual(click.userID, pushUser)
+        XCTAssertEqual(DitoNotificationReadDataManager().fetchAll.map(\.retry), [1])
+    }
+
     func testQueuedClickWithoutIdentifier_waitsForLogin_thenIsSentWithCurrentUser() async throws {
         XCTAssertTrue(DitoNotificationReadDataManager().save(
             with: makeClickRequest(notificationId: "notif-click-legacy", userId: "").toString,
@@ -709,6 +754,32 @@ final class DitoRetryTests: XCTestCase {
     }
 
     #if DEBUG
+    func testTrackFailingForA_savedAfterIdentifyOfBInProgressConfirms_staysOwnedByA() async throws {
+        DeviceIdProvider.setForTests("device-retry-save-owner-1")
+        let userA = "uid-retry-save-owner-a"
+        savePostIdentify(userId: userA)
+        let client = GatedFailingClient()
+        let completed = expectation(description: "track completion")
+        DitoTrack(client: client).track(data: DitoEvent(action: "save_owner_evt", customData: nil)) { _ in
+            completed.fulfill()
+        }
+        let deadline = Date().addingTimeInterval(10)
+        while client.recorder.activityCallCount == 0, Date() < deadline {
+            try await Task.sleep(nanoseconds: 25_000_000)
+        }
+        XCTAssertEqual(client.recorder.activityCallCount, 1)
+
+        DitoIdentifyOffline.shared.initiateIdentify()
+        savePostIdentify(userId: "uid-retry-save-owner-b")
+        client.open()
+        await fulfillment(of: [completed], timeout: 10)
+        XCTAssertTrue(DitoTrackOffline().offlinePersistedTracks.isEmpty)
+
+        DitoIdentifyOffline.shared.finishIdentify()
+        await waitForTrackRowsWithEvents(1)
+        XCTAssertEqual(DitoTrackOffline().offlinePersistedTracks.first?.userId, userA)
+    }
+
     func testOwnedTrackQueuedByUserA_logoutAndLoginOfB_retrySendsItWithUserA() async throws {
         DeviceIdProvider.setForTests("device-retry-owner-switch-1")
         let userA = "uid-retry-owner-switch-a"

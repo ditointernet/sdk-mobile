@@ -24,7 +24,8 @@ struct DitoTrackOffline {
         self.identifyOffline.setIdentityCompletionClosure{closure()}
     }
 
-    /// `userId`: the row's owner, nil when anonymous or not known yet (sent with the user current at retry).
+    /// `userId`: the confirmed user when the event was tracked; nil when anonymous or the identify is unconfirmed
+    /// (sent with the user current at retry).
     func track(event: DitoEventRequest, anonymous: Bool = false, userId: String? = nil) {
 
         if self.identifyOffline.getSavingState {
@@ -48,12 +49,6 @@ struct DitoTrackOffline {
 
     var reference: String? {
         return identifyOffline.getIdentify?.reference
-    }
-
-    /// The user of the saved identify, confirmed or not.
-    var identifyId: String? {
-        guard let id = identifyOffline.getIdentify?.id, !id.isEmpty else { return nil }
-        return id
     }
 
     var identityState: DitoIdentityState {

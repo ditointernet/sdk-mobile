@@ -98,7 +98,7 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         XCTAssertTrue(DitoTrackDataManager().fetchOfflinePersistedTracks().isEmpty)
     }
 
-    func testTrackWithPendingIdentify_waitsInQueueWithItsOwnerAndSendsNothing() async throws {
+    func testTrackWithPendingIdentify_waitsInQueueWithoutOwnerAndSendsNothing() async throws {
         DeviceIdProvider.setForTests("device-track-pending-1")
         XCTAssertTrue(DitoIdentifyDataManager.shared.save(id: "uid-pending-1", reference: nil, json: nil, send: false))
         let mock = MockMobileIngestClient()
@@ -110,7 +110,7 @@ final class OfflineBatchAndNotificationsTests: XCTestCase {
         let rows = DitoTrackDataManager().fetchOfflinePersistedTracks()
         XCTAssertEqual(rows.count, 1)
         XCTAssertEqual(rows.first?.anonymous, false)
-        XCTAssertEqual(rows.first?.userId, "uid-pending-1")
+        XCTAssertNil(rows.first?.userId)
     }
 
     func testTrackDuringIdentifyInProgress_sendsNothingAnonymously() async throws {

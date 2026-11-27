@@ -190,10 +190,11 @@ class DitoRetry {
         await checkNotificationRegister(anonymous: true)
         await checkNotificationUnregister(anonymous: true)
         let identifySuccess = await checkIdentify()
-        if identifySuccess {
-            await withTaskGroup(of: Void.self) { group in
+        await withTaskGroup(of: Void.self) { group in
+            // Clicks carry their own user, so a failing identify doesn't hold them.
+            group.addTask { await self.checkNotification() }
+            if identifySuccess {
                 group.addTask { await self.checkTrack(anonymous: false) }
-                group.addTask { await self.checkNotification() }
                 group.addTask { await self.checkNotificationRegister(anonymous: false) }
                 group.addTask { await self.checkNotificationUnregister(anonymous: false) }
             }

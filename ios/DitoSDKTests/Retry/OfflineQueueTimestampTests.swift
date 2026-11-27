@@ -689,7 +689,7 @@ private final class ScheduledPasses: @unchecked Sendable {
 }
 
 /// Holds every call until `open()`, then fails it.
-private final class GatedFailingClient: MobileIngestClientProtocol, @unchecked Sendable {
+final class GatedFailingClient: MobileIngestClientProtocol, @unchecked Sendable {
     let recorder = MockMobileIngestClient()
     private let lock = NSLock()
     private var isOpen = false
