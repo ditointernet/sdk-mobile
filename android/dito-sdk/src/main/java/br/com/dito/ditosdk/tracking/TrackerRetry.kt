@@ -6,6 +6,7 @@ import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.NotificationReadOff
 import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
+import br.com.dito.ditosdk.utils.parseISO
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,6 +14,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
 internal class TrackerRetry(
     private val tracker: Tracker,
@@ -31,6 +33,11 @@ internal class TrackerRetry(
     private var nextPassIgnoresBackoff = false
     private var failedAt: Long? = null
     private var scheduledPass: Job? = null
+
+    init {
+        // Pelo single-flight, como qualquer outra passada.
+        mapper.onDeviceIdAvailable = { uploadEvents() }
+    }
 
     fun uploadEvents() = requestPass(ignoringBackoff = false)
 
@@ -112,9 +119,11 @@ internal class TrackerRetry(
 
     /** `true` se algum envio falhou e gastou tentativa; `null` se a passada não rodou. */
     private suspend fun runPass(): Boolean? {
-        // Sem device_id nada sai: a fila fica intacta, sem gastar tentativa, até ele aparecer.
-        if (mapper.deviceId.isEmpty()) {
+        // Sem device_id nada sai nem gasta tentativa; a fila só é podada até ele aparecer.
+        // deviceIdForFlush: esta passada já drena, o aviso de chegada só enfileiraria outra.
+        if (mapper.deviceIdForFlush().isEmpty()) {
             Log.e("TrackerRetry", "device_id indisponível: reenvio da fila adiado.")
+            pruneWithoutDeviceId()
             return null
         }
         checkIdentify()
@@ -125,6 +134,25 @@ internal class TrackerRetry(
 
     fun close() {
         scope.cancel()
+    }
+
+    // Roda dentro da passada (single-flight): não concorre com o envio da fila.
+    private fun pruneWithoutDeviceId() {
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
+        val events = trackerOffline.getAllEvents().orEmpty()
+        prune(events, "Event", { it.id }) { it.retry >= maxRetry || (parseISO(it.timestamp)?.time ?: cutoff) < cutoff }
+        // A tabela de cliques não guarda hora: só o limite de linhas.
+        val notifications = trackerOffline.getAllNotificationRead().orEmpty()
+        prune(notifications, "NotificationRead", { it.id }) { it.retry >= maxRetry }
+    }
+
+    private fun <T> prune(rows: List<T>, table: String, id: (T) -> Int, expired: (T) -> Boolean) {
+        val (dropped, kept) = rows.partition(expired)
+        val excess = kept.sortedBy(id).dropLast(MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID)
+        (dropped + excess).forEach { trackerOffline.delete(id(it), table) }
+        if (dropped.size + excess.size > 0) {
+            Log.w("TrackerRetry", "device_id indisponível: ${dropped.size + excess.size} linha(s) descartada(s) da fila $table.")
+        }
     }
 
     private suspend fun checkIdentify() {
@@ -214,7 +242,13 @@ internal class TrackerRetry(
         }
     }
 
-    private companion object {
+    internal companion object {
         const val BACKOFF_MS = 60_000L
+
+        /** Teto por tabela da fila enquanto não há device_id: acima dele saem as linhas mais antigas. */
+        const val MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID = 1000
+
+        /** Idade máxima de um evento na fila enquanto não há device_id. */
+        const val MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID = 30L
     }
 }
