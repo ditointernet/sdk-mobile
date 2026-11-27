@@ -61,6 +61,14 @@ class ActivityMapperTest {
     }
 
     @Test
+    fun `mapTrack should keep the milliseconds of the queued time`() {
+        val activity = mapper.mapTrack(Event("purchase"), "a1", queuedAt = "2026-11-27T10:00:00.250-0300")
+
+        assertThat(activity.timestamp.seconds).isEqualTo(java.time.Instant.parse("2026-11-27T13:00:00Z").epochSecond)
+        assertThat(activity.timestamp.nanos).isEqualTo(250_000_000)
+    }
+
+    @Test
     fun `mapTrack without a valid queued time should use the current time`() {
         val before = java.time.Instant.now().epochSecond
 

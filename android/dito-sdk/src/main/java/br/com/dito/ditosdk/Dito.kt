@@ -200,19 +200,22 @@ object Dito {
         val mapper = ActivityMapper(context)
         val trackerOffline = TrackerOffline(context)
         tracker = Tracker(trackerOffline, client, mapper, AnonymousState(context), debug = options?.debug == true)
+        // A passada adiada usa o mesmo critério de rede do gatilho. Atribuído antes do primeiro
+        // uploadEvents, que é o que pode chegar a consultá-lo.
+        lateinit var connectivityTrigger: ConnectivityRetryTrigger
         val trackerRetry = TrackerRetry(
             tracker,
             trackerOffline,
             client,
             mapper,
             options?.retry ?: 5,
-            isOnline = { ConnectivityRetryTrigger.isOnline(applicationContext) },
+            isOnline = { connectivityTrigger.isOnline() },
         )
-        tracker.setTrackerRetry(trackerRetry)
-        trackerRetry.uploadEvents()
         // applicationContext: o callback fica preso no ConnectivityManager até o close e não pode segurar uma Activity.
-        val connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEventsOnReconnect)
+        connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEventsOnReconnect)
+        tracker.setTrackerRetry(trackerRetry)
         tracker.setConnectivityTrigger(connectivityTrigger)
+        trackerRetry.uploadEvents()
         connectivityTrigger.start()
     }
 

@@ -41,8 +41,9 @@ internal class TrackerRetry(
 
     fun uploadEvents() = requestPass(ignoringBackoff = false)
 
-    // Rede nova: uma falha anterior não diz nada sobre esta passada.
-    fun uploadEventsOnReconnect() = requestPass(ignoringBackoff = true)
+    // Rede nova validada: uma falha anterior não diz nada sobre esta passada. Rede que não validou
+    // (pode ser Wi-Fi com WAN morta, que cai e volta) respeita a espera da última falha.
+    fun uploadEventsOnReconnect(validated: Boolean = true) = requestPass(ignoringBackoff = validated)
 
     // Envio ao vivo deu certo: o backend voltou e a espera da última falha não vale mais.
     fun uploadEventsAfterLiveSuccess() {
@@ -112,7 +113,8 @@ internal class TrackerRetry(
             val current = synchronized(passLock) {
                 (scheduledPass === coroutineContext[Job]).also { if (it) scheduledPass = null }
             }
-            // Sem rede só gastaria uma tentativa de cada linha; a reconexão faz a passada.
+            // Sem rede (inclusive a que perdeu a validação) só gastaria uma tentativa de cada linha; a
+            // reconexão faz a passada.
             if (current && isOnline()) uploadEvents()
         }
     }

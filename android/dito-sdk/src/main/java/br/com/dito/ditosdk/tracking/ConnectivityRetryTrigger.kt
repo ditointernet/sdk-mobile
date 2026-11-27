@@ -15,9 +15,11 @@ import kotlinx.coroutines.launch
 
 internal class ConnectivityRetryTrigger(
     private val context: Context,
-    private val onReconnect: () -> Unit,
+    /** `validated = false`: rede que não validou na carência; o reenvio deve respeitar a espera de falha. */
+    private val onReconnect: (validated: Boolean) -> Unit,
     private val debounceMs: Long = 2_000,
     injectedScope: CoroutineScope? = null,
+    private val unvalidatedGraceMs: Long = UNVALIDATED_GRACE_MS,
 ) {
 
     private val ownsScope = injectedScope == null
@@ -25,35 +27,55 @@ internal class ConnectivityRetryTrigger(
 
     private val lock = Any()
     private var connectivityManager: ConnectivityManager? = null
-    private var lastValidated: Network? = null
+    private var lastNetwork: Network? = null
+    private var lastValidated = false
+
+    // Rede sem validação que conta como online: a que não validou na carência ou já estava ativa no
+    // start. A que perdeu a validação não conta: é tratada como queda.
+    private var unvalidatedReady = false
+    private var observing = false
     private var pending: Job? = null
     private var closed = false
 
     // Entrega inicial da rede já ativa (pode chegar dentro do registro): o configure já fez o flush.
     private var firstReadPending = true
 
-    // Só rede validada dispara: onAvailable chega antes (portal cativo, Wi-Fi sem internet) e cada
-    // passada que falha gasta uma das tentativas da fila. Qualquer rede padrão nova dispara, inclusive
-    // a troca Wi-Fi → dados sem onLost da antiga.
+    // Rede validada dispara depois do debounce. Rede nova com internet mas sem validação (VPN, rede
+    // corporativa, teste de conectividade do Google bloqueado) pode nunca validar: dispara depois de
+    // uma espera maior, que a validação, se vier, encurta. Portal cativo não conta como internet.
+    // Perder a validação sem onLost (roteador sem internet, Wi-Fi conectado) conta como queda: não
+    // dispara, e a volta da validação dispara. Qualquer rede padrão nova dispara, inclusive a troca
+    // Wi-Fi → dados sem onLost da antiga.
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-            // Perder a validação sem onLost (roteador sem internet, Wi-Fi conectado) conta como queda.
-            if (!isValidated(capabilities)) return onLost(network)
+            // O callback é da rede padrão: a nova sem internet (portal cativo) derruba a anterior.
+            if (!hasInternet(capabilities)) return onLost(lastNetwork ?: network)
+            val validated = isValidated(capabilities)
             synchronized(lock) {
-                if (network == lastValidated || closed) return
-                lastValidated = network
+                if (closed) return
+                val sameNetwork = network == lastNetwork
+                if (sameNetwork && validated == lastValidated) return
+                lastNetwork = network
+                lastValidated = validated
+                unvalidatedReady = firstReadPending
                 if (firstReadPending) {
                     firstReadPending = false
                     return
                 }
-                schedule()
+                when {
+                    validated -> schedule(debounceMs, validated = true)
+                    sameNetwork -> pending?.cancel()
+                    else -> schedule(unvalidatedGraceMs, validated = false)
+                }
             }
         }
 
         override fun onLost(network: Network) {
             synchronized(lock) {
-                if (network != lastValidated) return
-                lastValidated = null
+                if (network != lastNetwork) return
+                lastNetwork = null
+                lastValidated = false
+                unvalidatedReady = false
                 pending?.cancel()
             }
         }
@@ -70,15 +92,28 @@ internal class ConnectivityRetryTrigger(
             cm.registerDefaultNetworkCallback(callback)
             connectivityManager = cm
             // O registro reentrega a rede já ativa: o configure já fez o flush, então ela não dispara.
-            val active = cm.activeNetwork?.takeIf { isValidated(cm.getNetworkCapabilities(it)) }
+            val active = cm.activeNetwork
+            val capabilities = active?.let { cm.getNetworkCapabilities(it) }
             synchronized(lock) {
-                if (firstReadPending) lastValidated = active
+                if (firstReadPending && hasInternet(capabilities)) {
+                    lastNetwork = active
+                    lastValidated = isValidated(capabilities)
+                    unvalidatedReady = true
+                }
                 firstReadPending = false
+                observing = true
             }
         } catch (e: Exception) {
             Log.w("ConnectivityRetry", "Falha ao observar a rede; sem reenvio ao voltar a rede.", e)
         }
     }
+
+    /**
+     * Mesmo critério do gatilho: rede validada, ou sem validação depois da carência (VPN, rede
+     * corporativa). Rede que perdeu a validação e portal cativo contam como sem rede. Sem observar a
+     * rede (antes do start ou se o registro falhou), `true`: o envio decide.
+     */
+    fun isOnline(): Boolean = synchronized(lock) { !observing || lastValidated || unvalidatedReady }
 
     fun close() {
         synchronized(lock) {
@@ -95,26 +130,30 @@ internal class ConnectivityRetryTrigger(
     }
 
     companion object {
-        private fun isValidated(capabilities: NetworkCapabilities?): Boolean =
+        /** Espera por uma rede com internet que não validou antes de reenviar mesmo assim. */
+        internal const val UNVALIDATED_GRACE_MS = 30_000L
+
+        private fun hasInternet(capabilities: NetworkCapabilities?): Boolean =
             capabilities != null &&
                 capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
-                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
 
-        /** Há rede padrão validada agora; sem como saber, `true` (o envio decide). */
-        fun isOnline(context: Context): Boolean =
-            try {
-                val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
-                cm == null || isValidated(cm.getNetworkCapabilities(cm.activeNetwork))
-            } catch (e: Exception) {
-                true
-            }
+        private fun isValidated(capabilities: NetworkCapabilities?): Boolean =
+            capabilities != null &&
+                hasInternet(capabilities) &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
-    private fun schedule() {
+    /** Com [lock]. */
+    private fun schedule(delayMs: Long, validated: Boolean) {
         pending?.cancel()
         pending = scope.launch {
-            delay(debounceMs)
-            onReconnect()
+            delay(delayMs)
+            // Cancelado depois do delay (rede mudou): não mexe no estado da rede nova.
+            val current = synchronized(lock) {
+                (pending === coroutineContext[Job]).also { if (it && !validated) unvalidatedReady = true }
+            }
+            if (current) onReconnect(validated)
         }
     }
 }

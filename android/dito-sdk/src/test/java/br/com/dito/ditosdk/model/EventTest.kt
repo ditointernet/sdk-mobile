@@ -57,6 +57,13 @@ class EventTest {
     }
 
     @Test
+    fun `Event createdAt should carry milliseconds, so events of the same second keep their order`() {
+        val event = Event("purchase")
+
+        assertThat(event.createdAt).matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}[+-]\\d{4}")
+    }
+
+    @Test
     fun `Event should allow setting createdAt`() {
         val customDate = "2023-01-01T00:00:00+0000"
         val event = Event("purchase").apply {

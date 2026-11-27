@@ -503,6 +503,21 @@ class TrackerRetryTest {
     }
 
     @Test
+    fun `reconnection on a network that never validated should respect the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        trackerRetry.uploadEventsOnReconnect(validated = false)
+        advanceTimeBy(1_000)
+        assertThat(requests).hasSize(1)
+
+        advanceTimeBy(60_000)
+        assertThat(requests).hasSize(2)
+        verify { trackerOffline.update(1, 2, "Event") }
+    }
+
+    @Test
     fun `queued reconnection pass should ignore the backoff`() = testScope.runTest {
         val requests = failingEventQueue()
         coEvery { mockClient.activity(capture(requests)) } coAnswers {
@@ -591,6 +606,29 @@ class TrackerRetryTest {
         val sent = requests.single().activitiesList.associate { it.id to it.timestamp.seconds }
         assertThat(sent["a1"]).isEqualTo(epochSeconds("2026-11-27T13:00:00Z"))
         assertThat(sent["a2"]).isEqualTo(epochSeconds("2026-11-27T13:05:00Z"))
+    }
+
+    @Test
+    fun `events queued in the same second should be resent with distinct times, in order`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "add_to_cart", null, null, "2026-11-27T10:00:00.100-0300", 0),
+            EventOff(2, "a2", "purchase", null, null, "2026-11-27T10:00:00.900-0300", 0),
+            EventOff(3, "a3", "legacy", null, null, "2026-11-27T10:00:01-0300", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.map {
+            it.id to java.time.Instant.ofEpochSecond(it.timestamp.seconds, it.timestamp.nanos.toLong())
+        }
+        assertThat(sent.map { it.first }).containsExactly("a1", "a2", "a3").inOrder()
+        assertThat(sent.map { it.second }).containsExactly(
+            java.time.Instant.parse("2026-11-27T13:00:00.100Z"),
+            java.time.Instant.parse("2026-11-27T13:00:00.900Z"),
+            java.time.Instant.parse("2026-11-27T13:00:01Z"),
+        ).inOrder()
     }
 
     @Test

@@ -41,6 +41,7 @@ class ConnectivityRetryTriggerTest {
     private lateinit var active: Network
     private lateinit var trigger: ConnectivityRetryTrigger
     private var uploads = 0
+    private val validatedFlags = mutableListOf<Boolean>()
 
     @Before
     fun setup() {
@@ -48,7 +49,10 @@ class ConnectivityRetryTriggerTest {
         connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         active = checkNotNull(connectivityManager.activeNetwork)
         shadowOf(connectivityManager).setNetworkCapabilities(active, capabilities(validated = true))
-        trigger = ConnectivityRetryTrigger(context, { uploads++ }, DEBOUNCE_MS, testScope)
+        trigger = ConnectivityRetryTrigger(context, {
+            uploads++
+            validatedFlags += it
+        }, DEBOUNCE_MS, testScope)
     }
 
     @After
@@ -65,6 +69,11 @@ class ConnectivityRetryTriggerTest {
         ShadowNetworkCapabilities.newInstance().also {
             shadowOf(it).addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             if (validated) shadowOf(it).addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+        }
+
+    private fun captivePortal(): NetworkCapabilities =
+        capabilities(validated = false).also {
+            shadowOf(it).addCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
         }
 
     private fun validated(network: Network) = callback().onCapabilitiesChanged(network, capabilities(validated = true))
@@ -106,18 +115,100 @@ class ConnectivityRetryTriggerTest {
     }
 
     @Test
-    fun `network without validation does not trigger until validated`() = testScope.runTest {
+    fun `network validating within the grace period triggers once, after the debounce`() = testScope.runTest {
         trigger.start()
 
         callback().onLost(active)
         callback().onAvailable(network(77))
         callback().onCapabilitiesChanged(network(77), capabilities(validated = false))
-        advanceUntilIdle()
+        advanceTimeBy(ConnectivityRetryTrigger.UNVALIDATED_GRACE_MS - DEBOUNCE_MS - 1)
         assertThat(uploads).isEqualTo(0)
 
         validated(network(77))
-        advanceUntilIdle()
+        advanceTimeBy(DEBOUNCE_MS + 1)
         assertThat(uploads).isEqualTo(1)
+        advanceUntilIdle()
+        assertThat(validatedFlags).containsExactly(true)
+    }
+
+    @Test
+    fun `network with internet that never validates triggers after the grace period`() = testScope.runTest {
+        trigger.start()
+
+        callback().onLost(active)
+        callback().onCapabilitiesChanged(network(77), capabilities(validated = false))
+        callback().onCapabilitiesChanged(network(77), capabilities(validated = false))
+        advanceTimeBy(ConnectivityRetryTrigger.UNVALIDATED_GRACE_MS - 1)
+        assertThat(uploads).isEqualTo(0)
+
+        advanceTimeBy(2)
+        assertThat(uploads).isEqualTo(1)
+        advanceUntilIdle()
+        // Sem validação o reenvio respeita a espera de falha: Wi-Fi com WAN morta que cai e volta.
+        assertThat(validatedFlags).containsExactly(false)
+    }
+
+    @Test
+    fun `captive portal network does not trigger`() = testScope.runTest {
+        trigger.start()
+
+        callback().onLost(active)
+        callback().onCapabilitiesChanged(network(77), captivePortal())
+        advanceUntilIdle()
+
+        assertThat(uploads).isEqualTo(0)
+    }
+
+    @Test
+    fun `isOnline should be false on a network that lost validation, and true when it validates again`() =
+        testScope.runTest {
+            trigger.start()
+            assertThat(trigger.isOnline()).isTrue()
+
+            callback().onCapabilitiesChanged(active, capabilities(validated = false))
+            advanceUntilIdle()
+            assertThat(trigger.isOnline()).isFalse()
+
+            validated(active)
+            assertThat(trigger.isOnline()).isTrue()
+        }
+
+    @Test
+    fun `isOnline should accept a never validated network only after the grace period`() = testScope.runTest {
+        trigger.start()
+        callback().onLost(active)
+        assertThat(trigger.isOnline()).isFalse()
+
+        callback().onCapabilitiesChanged(network(77), capabilities(validated = false))
+        advanceTimeBy(ConnectivityRetryTrigger.UNVALIDATED_GRACE_MS - 1)
+        assertThat(trigger.isOnline()).isFalse()
+
+        advanceTimeBy(2)
+        assertThat(trigger.isOnline()).isTrue()
+    }
+
+    @Test
+    fun `isOnline should accept an unvalidated network already active at start`() {
+        shadowOf(connectivityManager).setNetworkCapabilities(active, capabilities(validated = false))
+
+        trigger.start()
+
+        assertThat(trigger.isOnline()).isTrue()
+    }
+
+    @Test
+    fun `isOnline should reject a captive portal that became the default network`() = testScope.runTest {
+        trigger.start()
+
+        callback().onCapabilitiesChanged(network(77), captivePortal())
+        advanceUntilIdle()
+
+        assertThat(trigger.isOnline()).isFalse()
+    }
+
+    @Test
+    fun `isOnline without observing the network should be true`() {
+        assertThat(trigger.isOnline()).isTrue()
     }
 
     @Test
