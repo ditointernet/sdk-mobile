@@ -203,6 +203,198 @@ final class OfflineQueueTimestampTests: XCTestCase {
         XCTAssertEqual(sentEvents(mock.allActivityRequests).sorted(), actions)
     }
 
+    private func firstRowRetry() -> Int16? {
+        DitoTrackDataManager().fetchOfflinePersistedTracks().first?.retry
+    }
+
+    private func captureScheduledPasses() -> ScheduledPasses {
+        let scheduled = ScheduledPasses()
+        DitoRetry.schedulePass = { delay, work in scheduled.add(delay, work) }
+        return scheduled
+    }
+
+    func testFailedPass_skippedPassesRunOnceWhenBackoffEnds() async throws {
+        let scheduled = captureScheduledPasses()
+        DitoRetry.isOnline = { true }
+        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000) }
+        savePostIdentify(userId: "uid-queue-ts-backoff")
+        saveTrack(DitoEvent(action: "backoff_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+
+        DitoRetry(client: failing).loadOffline()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        let mock = MockMobileIngestClient()
+        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000 + DitoRetry.failureBackoff - 1) }
+        DitoRetry(client: mock).loadOffline()
+        DitoRetry(client: mock).loadOffline()
+        try await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(mock.activityCallCount, 0, "dentro da janela a passada é adiada")
+        XCTAssertEqual(firstRowRetry(), 2, "passada adiada não gasta tentativa")
+        XCTAssertEqual(scheduled.all.count, 1, "adiamentos não se empilham")
+        XCTAssertEqual(try XCTUnwrap(scheduled.all.first).delay, 1, accuracy: 0.001)
+
+        DitoRetry.now = { Date(timeIntervalSince1970: 1_000_000 + DitoRetry.failureBackoff + 1) }
+        try XCTUnwrap(scheduled.all.first).work.perform()
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertEqual(sentEvents(mock.allActivityRequests), ["backoff_evt"])
+    }
+
+    /// Leaves one failed pass behind (the row at retry 2) and one pass postponed to the end of the backoff.
+    private func failPassAndPostponeNext(
+        userId: String,
+        action: String,
+        mock: MockMobileIngestClient
+    ) async throws -> ScheduledPasses {
+        let scheduled = captureScheduledPasses()
+        DitoRetry.now = { Date(timeIntervalSince1970: 4_000_000) }
+        savePostIdentify(userId: userId)
+        saveTrack(DitoEvent(action: action))
+        await waitUntil { self.queueCount() == 1 }
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        DitoRetry(client: failing).loadOffline()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        DitoRetry(client: mock).loadOffline()
+        XCTAssertEqual(scheduled.all.count, 1)
+        return scheduled
+    }
+
+    func testPostponedPass_offlineWhenBackoffEnds_doesNotRunNorSpendRetry() async throws {
+        let mock = MockMobileIngestClient()
+        let scheduled = try await failPassAndPostponeNext(
+            userId: "uid-queue-ts-postponed-offline",
+            action: "postponed_offline_evt",
+            mock: mock
+        )
+        DitoRetry.isOnline = { false }
+        DitoRetry.now = { Date(timeIntervalSince1970: 4_000_000 + DitoRetry.failureBackoff + 1) }
+
+        try XCTUnwrap(scheduled.all.first).work.perform()
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(mock.activityCallCount, 0)
+        XCTAssertEqual(firstRowRetry(), 2)
+    }
+
+    func testReconnect_cancelsPostponedPass() async throws {
+        let mock = MockMobileIngestClient()
+        Dito.testIdentifyTrackIngestClient = mock
+        Dito.invalidateRetryCacheForTests()
+        let scheduled = try await failPassAndPostponeNext(
+            userId: "uid-queue-ts-reconnect-cancels",
+            action: "reconnect_cancels_evt",
+            mock: mock
+        )
+        let postponed = try XCTUnwrap(scheduled.all.first).work
+
+        await MainActor.run {
+            Dito.setReachabilityConnectionOverrideForTests(.wifi)
+            Dito.shared.reachabilityChanged(Notification(name: .reachabilityChanged))
+        }
+
+        XCTAssertTrue(postponed.isCancelled)
+        await waitUntil { self.queueCount() == 0 }
+    }
+
+    func testPassWithoutFailure_clearsBackoff() async throws {
+        let mock = MockMobileIngestClient()
+        _ = try await failPassAndPostponeNext(
+            userId: "uid-queue-ts-clears-backoff",
+            action: "clears_backoff_evt",
+            mock: mock
+        )
+
+        DitoRetry(client: mock).loadOffline(ignoringBackoff: true)
+        await waitUntil { self.queueCount() == 0 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        saveTrack(DitoEvent(action: "after_clear_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        DitoRetry(client: mock).loadOffline()
+        await waitUntil { self.queueCount() == 0 }
+
+        XCTAssertEqual(sentEvents(mock.allActivityRequests), ["clears_backoff_evt", "after_clear_evt"])
+    }
+
+    func testPassQueuedDuringFailingPass_isPostponedWithoutSpendingRetry() async throws {
+        let scheduled = captureScheduledPasses()
+        DitoRetry.now = { Date(timeIntervalSince1970: 2_000_000) }
+        savePostIdentify(userId: "uid-queue-ts-queued-during-fail")
+        saveTrack(DitoEvent(action: "queued_during_fail_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let client = GatedFailingClient()
+        let sut = DitoRetry(client: client)
+
+        sut.loadOffline()
+        await waitUntil { client.recorder.activityCallCount == 1 }
+        sut.loadOffline()
+        client.open()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 300_000_000)
+
+        XCTAssertEqual(client.recorder.activityCallCount, 1, "a passada enfileirada não roda dentro da janela")
+        XCTAssertEqual(firstRowRetry(), 2)
+        XCTAssertEqual(scheduled.all.count, 1, "fica agendada para o fim da janela")
+    }
+
+    func testReconnectPassQueuedDuringFailingPass_runsDespiteBackoff() async throws {
+        let scheduled = captureScheduledPasses()
+        DitoRetry.now = { Date(timeIntervalSince1970: 3_000_000) }
+        savePostIdentify(userId: "uid-queue-ts-reconnect-queued")
+        saveTrack(DitoEvent(action: "reconnect_queued_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let client = GatedFailingClient()
+        let sut = DitoRetry(client: client)
+
+        sut.loadOffline()
+        await waitUntil { client.recorder.activityCallCount == 1 }
+        sut.loadOffline(ignoringBackoff: true)
+        client.open()
+        await waitUntil { client.recorder.activityCallCount == 2 }
+        await waitUntil { self.firstRowRetry() == 3 }
+
+        XCTAssertTrue(scheduled.all.isEmpty)
+    }
+
+    func testSuccessfulPass_doesNotBlockNextPass() async throws {
+        savePostIdentify(userId: "uid-queue-ts-no-backoff")
+        saveTrack(DitoEvent(action: "ok_first_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let mock = MockMobileIngestClient()
+
+        DitoRetry(client: mock).loadOffline()
+        await waitUntil { self.queueCount() == 0 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        saveTrack(DitoEvent(action: "ok_second_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        DitoRetry(client: mock).loadOffline()
+        await waitUntil { self.queueCount() == 0 }
+
+        XCTAssertEqual(sentEvents(mock.allActivityRequests), ["ok_first_evt", "ok_second_evt"])
+    }
+
+    func testResetFacadeIsolationState_clearsFailureBackoff() async throws {
+        savePostIdentify(userId: "uid-queue-ts-reset-backoff")
+        saveTrack(DitoEvent(action: "reset_backoff_evt"))
+        await waitUntil { self.queueCount() == 1 }
+        let failing = MockMobileIngestClient()
+        failing.shouldSucceed = false
+        DitoRetry(client: failing).loadOffline()
+        await waitUntil { self.firstRowRetry() == 2 }
+        try await Task.sleep(nanoseconds: 200_000_000)
+
+        Dito.resetFacadeIsolationState()
+        let mock = MockMobileIngestClient()
+        DitoRetry(client: mock).loadOffline()
+
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertEqual(sentEvents(mock.allActivityRequests), ["reset_backoff_evt"])
+    }
+
     func testLegacyRowWithoutCreatedAt_isSentWithSendTime() async throws {
         savePostIdentify(userId: "uid-queue-ts-legacy")
         saveTrack(DitoEvent(action: "legacy_no_created_at"))
@@ -359,6 +551,55 @@ final class OfflineQueueTimestampTests: XCTestCase {
         await waitUntil { self.queueCount() == 0 }
         XCTAssertEqual(client.recorder.activityCallCount, 2)
         XCTAssertEqual(sentEvents(client.recorder.allActivityRequests), ["reconnect_evt", "reconnect_evt"])
+    }
+}
+
+private final class ScheduledPasses: @unchecked Sendable {
+    private let lock = NSLock()
+    private var items: [(delay: TimeInterval, work: DispatchWorkItem)] = []
+
+    func add(_ delay: TimeInterval, _ work: DispatchWorkItem) {
+        lock.lock()
+        items.append((delay: delay, work: work))
+        lock.unlock()
+    }
+
+    var all: [(delay: TimeInterval, work: DispatchWorkItem)] {
+        lock.lock()
+        defer { lock.unlock() }
+        return items
+    }
+}
+
+/// Holds every call until `open()`, then fails it.
+private final class GatedFailingClient: MobileIngestClientProtocol, @unchecked Sendable {
+    let recorder = MockMobileIngestClient()
+    private let lock = NSLock()
+    private var isOpen = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func activity(_ request: Mobileingest_V1_Request) async throws -> Mobileingest_V1_Response {
+        _ = try await recorder.activity(request)
+        await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if isOpen {
+                lock.unlock()
+                cont.resume()
+            } else {
+                waiting.append(cont)
+                lock.unlock()
+            }
+        }
+        throw MobileIngestError(message: "falha segurada")
+    }
+
+    func open() {
+        lock.lock()
+        isOpen = true
+        let held = waiting
+        waiting = []
+        lock.unlock()
+        held.forEach { $0.resume() }
     }
 }
 

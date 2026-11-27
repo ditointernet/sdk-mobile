@@ -181,12 +181,16 @@ struct ActivityMapper {
         return Google_Protobuf_Timestamp(date: now)
     }
 
-    private func eventTimestamp(_ createdAt: String?) -> Google_Protobuf_Timestamp {
+    private static let createdAtFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ssZ"
+        return formatter
+    }()
+
+    private func eventTimestamp(_ createdAt: String?) -> Google_Protobuf_Timestamp {
         // Older queued rows carry only "yyyy-MM-dd": must fall back to now, not midnight.
-        guard let createdAt, let date = formatter.date(from: createdAt) else { return nowTimestamp() }
+        guard let createdAt, let date = Self.createdAtFormatter.date(from: createdAt) else { return nowTimestamp() }
         return Google_Protobuf_Timestamp(date: date)
     }
 

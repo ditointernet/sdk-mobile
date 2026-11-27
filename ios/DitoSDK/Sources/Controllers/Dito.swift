@@ -89,13 +89,14 @@ public class Dito {
 
   public func configure() {
     DispatchQueue.main.async {
+      // configure() runs on every receive; remove first so each observer is registered only once.
+      NotificationCenter.default.removeObserver(self, name: .reachabilityChanged, object: nil)
       NotificationCenter.default.addObserver(
         self,
         selector: #selector(self.reachabilityChanged(_:)),
         name: .reachabilityChanged,
         object: nil
       )
-      // configure() runs on every receive; remove first so the observer is registered only once.
       NotificationCenter.default.removeObserver(
         self,
         name: UIApplication.willEnterForegroundNotification,
@@ -605,6 +606,10 @@ extension Dito {
     }
   }
 
+  static var isOnline: Bool {
+    shared.reachability.connection != .unavailable
+  }
+
   // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue.
   // Offline it would only burn a retry per row (rows are dropped after maxRetries).
   @objc func applicationWillEnterForeground(_ note: Notification) {
@@ -616,10 +621,11 @@ extension Dito {
     reconnectRetry?.cancel()
     reconnectRetry = nil
     if self.reachability.connection != .unavailable {
-      retry.loadOffline()
+      DitoRetry.cancelScheduledPass()
+      retry.loadOffline(ignoringBackoff: true)
       let work = DispatchWorkItem {
         if self.reachability.connection != .unavailable {
-          self.retry.loadOffline()
+          self.retry.loadOffline(ignoringBackoff: true)
         }
       }
       reconnectRetry = work
@@ -660,6 +666,8 @@ extension Dito {
     shared.reachability.stopNotifier()
     shared.reachability.debug_connectionOverride = nil
     shared.reconnectRetry?.cancel()
+    shared.reconnectRetry = nil
+    DitoRetry.resetForTests()
     shared.retryLock.lock()
     shared.backingRetry = nil
     shared.retryLock.unlock()
