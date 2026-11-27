@@ -1,3 +1,4 @@
+import Security
 import UIKit
 import XCTest
 @testable import DitoSDK
@@ -640,6 +641,56 @@ final class OfflineQueueTimestampTests: XCTestCase {
         XCTAssertEqual(DitoTrackDataManager().fetchOfflinePersistedTracks().first?.retry, 1)
     }
 
+    func testProtectedDataDidBecomeAvailableNotification_flushesQueue() async throws {
+        let client = MockMobileIngestClient()
+        Dito.testIdentifyTrackIngestClient = client
+        Dito.invalidateRetryCacheForTests()
+        Dito.setReachabilityConnectionOverrideForTests(.wifi)
+
+        Dito.shared.configure()
+        await drainMainQueue()
+        NotificationCenter.default.removeObserver(Dito.shared, name: .reachabilityChanged, object: nil)
+
+        savePostIdentify(userId: "uid-queue-ts-protected-data")
+        saveTrack(DitoEvent(action: "protected_data_evt"))
+        await waitUntil { self.queueCount() == 1 }
+
+        await MainActor.run {
+            NotificationCenter.default.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        }
+
+        await waitUntil { self.queueCount() == 0 }
+        XCTAssertEqual(sentEvents(client.allActivityRequests), ["protected_data_evt"])
+        await waitUntil { !DitoRetry.isPassRunningForTests }
+    }
+
+    func testProtectedDataDidBecomeAvailable_configureTwice_runsASinglePass() async throws {
+        Dito.testIdentifyTrackIngestClient = MockMobileIngestClient()
+        Dito.invalidateRetryCacheForTests()
+        Dito.setReachabilityConnectionOverrideForTests(.wifi)
+
+        Dito.shared.configure()
+        Dito.shared.configure()
+        await drainMainQueue()
+        NotificationCenter.default.removeObserver(Dito.shared, name: .reachabilityChanged, object: nil)
+        await waitUntil { !DitoRetry.isPassRunningForTests }
+
+        // Keychain still locked: each pass reads it once and sends nothing.
+        let keychainReads = KeychainReadCounter()
+        DeviceIdProvider.copyMatching = { _, _ in
+            keychainReads.increment()
+            return errSecInteractionNotAllowed
+        }
+        DeviceIdProvider.setForTests(nil)
+
+        await MainActor.run {
+            NotificationCenter.default.post(name: UIApplication.protectedDataDidBecomeAvailableNotification, object: nil)
+        }
+
+        await waitUntil { !DitoRetry.isPassRunningForTests }
+        XCTAssertEqual(keychainReads.value, 1)
+    }
+
     // MARK: - Reachability
 
     func testReconnect_firstPassFails_delayedPassWaitsBackoffThenFlushesQueue() async throws {
@@ -685,6 +736,23 @@ private final class ScheduledPasses: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return items
+    }
+}
+
+private final class KeychainReadCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    func increment() {
+        lock.lock()
+        count += 1
+        lock.unlock()
+    }
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
     }
 }
 

@@ -177,6 +177,12 @@ class DitoRetry {
         schedulePass = defaultSchedulePass
         isOnline = { Dito.isOnline }
     }
+
+    static var isPassRunningForTests: Bool {
+        passLock.lock()
+        defer { passLock.unlock() }
+        return passRunning
+    }
     #endif
 
     internal func runLoadOffline() async {
@@ -185,11 +191,12 @@ class DitoRetry {
             return
         }
         await checkNotificationReceive()
+        // Before the anonymous rows: those waiting for a pending identify go in this same pass.
+        let identifySuccess = await checkIdentify()
         // Sequential so these requests don't each carry the anonymous Identify (a concurrent immediate send still may).
         await checkTrack(anonymous: true)
         await checkNotificationRegister(anonymous: true)
         await checkNotificationUnregister(anonymous: true)
-        let identifySuccess = await checkIdentify()
         await withTaskGroup(of: Void.self) { group in
             // Clicks carry their own user, so a failing identify doesn't hold them.
             group.addTask { await self.checkNotification() }

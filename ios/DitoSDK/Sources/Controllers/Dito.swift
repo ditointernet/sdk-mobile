@@ -108,6 +108,17 @@ public class Dito {
         name: UIApplication.willEnterForegroundNotification,
         object: nil
       )
+      NotificationCenter.default.removeObserver(
+        self,
+        name: UIApplication.protectedDataDidBecomeAvailableNotification,
+        object: nil
+      )
+      NotificationCenter.default.addObserver(
+        self,
+        selector: #selector(self.applicationWillEnterForeground(_:)),
+        name: UIApplication.protectedDataDidBecomeAvailableNotification,
+        object: nil
+      )
 
       do {
         try self.reachability.startNotifier()
@@ -605,7 +616,8 @@ extension Dito {
     shared.reachability.connection != .unavailable
   }
 
-  // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue.
+  // A stable connection never fires reachabilityChanged, so opening the app is what flushes the queue;
+  // also run on the first unlock, as every request needs the device_id from the Keychain.
   // Offline it would only burn a retry per row (rows are dropped after maxRetries).
   @objc func applicationWillEnterForeground(_ note: Notification) {
     guard reachability.connection != .unavailable else { return }
@@ -658,6 +670,11 @@ extension Dito {
   static func resetFacadeIsolationState() {
     NotificationCenter.default.removeObserver(shared, name: .reachabilityChanged, object: nil)
     NotificationCenter.default.removeObserver(shared, name: UIApplication.willEnterForegroundNotification, object: nil)
+    NotificationCenter.default.removeObserver(
+      shared,
+      name: UIApplication.protectedDataDidBecomeAvailableNotification,
+      object: nil
+    )
     shared.reachability.stopNotifier()
     shared.reachability.debug_connectionOverride = nil
     shared.reconnectRetry?.cancel()

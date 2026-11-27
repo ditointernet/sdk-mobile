@@ -904,8 +904,6 @@ final class DitoRetryTests: XCTestCase {
 
         DeviceIdProvider.setForTests("device-retry-back-1")
         await DitoRetry(client: mock).runLoadOffline()
-        // Anonymous rows are checked before the identify in a run, so they go on the next one.
-        await DitoRetry(client: mock).runLoadOffline()
 
         let requests = mock.allActivityRequests
         XCTAssertFalse(requests.isEmpty)
