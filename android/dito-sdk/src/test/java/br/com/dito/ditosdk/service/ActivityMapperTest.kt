@@ -52,6 +52,45 @@ class ActivityMapperTest {
         assertThat(mapper.buildRequest("", emptyList(), null).device.deviceId).isEqualTo("device-1")
     }
 
+    @Test
+    fun `device id showing up after an empty read should notify once`() {
+        var notified = 0
+        mapper.onDeviceIdAvailable = { notified++ }
+        setAndroidId("")
+        mapper.deviceId
+
+        setAndroidId("device-1")
+        mapper.deviceId
+        mapper.deviceId
+
+        assertThat(notified).isEqualTo(1)
+    }
+
+    @Test
+    fun `device id available from the start should not notify`() {
+        var notified = 0
+        mapper.onDeviceIdAvailable = { notified++ }
+        setAndroidId("device-1")
+
+        mapper.deviceId
+
+        assertThat(notified).isEqualTo(0)
+    }
+
+    @Test
+    fun `flush read of a device id that showed up should not notify`() {
+        var notified = 0
+        mapper.onDeviceIdAvailable = { notified++ }
+        setAndroidId("")
+        mapper.deviceId
+
+        setAndroidId("device-1")
+        assertThat(mapper.deviceIdForFlush()).isEqualTo("device-1")
+        mapper.deviceId
+
+        assertThat(notified).isEqualTo(0)
+    }
+
     private fun setAndroidId(value: String) {
         Settings.Secure.putString(
             ApplicationProvider.getApplicationContext<Context>().contentResolver,

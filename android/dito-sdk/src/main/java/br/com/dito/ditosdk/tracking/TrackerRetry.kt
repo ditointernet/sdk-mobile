@@ -12,6 +12,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 internal class TrackerRetry(
     private val tracker: Tracker,
@@ -24,11 +27,16 @@ internal class TrackerRetry(
 
     private val eventQueue = Mutex()
 
+    init {
+        mapper.onDeviceIdAvailable = { uploadEvents() }
+    }
+
     fun uploadEvents() {
         scope.launch {
-            // Sem device_id nada sai: a fila fica intacta, sem gastar tentativa, até ele aparecer.
-            if (mapper.deviceId.isEmpty()) {
+            // Sem device_id nada sai nem gasta tentativa; a fila só é podada até ele aparecer.
+            if (mapper.deviceIdForFlush().isEmpty()) {
                 Log.e("TrackerRetry", "device_id indisponível: reenvio da fila adiado.")
+                pruneWithoutDeviceId()
                 return@launch
             }
             checkIdentify()
@@ -39,6 +47,32 @@ internal class TrackerRetry(
 
     fun close() {
         scope.cancel()
+    }
+
+    private suspend fun pruneWithoutDeviceId() {
+        val cutoff = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID)
+        eventQueue.withLock {
+            val events = trackerOffline.getAllEvents().orEmpty()
+            prune(events, "Event", { it.id }) { it.retry >= maxRetry || (parseTimestamp(it.timestamp) ?: cutoff) < cutoff }
+        }
+        // A tabela de cliques não guarda hora: só o limite de linhas.
+        val notifications = trackerOffline.getAllNotificationRead().orEmpty()
+        prune(notifications, "NotificationRead", { it.id }) { it.retry >= maxRetry }
+    }
+
+    private fun <T> prune(rows: List<T>, table: String, id: (T) -> Int, expired: (T) -> Boolean) {
+        val (dropped, kept) = rows.partition(expired)
+        val excess = kept.sortedBy(id).dropLast(MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID)
+        (dropped + excess).forEach { trackerOffline.delete(id(it), table) }
+        if (dropped.size + excess.size > 0) {
+            Log.w("TrackerRetry", "device_id indisponível: ${dropped.size + excess.size} linha(s) descartada(s) da fila $table.")
+        }
+    }
+
+    private fun parseTimestamp(value: String): Long? = try {
+        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).parse(value)?.time
+    } catch (_: Exception) {
+        null
     }
 
     private fun checkIdentify() {
@@ -132,5 +166,13 @@ internal class TrackerRetry(
         } catch (e: Exception) {
             notifications.forEach { trackerOffline.update(it.id, it.retry + 1, "NotificationRead") }
         }
+    }
+
+    internal companion object {
+        /** Teto por tabela da fila enquanto não há device_id: acima dele saem as linhas mais antigas. */
+        const val MAX_QUEUE_ROWS_WITHOUT_DEVICE_ID = 1000
+
+        /** Idade máxima de um evento na fila enquanto não há device_id. */
+        const val MAX_QUEUE_AGE_DAYS_WITHOUT_DEVICE_ID = 30L
     }
 }

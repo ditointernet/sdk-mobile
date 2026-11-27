@@ -90,19 +90,20 @@ internal class Tracker(
         synchronized(idLock) { id = identify.id }
         scope.launch {
             if (debug) Log.d("Tracker", "begin identify user: ${identify.id}")
+            // Se o device_id aparecer agora, a fila só drena depois deste request, não em paralelo.
+            val deviceIdArrived = mapper.claimDeviceIdArrival()
             val activity = mapper.mapIdentify(identify)
             try {
                 client.activity(mapper.buildRequest(identify.id, listOf(activity), null))
                 val current = persistIfCurrent(identify, send = true)
                 callback?.invoke(OperationStatus.SENT, null)
-                if (current) {
-                    registerLastToken(identify.id)
-                    trackerRetry?.uploadEvents()
-                }
+                if (current) registerLastToken(identify.id)
+                if (current || deviceIdArrived) trackerRetry?.uploadEvents()
             } catch (e: Exception) {
                 if (debug) Log.d("Tracker", "identify error: $e", e)
                 persistIfCurrent(identify, send = false)
                 callback?.invoke(null, e)
+                if (deviceIdArrived) trackerRetry?.uploadEvents()
             }
         }
     }
@@ -137,14 +138,25 @@ internal class Tracker(
     internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?) {
         if (userId == null) {
             sendAnonymous(activities, token)
-        } else {
-            client.activity(mapper.buildRequest(userId, activities, token))
+            return
         }
+        // Identify deste usuário ainda não enviado vai antes, no mesmo request: o backend não pode
+        // receber atividade de um user_id que ainda não conhece.
+        val pending = identifyDisk.withLock { trackerOffline.getIdentify() }?.takeIf { it.id == userId && !it.send }
+        if (pending == null) {
+            client.activity(mapper.buildRequest(userId, activities, token))
+            return
+        }
+        val identify = mapper.mapIdentify(mapper.fromIdentifyOff(pending))
+        client.activity(mapper.buildRequest(userId, listOf(identify) + activities, token))
+        identifyDisk.withLock { if (trackerOffline.getIdentify() == pending) trackerOffline.updateIdentify(userId, true) }
+        // Como no reenvio do identify pela fila; um register neste request já levou o token.
+        if (id == userId && activities.none { it.hasTokenRegister() }) registerLastToken(userId)
     }
 
     // user_id "" vai com o device_id: é por ele que o backend resolve o usuário.
     private suspend fun sendAnonymous(activities: List<Api.Activity>, token: String?) {
-        val mark = "${mapper.deviceId}|${BuildConfig.DITO_SDK_VERSION}"
+        val mark = "${mapper.requireDeviceId()}|${BuildConfig.DITO_SDK_VERSION}"
         if (anonymousState.identifyMark == mark) {
             client.activity(mapper.buildRequest("", activities, token))
             return
@@ -203,6 +215,7 @@ internal class Tracker(
         scope.launch {
             try {
                 val userId = awaitId()
+                mapper.requireDeviceId()
                 tokenState.withLock {
                     if (anonymousState.lastToken == token) anonymousState.lastToken = null
                     if (anonymousState.confirmedToken == token) anonymousState.setConfirmed(null, null)
@@ -221,9 +234,10 @@ internal class Tracker(
             loggedOut = true
             logouts++
             id = null
-            // Como no iOS: o próximo login reenvia o token, mesmo que seja o mesmo usuário.
-            anonymousState.setConfirmed(null, null)
         }
+        // Como no iOS: o próximo login reenvia o token. Fora do lock (logouts++ já barra o registerFor
+        // em voo), mas antes de retornar: numa coroutine, um identify() logo depois poderia ler o par antigo.
+        anonymousState.setConfirmed(null, null)
         scope.launch {
             // Um identify() do mesmo usuário feito depois deste logout já está no disco: não apagar.
             identifyDisk.withLock {

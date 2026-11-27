@@ -12,6 +12,7 @@ import br.com.dito.ditosdk.IdentifyOff
 import com.google.gson.Gson
 import com.google.protobuf.Timestamp
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import mobileingest.v1.Api
 
 internal class DeviceIdUnavailableException :
@@ -159,10 +160,7 @@ internal class ActivityMapper(private val context: Context) {
     }
 
     fun buildDeviceInfo(token: String?): Api.DeviceInfo {
-        val id = deviceId
-        if (id.isEmpty()) {
-            throw DeviceIdUnavailableException().also { Log.e("ActivityMapper", it.message, it) }
-        }
+        val id = requireDeviceId()
         return Api.DeviceInfo.newBuilder()
             .setOs(Api.DeviceOs.DEVICE_OS_ANDROID)
             .setDeviceId(id)
@@ -172,12 +170,43 @@ internal class ActivityMapper(private val context: Context) {
             .build()
     }
 
+    fun requireDeviceId(): String {
+        val id = deviceId
+        if (id.isEmpty()) {
+            throw DeviceIdUnavailableException().also { Log.e("ActivityMapper", it.message, it) }
+        }
+        return id
+    }
+
     @Volatile
     private var cachedDeviceId: String? = null
 
+    private val deviceIdMissing = AtomicBoolean(false)
+
+    /** Chamado uma vez quando uma leitura acha o device_id depois de uma leitura vazia. */
+    @Volatile
+    var onDeviceIdAvailable: (() -> Unit)? = null
+
     // Vazio não fica em cache: o ANDROID_ID pode aparecer numa leitura seguinte.
     val deviceId: String
-        get() = cachedDeviceId ?: DeviceIdProvider.get(context).also { if (it.isNotEmpty()) cachedDeviceId = it }
+        get() = resolveDeviceId().also { (_, arrived) -> if (arrived) onDeviceIdAvailable?.invoke() }.first
+
+    /** Igual a [deviceId], sem avisar [onDeviceIdAvailable]: para quem já vai drenar a fila. */
+    fun deviceIdForFlush(): String = resolveDeviceId().first
+
+    /** Lê sem avisar [onDeviceIdAvailable]; true se foi esta leitura que achou o id depois de uma vazia. */
+    fun claimDeviceIdArrival(): Boolean = resolveDeviceId().second
+
+    private fun resolveDeviceId(): Pair<String, Boolean> {
+        cachedDeviceId?.let { return it to false }
+        val id = DeviceIdProvider.get(context)
+        if (id.isEmpty()) {
+            deviceIdMissing.set(true)
+            return id to false
+        }
+        cachedDeviceId = id
+        return id to deviceIdMissing.getAndSet(false)
+    }
 
     private fun buildAppInfo(): Api.AppInfo {
         val p = context.packageName
