@@ -41,4 +41,22 @@ class DateExtensionTest {
         assertThat(formatted).contains("T")
         assertThat(formatted.length).isAtLeast(20)
     }
+
+    @Test
+    fun `formatToISOMillis should keep the milliseconds and parseISO should read them back`() {
+        val date = Date(1609459200123L)
+
+        val formatted = date.formatToISOMillis()
+
+        assertThat(formatted).matches("\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}[+-]\\d{4}")
+        assertThat(parseISO(formatted)?.time).isEqualTo(1609459200123L)
+    }
+
+    @Test
+    fun `parseISO should still read the old format without milliseconds`() {
+        assertThat(parseISO("2021-01-01T00:00:00+0000")?.time).isEqualTo(1609459200000L)
+        assertThat(parseISO("2021-01-01T00:00:00.123+0000")?.time).isEqualTo(1609459200123L)
+        assertThat(parseISO("t")).isNull()
+        assertThat(parseISO("")).isNull()
+    }
 }

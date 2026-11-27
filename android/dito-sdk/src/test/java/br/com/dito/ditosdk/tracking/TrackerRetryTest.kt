@@ -2,6 +2,7 @@ package br.com.dito.ditosdk.tracking
 
 import android.content.Context
 import android.provider.Settings
+import android.util.Log
 import androidx.test.core.app.ApplicationProvider
 import br.com.dito.ditosdk.EventOff
 import br.com.dito.ditosdk.Identify
@@ -19,6 +20,7 @@ import io.mockk.verify
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.cancel
@@ -28,6 +30,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.shadows.ShadowLog
 import br.com.dito.ditosdk.utils.formatToISO
 import java.util.Date
 import java.util.concurrent.TimeUnit
@@ -45,6 +48,7 @@ class TrackerRetryTest {
     private lateinit var trackerOffline: TrackerOffline
     private lateinit var trackerRetry: TrackerRetry
     private lateinit var mockClient: MobileIngestClientInterface
+    private var online = true
 
     @Before
     fun setup() {
@@ -63,6 +67,8 @@ class TrackerRetryTest {
             mapper,
             5,
             testScope,
+            isOnline = { online },
+            now = { testScope.testScheduler.currentTime },
         )
         tracker.setTrackerRetry(trackerRetry)
     }
@@ -425,6 +431,260 @@ class TrackerRetryTest {
             verify { trackerOffline.delete(3, "Event") }
             verify { trackerOffline.delete(4, "NotificationRead") }
         }
+
+    @Test
+    fun `concurrent passes should not send identify nor click twice`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        var identify: IdentifyOff? = storedIdentify().copy(send = false)
+        every { trackerOffline.getIdentify() } answers { identify }
+        every { trackerOffline.updateIdentify("user123", true) } answers { identify = identify?.copy(send = true) }
+        var clicks: List<NotificationReadOff>? = listOf(NotificationReadOff(1, "c1", "n1", "i1", 0))
+        every { trackerOffline.getAllNotificationRead() } answers { clicks }
+        every { trackerOffline.delete(1, "NotificationRead") } answers { clicks = null }
+        coEvery { mockClient.activity(capture(requests)) } coAnswers {
+            delay(100)
+            Api.Response.getDefaultInstance()
+        }
+
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasIdentify() } }).isEqualTo(1)
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasTrackPushClick() } }).isEqualTo(1)
+    }
+
+    @Test
+    fun `pass after a failed pass should wait the backoff and run once at its end`() = testScope.runTest {
+        val requests = failingEventQueue()
+
+        trackerRetry.uploadEvents()
+        advanceTimeBy(10_000)
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(49_000)
+        assertThat(requests).hasSize(1)
+
+        advanceTimeBy(1_001)
+        assertThat(requests).hasSize(2)
+        verify { trackerOffline.update(1, 2, "Event") }
+    }
+
+    @Test
+    fun `scheduled pass should not run without network nor spend attempts`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+        online = false
+
+        trackerRetry.uploadEvents()
+        advanceTimeBy(120_000)
+
+        assertThat(requests).hasSize(1)
+        verify(exactly = 0) { trackerOffline.update(1, 2, "Event") }
+    }
+
+    @Test
+    fun `reconnection pass should ignore the backoff and cancel the scheduled pass`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+        trackerRetry.uploadEvents()
+
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        trackerRetry.uploadEventsOnReconnect()
+        advanceTimeBy(1_000)
+        assertThat(requests).hasSize(2)
+        verify { trackerOffline.delete(1, "Event") }
+
+        advanceTimeBy(120_000)
+        assertThat(requests).hasSize(2)
+    }
+
+    @Test
+    fun `reconnection on a network that never validated should respect the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        trackerRetry.uploadEventsOnReconnect(validated = false)
+        advanceTimeBy(1_000)
+        assertThat(requests).hasSize(1)
+
+        advanceTimeBy(60_000)
+        assertThat(requests).hasSize(2)
+        verify { trackerOffline.update(1, 2, "Event") }
+    }
+
+    @Test
+    fun `queued reconnection pass should ignore the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        coEvery { mockClient.activity(capture(requests)) } coAnswers {
+            delay(100)
+            throw Exception("fail")
+        }
+
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEventsOnReconnect()
+        advanceTimeBy(1_000)
+
+        assertThat(requests).hasSize(2)
+    }
+
+    @Test
+    fun `pass queued during a failing pass should wait the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        coEvery { mockClient.activity(capture(requests)) } coAnswers {
+            delay(100)
+            throw Exception("fail")
+        }
+
+        trackerRetry.uploadEvents()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        assertThat(requests).hasSize(1)
+    }
+
+    @Test
+    fun `pass without failure should release the backoff`() = testScope.runTest {
+        val requests = failingEventQueue()
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        trackerRetry.uploadEventsOnReconnect()
+        advanceTimeBy(1_000)
+
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(2, "a2", "y", null, null, "t", 0))
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        assertThat(requests).hasSize(3)
+    }
+
+    @Test
+    fun `live identify success should release the backoff and resend the queue right away`() = testScope.runTest {
+        val requests = failingEventQueue()
+        tracker.setTrackerRetry(trackerRetry)
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        coEvery { mockClient.activity(capture(requests)) } returns Api.Response.getDefaultInstance()
+        tracker.identify(Identify("user123"), null)
+        advanceTimeBy(1_000)
+
+        assertThat(requests.count { r -> r.activitiesList.any { it.hasTrack() } }).isEqualTo(2)
+        verify { trackerOffline.delete(1, "Event") }
+    }
+
+    @Test
+    fun `pass without android id should not arm the backoff`() = testScope.runTest {
+        val requests = captureRequests("")
+        every { trackerOffline.getAllEvents() } returns listOf(EventOff(1, "a1", "x", null, null, "t", 0))
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        Settings.Secure.putString(context.contentResolver, Settings.Secure.ANDROID_ID, "device-1")
+        trackerRetry.uploadEvents()
+        advanceTimeBy(1_000)
+
+        assertThat(requests).hasSize(1)
+    }
+
+    @Test
+    fun `queued track and receipt should be resent with the original time`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "purchase", null, null, "2026-11-27T10:00:00-0300", 0),
+            EventOff(2, "a2", "receive-android-notification", null, null, "2026-11-27T10:05:00-0300", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.associate { it.id to it.timestamp.seconds }
+        assertThat(sent["a1"]).isEqualTo(epochSeconds("2026-11-27T13:00:00Z"))
+        assertThat(sent["a2"]).isEqualTo(epochSeconds("2026-11-27T13:05:00Z"))
+    }
+
+    @Test
+    fun `events queued in the same second should be resent with distinct times, in order`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "add_to_cart", null, null, "2026-11-27T10:00:00.100-0300", 0),
+            EventOff(2, "a2", "purchase", null, null, "2026-11-27T10:00:00.900-0300", 0),
+            EventOff(3, "a3", "legacy", null, null, "2026-11-27T10:00:01-0300", 0),
+        )
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        val sent = requests.single().activitiesList.map {
+            it.id to java.time.Instant.ofEpochSecond(it.timestamp.seconds, it.timestamp.nanos.toLong())
+        }
+        assertThat(sent.map { it.first }).containsExactly("a1", "a2", "a3").inOrder()
+        assertThat(sent.map { it.second }).containsExactly(
+            java.time.Instant.parse("2026-11-27T13:00:00.100Z"),
+            java.time.Instant.parse("2026-11-27T13:00:00.900Z"),
+            java.time.Instant.parse("2026-11-27T13:00:01Z"),
+        ).inOrder()
+    }
+
+    @Test
+    fun `queued row without a valid time should be sent with the current time`() = testScope.runTest {
+        val requests = captureRequests("device-1")
+        every { trackerOffline.getAllEvents() } returns listOf(
+            EventOff(1, "a1", "x", null, null, "", 0),
+            EventOff(2, "a2", "y", null, null, "t", 0),
+        )
+        val before = java.time.Instant.now().epochSecond
+
+        trackerRetry.uploadEvents()
+        advanceUntilIdle()
+
+        requests.single().activitiesList.forEach { assertThat(it.timestamp.seconds).isAtLeast(before) }
+    }
+
+    @Test
+    fun `pass without user and without clicks should not log an error`() = testScope.runTest {
+        captureRequests("device-1")
+        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
+        val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
+        ShadowLog.clear()
+
+        retry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(ShadowLog.getLogsForTag("TrackerRetry").none { it.type == Log.ERROR }).isTrue()
+    }
+
+    @Test
+    fun `pass without user and with pending clicks should log an error`() = testScope.runTest {
+        captureRequests("device-1")
+        every { trackerOffline.getAllNotificationRead() } returns listOf(NotificationReadOff(1, "c1", "n1", "i1", 0))
+        val loggedOut = Tracker(trackerOffline, mockClient, ActivityMapper(context), AnonymousState(context), scope = testScope)
+        val retry = TrackerRetry(loggedOut, trackerOffline, mockClient, ActivityMapper(context), 5, testScope)
+        ShadowLog.clear()
+
+        retry.uploadEvents()
+        advanceUntilIdle()
+
+        assertThat(ShadowLog.getLogsForTag("TrackerRetry").any { it.type == Log.ERROR }).isTrue()
+        coVerify(exactly = 0) { mockClient.activity(any()) }
+    }
+
+    private fun epochSeconds(iso: String) = java.time.Instant.parse(iso).epochSecond
+
+    /** Fila com um evento cujo envio sempre falha; a linha guarda o retry gasto. */
+    private fun failingEventQueue(): MutableList<Api.Request> {
+        val requests = captureRequests("device-1")
+        var row = EventOff(1, "a1", "x", null, null, "t", 0)
+        every { trackerOffline.getAllEvents() } answers { listOf(row) }
+        every { trackerOffline.update(1, any(), "Event") } answers { row = row.copy(retry = secondArg()) }
+        coEvery { mockClient.activity(capture(requests)) } throws Exception("fail")
+        return requests
+    }
 
     @Test
     fun `without android id, queue above the limit should drop the oldest rows without spending attempts`() =

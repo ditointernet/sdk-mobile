@@ -12,6 +12,7 @@ import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClient
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
 import br.com.dito.ditosdk.tracking.AnonymousState
+import br.com.dito.ditosdk.tracking.ConnectivityRetryTrigger
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
@@ -199,9 +200,23 @@ object Dito {
         val mapper = ActivityMapper(context)
         val trackerOffline = TrackerOffline(context)
         tracker = Tracker(trackerOffline, client, mapper, AnonymousState(context), debug = options?.debug == true)
-        val trackerRetry = TrackerRetry(tracker, trackerOffline, client, mapper, options?.retry ?: 5)
+        // A passada adiada usa o mesmo critério de rede do gatilho. Atribuído antes do primeiro
+        // uploadEvents, que é o que pode chegar a consultá-lo.
+        lateinit var connectivityTrigger: ConnectivityRetryTrigger
+        val trackerRetry = TrackerRetry(
+            tracker,
+            trackerOffline,
+            client,
+            mapper,
+            options?.retry ?: 5,
+            isOnline = { connectivityTrigger.isOnline() },
+        )
+        // applicationContext: o callback fica preso no ConnectivityManager até o close e não pode segurar uma Activity.
+        connectivityTrigger = ConnectivityRetryTrigger(applicationContext, trackerRetry::uploadEventsOnReconnect)
         tracker.setTrackerRetry(trackerRetry)
+        tracker.setConnectivityTrigger(connectivityTrigger)
         trackerRetry.uploadEvents()
+        connectivityTrigger.start()
     }
 
     /**

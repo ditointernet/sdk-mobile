@@ -9,6 +9,7 @@ import br.com.dito.ditosdk.CustomData
 import br.com.dito.ditosdk.Event
 import br.com.dito.ditosdk.Identify
 import br.com.dito.ditosdk.IdentifyOff
+import br.com.dito.ditosdk.utils.parseISO
 import com.google.gson.Gson
 import com.google.protobuf.Timestamp
 import java.util.UUID
@@ -72,7 +73,12 @@ internal class ActivityMapper(private val context: Context) {
         return mapIdentify(identify)
     }
 
-    fun mapTrack(event: Event, activityId: String = UUID.randomUUID().toString()): Api.Activity {
+    /** @param queuedAt hora gravada na fila (reenvio); sem ela, a hora atual. */
+    fun mapTrack(
+        event: Event,
+        activityId: String = UUID.randomUUID().toString(),
+        queuedAt: String? = null,
+    ): Api.Activity {
         val track = Api.Activity.TrackActivity.newBuilder()
             .setEvent(event.action)
             .setRevenue(event.revenue?.toFloat() ?: 0f)
@@ -82,7 +88,7 @@ internal class ActivityMapper(private val context: Context) {
             .setId(activityId)
             .setType(Api.ActivityType.ACTIVITY_TRACK)
             .setTrack(track)
-            .setTimestamp(nowTimestamp())
+            .setTimestamp(queuedAt?.let(::parseISO)?.let { toTimestamp(it.toInstant()) } ?: nowTimestamp())
             .build()
     }
 
@@ -276,11 +282,11 @@ internal class ActivityMapper(private val context: Context) {
         return gson.toJson(custom.params)
     }
 
-    private fun nowTimestamp(): Timestamp {
-        val now = java.time.Instant.now()
-        return Timestamp.newBuilder()
-            .setSeconds(now.epochSecond)
-            .setNanos(now.nano)
+    private fun nowTimestamp(): Timestamp = toTimestamp(java.time.Instant.now())
+
+    private fun toTimestamp(instant: java.time.Instant): Timestamp =
+        Timestamp.newBuilder()
+            .setSeconds(instant.epochSecond)
+            .setNanos(instant.nano)
             .build()
-    }
 }
