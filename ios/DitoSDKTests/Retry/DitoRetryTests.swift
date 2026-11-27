@@ -745,7 +745,8 @@ final class DitoRetryTests: XCTestCase {
 
         await DitoRetry(client: mock).runLoadOffline()
         await waitUntil { !self.tokenRegisterRequests(mock, userId: userId, token: token).isEmpty }
-        XCTAssertEqual(DitoNotificationRegisterDataManager().fetch?.anonymous, true)
+        // The register with the user succeeded, so the anonymous slot of the same token goes with it.
+        await waitUntil { DitoNotificationRegisterDataManager().fetch == nil }
 
         await DitoRetry(client: mock).runLoadOffline()
         try await Task.sleep(nanoseconds: 300_000_000)
