@@ -51,6 +51,7 @@ internal data class EventOff(
     val dataJson: String?,
     val timestamp: String,
     val retry: Int,
+    val anonymous: Boolean = false,
 )
 
 internal data class IdentifyOff(

@@ -1,6 +1,7 @@
 package br.com.dito.ditosdk.tracking
 
 import android.util.Log
+import br.com.dito.ditosdk.BuildConfig
 import br.com.dito.ditosdk.CustomData
 import br.com.dito.ditosdk.Dito
 import br.com.dito.ditosdk.Event
@@ -13,18 +14,32 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import mobileingest.v1.Api
+import java.security.MessageDigest
 import java.util.UUID
 
 internal class Tracker(
     private val trackerOffline: TrackerOffline,
     private val client: MobileIngestClientInterface,
     private val mapper: ActivityMapper,
+    private val anonymousState: AnonymousState,
     private val debug: Boolean = false,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
 
+    @Volatile
     var id: String? = null
     private var trackerRetry: TrackerRetry? = null
+
+    // Declarados antes de identifyLoad: o load pode rodar em outra thread ainda durante o init.
+    private val idLock = Any()
+    private var loggedOut = false
+    private var logouts = 0
+    private val anonymousSend = Mutex()
+    private val identifyDisk = Mutex()
+    private val tokenState = Mutex()
 
     /**
      * Carregamento do identify persistido, exposto como [Job] para que quem depende do `id` possa
@@ -46,9 +61,9 @@ internal class Tracker(
     }
 
     private fun loadIdentify(): Job = scope.launch {
-        val stored = trackerOffline.getIdentify()?.id
-        // Um `identify()` concorrente é mais novo que o disco: não sobrescreve.
-        if (id == null) id = stored
+        val stored = trackerOffline.getIdentify()?.id?.takeIf { it.isNotBlank() }
+        // Um `identify()` ou `logout()` concorrente é mais novo que o disco: não sobrescreve.
+        synchronized(idLock) { if (id == null && !loggedOut) id = stored }
     }
 
     /**
@@ -66,66 +81,128 @@ internal class Tracker(
     }
 
     fun identify(identify: Identify, callback: ((OperationStatus?, Throwable?) -> Unit)?) {
+        if (identify.id.isBlank()) {
+            val error = IllegalArgumentException("O id do identify não pode ser vazio.")
+            Log.e("Tracker", error.message ?: "")
+            callback?.invoke(null, error)
+            return
+        }
+        synchronized(idLock) { id = identify.id }
         scope.launch {
             if (debug) Log.d("Tracker", "begin identify user: ${identify.id}")
-            id = identify.id
+            // Se o device_id aparecer agora, a fila só drena depois deste request, não em paralelo.
+            val deviceIdArrived = mapper.claimDeviceIdArrival()
             val activity = mapper.mapIdentify(identify)
-            val request = mapper.buildRequest(identify.id, listOf(activity), null)
             try {
-                client.activity(request)
-                trackerOffline.identify(identify, send = true)
+                client.activity(mapper.buildRequest(identify.id, listOf(activity), null))
+                val current = persistIfCurrent(identify, send = true)
                 callback?.invoke(OperationStatus.SENT, null)
-                trackerRetry?.uploadEvents()
+                if (current) registerLastToken(identify.id)
+                if (current || deviceIdArrived) trackerRetry?.uploadEvents()
             } catch (e: Exception) {
                 if (debug) Log.d("Tracker", "identify error: $e", e)
-                trackerOffline.identify(identify, send = false)
+                persistIfCurrent(identify, send = false)
                 callback?.invoke(null, e)
+                if (deviceIdArrived) trackerRetry?.uploadEvents()
             }
         }
+    }
+
+    // Um logout() ou outro identify() durante o request não pode ter o disco sobrescrito por este usuário.
+    private suspend fun persistIfCurrent(identify: Identify, send: Boolean): Boolean = identifyDisk.withLock {
+        (id == identify.id).also { if (it) trackerOffline.identify(identify, send) }
     }
 
     fun event(event: Event, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             val activityId = UUID.randomUUID().toString()
-            val userId = id
-            if (userId == null) {
-                Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
-                trackerOffline.event(event, activityId)
-                callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
-                return@launch
-            }
+            val userId = awaitId()
             val activity = mapper.mapTrack(event, activityId)
-            val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
-                client.activity(request)
+                send(userId, listOf(activity), null)
                 callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
-                handleEventError(e, event, activityId)
+                handleEventError(e, event, activityId, anonymous = userId == null)
                 callback?.invoke(OperationStatus.SAVED_LOCALLY, null)
             }
         }
     }
 
-    private fun handleEventError(exception: Exception, event: Event, activityId: String) {
+    private fun handleEventError(exception: Exception, event: Event, activityId: String, anonymous: Boolean) {
         if (exception is UninitializedPropertyAccessException) {
             Log.e("Tracker", "Antes de enviar um evento é preciso identificar o usuário.")
         }
-        trackerOffline.event(event, activityId)
+        trackerOffline.event(event, activityId, anonymous)
+    }
+
+    internal suspend fun send(userId: String?, activities: List<Api.Activity>, token: String?) {
+        if (userId == null) {
+            sendAnonymous(activities, token)
+            return
+        }
+        // Identify deste usuário ainda não enviado vai antes, no mesmo request: o backend não pode
+        // receber atividade de um user_id que ainda não conhece.
+        val pending = identifyDisk.withLock { trackerOffline.getIdentify() }?.takeIf { it.id == userId && !it.send }
+        if (pending == null) {
+            client.activity(mapper.buildRequest(userId, activities, token))
+            return
+        }
+        val identify = mapper.mapIdentify(mapper.fromIdentifyOff(pending))
+        client.activity(mapper.buildRequest(userId, listOf(identify) + activities, token))
+        identifyDisk.withLock { if (trackerOffline.getIdentify() == pending) trackerOffline.updateIdentify(userId, true) }
+        // Como no reenvio do identify pela fila; um register neste request já levou o token.
+        if (id == userId && activities.none { it.hasTokenRegister() }) registerLastToken(userId)
+    }
+
+    // user_id "" vai com o device_id: é por ele que o backend resolve o usuário.
+    private suspend fun sendAnonymous(activities: List<Api.Activity>, token: String?) {
+        val mark = "${mapper.requireDeviceId()}|${BuildConfig.DITO_SDK_VERSION}"
+        if (anonymousState.identifyMark == mark) {
+            client.activity(mapper.buildRequest("", activities, token))
+            return
+        }
+        anonymousSend.withLock {
+            val withIdentify = anonymousState.identifyMark != mark
+            val all = if (withIdentify) listOf(mapper.mapAnonymousIdentify()) + activities else activities
+            client.activity(mapper.buildRequest("", all, token))
+            if (withIdentify) anonymousState.identifyMark = mark
+        }
+    }
+
+    private suspend fun registerFor(userId: String, token: String) {
+        val session = synchronized(idLock) { logouts }
+        send(userId, listOf(mapper.mapTokenRegister(token)), token)
+        // Um unregisterToken() ou logout() concorrente não pode ser desfeito pela confirmação.
+        tokenState.withLock {
+            synchronized(idLock) {
+                if (logouts == session && id == userId && anonymousState.lastToken == token) {
+                    anonymousState.setConfirmed(userId, token)
+                }
+            }
+        }
+    }
+
+    internal suspend fun registerLastToken(userId: String) {
+        val token = anonymousState.lastToken ?: return
+        if (anonymousState.confirmedUserId == userId && anonymousState.confirmedToken == token) return
+        try {
+            registerFor(userId, token)
+        } catch (e: Exception) {
+            Log.e("Tracker", "Falha ao reenviar o token após o identify.", e)
+        }
     }
 
     fun registerToken(token: String, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             try {
-                val userId = id
-                if (userId == null) {
-                    val error = IllegalStateException("Antes de registrar o token é preciso identificar o usuário.")
-                    Log.e("Tracker", error.message ?: "")
-                    callback?.invoke(null, error)
-                    return@launch
+                val userId = awaitId()
+                anonymousState.lastToken = token
+                try {
+                    if (userId == null) send(null, listOf(mapper.mapTokenRegister(token)), token) else registerFor(userId, token)
+                } finally {
+                    // Um identify() que terminou antes de lastToken ser gravado não reenviou este token.
+                    if (userId == null) id?.let { registerLastToken(it) }
                 }
-                val activity = mapper.mapTokenRegister(token)
-                val request = mapper.buildRequest(userId, listOf(activity), token)
-                client.activity(request)
                 callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
                 if (debug) Log.d("Tracker", "registerToken error: $e", e)
@@ -137,16 +214,13 @@ internal class Tracker(
     fun unregisterToken(token: String, callback: ((OperationStatus?, Throwable?) -> Unit)? = null) {
         scope.launch {
             try {
-                val userId = id
-                if (userId == null) {
-                    val error = IllegalStateException("Antes de remover o token é preciso identificar o usuário.")
-                    Log.e("Tracker", error.message ?: "")
-                    callback?.invoke(null, error)
-                    return@launch
+                val userId = awaitId()
+                mapper.requireDeviceId()
+                tokenState.withLock {
+                    if (anonymousState.lastToken == token) anonymousState.lastToken = null
+                    if (anonymousState.confirmedToken == token) anonymousState.setConfirmed(null, null)
                 }
-                val activity = mapper.mapTokenUnregister(token)
-                val request = mapper.buildRequest(userId, listOf(activity), token)
-                client.activity(request)
+                send(userId, listOf(mapper.mapTokenUnregister(token)), token)
                 callback?.invoke(OperationStatus.SENT, null)
             } catch (e: Exception) {
                 Log.e("Tracker", e.message, e)
@@ -156,16 +230,26 @@ internal class Tracker(
     }
 
     fun logout() {
-        id = null
+        synchronized(idLock) {
+            loggedOut = true
+            logouts++
+            id = null
+        }
+        // Como no iOS: o próximo login reenvia o token. Fora do lock (logouts++ já barra o registerFor
+        // em voo), mas antes de retornar: numa coroutine, um identify() logo depois poderia ler o par antigo.
+        anonymousState.setConfirmed(null, null)
         scope.launch {
-            trackerOffline.deleteIdentify()
+            // Um identify() do mesmo usuário feito depois deste logout já está no disco: não apagar.
+            identifyDisk.withLock {
+                if (id == null || trackerOffline.getIdentify()?.id != id) trackerOffline.deleteIdentify()
+            }
         }
     }
 
+    /** Usa o user_id do payload só neste request: o push não identifica o aparelho. */
     fun notificationReceived(data: Dito.NotificationReadData) {
         scope.launch {
             if (data.userId.isEmpty()) return@launch
-            id = data.userId
             val identifyActivity = mapper.mapIdentify(Identify(data.userId))
             val trackEvent = Event("receive-android-notification").apply {
                 this.data = CustomData().apply {
@@ -176,27 +260,30 @@ internal class Tracker(
             }
             val activityId = UUID.randomUUID().toString()
             val trackActivity = mapper.mapTrack(trackEvent, activityId)
-            val request = mapper.buildRequest(data.userId, listOf(identifyActivity, trackActivity), null)
             try {
-                client.activity(request)
+                client.activity(mapper.buildRequest(data.userId, listOf(identifyActivity, trackActivity), null))
             } catch (e: Exception) {
                 // Sem isto, uma entrega perdida era indistinguível de uma entrega bem-sucedida: sem
                 // log, sem fila, sem rastro. `createdAt` do evento já está preenchido, então o
                 // reenvio preserva o instante real da entrega, não o do retry.
-                Log.e(
-                    "Tracker",
-                    "Falha ao enviar a entrega da notificação ${data.notificationId}; enfileirada para retry.",
-                    e,
-                )
-                // O identify precisa existir no disco para o flush conseguir resolver o usuário num
-                // próximo arranque. Só grava se não houver nenhum: sobrescrever apagaria os campos
-                // de um identify mais rico já persistido.
-                if (trackerOffline.getIdentify() == null) {
-                    trackerOffline.identify(Identify(data.userId), send = false)
+                Log.e("Tracker", "Falha ao enviar a entrega da notificação ${data.notificationId}.", e)
+                // A fila não guarda o user_id: só enfileira se o dono do push for quem o reenvio vai usar.
+                val userId = awaitId()
+                when {
+                    userId != null && data.userId == userId -> trackerOffline.event(trackEvent, activityId)
+                    userId == null && isAnonymousUser(data.userId) ->
+                        trackerOffline.event(trackEvent, activityId, anonymous = true)
+                    else -> Log.w("Tracker", "Entrega de outro usuário descartada, sem retry.")
                 }
-                trackerOffline.event(trackEvent, activityId)
             }
         }
+    }
+
+    // Mesmo user_id que o backend deriva do device_id para o aparelho anônimo.
+    private fun isAnonymousUser(userId: String): Boolean {
+        if (mapper.deviceId.isEmpty()) return false
+        val digest = MessageDigest.getInstance("SHA-1").digest(mapper.deviceId.trim().lowercase().toByteArray())
+        return userId.equals(digest.joinToString("") { "%02x".format(it) }, ignoreCase = true)
     }
 
     /**
@@ -214,9 +301,8 @@ internal class Tracker(
             if (userId.isEmpty() || notificationId.isEmpty()) return@launch
             val activityId = UUID.randomUUID().toString()
             val activity = mapper.mapNotificationClick(notificationId, userId, activityId, data)
-            val request = mapper.buildRequest(userId, listOf(activity), null)
             try {
-                client.activity(request)
+                client.activity(mapper.buildRequest(userId, listOf(activity), null))
             } catch (e: Exception) {
                 Log.e("Tracker", "Falha ao enviar o clique da notificação $notificationId; enfileirado para retry.", e)
                 trackerOffline.notificationRead(activityId, notificationId, userId, data)

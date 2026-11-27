@@ -11,6 +11,7 @@ import br.com.dito.ditosdk.offline.DitoDatabase
 import br.com.dito.ditosdk.service.ActivityMapper
 import br.com.dito.ditosdk.service.MobileIngestClient
 import br.com.dito.ditosdk.service.MobileIngestClientInterface
+import br.com.dito.ditosdk.tracking.AnonymousState
 import br.com.dito.ditosdk.tracking.Tracker
 import br.com.dito.ditosdk.tracking.TrackerOffline
 import br.com.dito.ditosdk.tracking.TrackerRetry
@@ -197,7 +198,7 @@ object Dito {
         if (::tracker.isInitialized) tracker.close()
         val mapper = ActivityMapper(context)
         val trackerOffline = TrackerOffline(context)
-        tracker = Tracker(trackerOffline, client, mapper, debug = options?.debug == true)
+        tracker = Tracker(trackerOffline, client, mapper, AnonymousState(context), debug = options?.debug == true)
         val trackerRetry = TrackerRetry(tracker, trackerOffline, client, mapper, options?.retry ?: 5)
         tracker.setTrackerRetry(trackerRetry)
         trackerRetry.uploadEvents()

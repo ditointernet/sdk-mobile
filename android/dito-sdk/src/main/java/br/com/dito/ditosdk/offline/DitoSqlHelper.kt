@@ -1,5 +1,6 @@
 package br.com.dito.ditosdk.offline
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -53,6 +54,7 @@ data class EventOffline(
     val dataJson: String?,
     val timestamp: String,
     val retry: Int,
+    @ColumnInfo(defaultValue = "0") val anonymous: Boolean = false,
 )
 
 @Dao
@@ -111,9 +113,16 @@ val OFFLINE_MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+// Sem ela, o fallbackToDestructiveMigration apaga a fila de eventos pendentes.
+val OFFLINE_MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE event ADD COLUMN anonymous INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 @Database(
     entities = [IdentifyOffline::class, EventOffline::class, NotificationOffline::class],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 abstract class DitoSqlHelper : RoomDatabase() {

@@ -64,6 +64,17 @@ class TrackerOfflineTest {
     }
 
     @Test
+    fun `identify should replace any previous identify`() = runBlocking {
+        trackerOffline.identify(Identify("A"), true)
+        trackerOffline.identify(Identify("B"), true)
+        trackerOffline.identify(Identify("A"), true)
+        delay(500)
+
+        assertThat(trackerOffline.database.identifyDao().getAll().map { it._id }).containsExactly("A")
+        assertThat(trackerOffline.getIdentify()?.id).isEqualTo("A")
+    }
+
+    @Test
     fun `updateIdentify should update send status`() = runBlocking {
         val identify = Identify("123")
         trackerOffline.identify(identify, false)
@@ -100,6 +111,17 @@ class TrackerOfflineTest {
         val events = trackerOffline.getAllEvents()
         assertThat(events).isNotNull()
         assertThat(events?.size).isEqualTo(1)
+    }
+
+    @Test
+    fun `event should round-trip the anonymous flag`() = runBlocking {
+        trackerOffline.event(Event("anonimo"), UUID.randomUUID().toString(), anonymous = true)
+        trackerOffline.event(Event("com-dono"), UUID.randomUUID().toString())
+        delay(500)
+
+        val events = trackerOffline.getAllEvents().orEmpty().associateBy { it.action }
+        assertThat(events["anonimo"]?.anonymous).isTrue()
+        assertThat(events["com-dono"]?.anonymous).isFalse()
     }
 
     @Test

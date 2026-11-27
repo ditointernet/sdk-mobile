@@ -2,6 +2,7 @@ package br.com.dito.ditosdk.offline
 
 import android.content.Context
 import android.os.Build
+import androidx.room.Room
 import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.sqlite.db.SupportSQLiteOpenHelper
 import androidx.sqlite.db.framework.FrameworkSQLiteOpenHelperFactory
@@ -56,6 +57,59 @@ class DitoSqlHelperMigrationTest {
                     assertThat(cursor.isNull(2)).isTrue()
                 }
         }
+    }
+
+    @Test
+    fun `migration 4 to 5 adds anonymous keeping pending events`() {
+        openV4Database().use { db ->
+            db.execSQL(
+                "INSERT INTO event (activityId, action, timestamp, retry) VALUES ('act1', 'compra', 't', 2)"
+            )
+        }
+
+        // Abrir pelo Room valida o schema migrado contra a entidade (tipo, NOT NULL e default).
+        val room = Room.databaseBuilder(context, DitoSqlHelper::class.java, DB_NAME)
+            .addMigrations(OFFLINE_MIGRATION_4_5)
+            .allowMainThreadQueries()
+            .build()
+        try {
+            val event = room.eventDao().getAll().single()
+            assertThat(event.activityId).isEqualTo("act1")
+            assertThat(event.retry).isEqualTo(2)
+            assertThat(event.anonymous).isFalse()
+        } finally {
+            room.close()
+        }
+    }
+
+    private fun openV4Database(): SupportSQLiteDatabase {
+        val helper = FrameworkSQLiteOpenHelperFactory().create(
+            SupportSQLiteOpenHelper.Configuration.builder(context)
+                .name(DB_NAME)
+                .callback(object : SupportSQLiteOpenHelper.Callback(4) {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `identify` (`_id` TEXT NOT NULL, `name` TEXT, " +
+                                "`email` TEXT, `gender` TEXT, `birthday` TEXT, `location` TEXT, " +
+                                "`customDataJson` TEXT, `send` INTEGER NOT NULL, PRIMARY KEY(`_id`))"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `event` (`_id` INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                                "`activityId` TEXT NOT NULL, `action` TEXT NOT NULL, `revenue` REAL, " +
+                                "`dataJson` TEXT, `timestamp` TEXT NOT NULL, `retry` INTEGER NOT NULL)"
+                        )
+                        db.execSQL(
+                            "CREATE TABLE IF NOT EXISTS `notification` (`_id` INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                                "`activityId` TEXT NOT NULL, `notificationId` TEXT NOT NULL, " +
+                                "`identifier` TEXT NOT NULL, `retry` INTEGER NOT NULL, `dataJson` TEXT)"
+                        )
+                    }
+
+                    override fun onUpgrade(db: SupportSQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+                })
+                .build()
+        )
+        return helper.writableDatabase
     }
 
     private fun openV3Database(): SupportSQLiteDatabase {
