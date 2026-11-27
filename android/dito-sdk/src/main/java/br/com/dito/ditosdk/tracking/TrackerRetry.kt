@@ -25,9 +25,16 @@ internal class TrackerRetry(
     private val eventQueue = Mutex()
 
     fun uploadEvents() {
-        checkIdentify()
-        checkEvent()
-        checkNotificationRead()
+        scope.launch {
+            // Sem device_id nada sai: a fila fica intacta, sem gastar tentativa, até ele aparecer.
+            if (mapper.deviceId.isEmpty()) {
+                Log.e("TrackerRetry", "device_id indisponível: reenvio da fila adiado.")
+                return@launch
+            }
+            checkIdentify()
+            checkEvent()
+            checkNotificationRead()
+        }
     }
 
     fun close() {
@@ -59,7 +66,7 @@ internal class TrackerRetry(
                 events.filter { it.retry >= maxRetry }.forEach { trackerOffline.delete(it.id, "Event") }
 
                 val (anonymous, owned) = events.filter { it.retry < maxRetry }.partition { it.anonymous }
-                if (anonymous.isNotEmpty() && tracker.canSend(null)) {
+                if (anonymous.isNotEmpty()) {
                     sendEventsBatch(anonymous, null)
                 }
                 if (owned.isEmpty()) return@launch
